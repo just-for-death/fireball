@@ -311,14 +311,18 @@ class SettingsScreen extends HookConsumerWidget {
 
     Future<void> webDavBackup() async {
       await saveWebDavSettings();
+      // Use controller text directly — settings provider may not have flushed yet
+      final url  = webDavUrlCtrl.text.trim();
+      final user = webDavUserCtrl.text.trim();
+      final pass = webDavPassCtrl.text.trim();
       backupLoading.value = true;
       webDavStatus.value = 'Backing up...';
       try {
         final json = ref.read(localStoreProvider.notifier).exportJson();
         await WebDavSync.backup(
-          serverUrl: settings.webDavUrl,
-          username: settings.webDavUsername,
-          password: settings.webDavPassword,
+          serverUrl: url,
+          username: user,
+          password: pass,
           libraryJson: json,
         );
         final now = DateTime.now().toIso8601String();
@@ -333,13 +337,17 @@ class SettingsScreen extends HookConsumerWidget {
 
     Future<void> webDavRestore() async {
       await saveWebDavSettings();
+      // Use controller text directly — settings provider may not have flushed yet
+      final url  = webDavUrlCtrl.text.trim();
+      final user = webDavUserCtrl.text.trim();
+      final pass = webDavPassCtrl.text.trim();
       restoreLoading.value = true;
       webDavStatus.value = 'Restoring...';
       try {
         final json = await WebDavSync.restore(
-          serverUrl: settings.webDavUrl,
-          username: settings.webDavUsername,
-          password: settings.webDavPassword,
+          serverUrl: url,
+          username: user,
+          password: pass,
         );
         if (json == null) {
           webDavStatus.value = 'No backup found on WebDAV server';

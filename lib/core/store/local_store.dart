@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'dart:convert';
+import 'dart:developer' as dev;
 import 'dart:io';
 
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -58,6 +60,10 @@ class LocalStoreNotifier extends StateNotifier<LibraryData> {
     _init();
   }
 
+  // Completer that resolves once _init() finishes; all writes await this first
+  // so that a late-finishing _init() cannot overwrite mutations made after init.
+  final Completer<void> _ready = Completer<void>();
+
   Future<File> get _dbFile async {
     final dir = await getApplicationDocumentsDirectory();
     return File('${dir.path}/fireball_library.json');
@@ -68,15 +74,30 @@ class LocalStoreNotifier extends StateNotifier<LibraryData> {
     try {
       final file = await _dbFile;
       if (!await file.exists()) {
+        _ready.complete();
         await _write(state);
         return;
       }
       final raw = await file.readAsString();
       final json = jsonDecode(raw) as Map<String, dynamic>;
-      state = _fromJson(json);
+      // Only apply loaded state if no mutations have arrived yet
+      if (!_ready.isCompleted) {
+        state = _fromJson(json);
+      }
     } catch (e) {
-      // If the file is corrupt start fresh
-      await _write(state);
+      dev.log('LocalStore: corrupt file, starting fresh. Error: $e');
+      // Backup the corrupt file so data isn't silently lost
+      try {
+        final file = await _dbFile;
+        if (await file.exists()) {
+          await file.rename('${file.path}.corrupt');
+        }
+      } catch (_) {}
+      if (!_ready.isCompleted) {
+        await _write(state);
+      }
+    } finally {
+      if (!_ready.isCompleted) _ready.complete();
     }
   }
 
@@ -114,6 +135,9 @@ class LocalStoreNotifier extends StateNotifier<LibraryData> {
   }
 
   Future<void> _save() async {
+    // Mark ready immediately when a mutation occurs so _init cannot overwrite
+    if (!_ready.isCompleted) _ready.complete();
+    await _ready.future; // ensures any in-flight init has finished before we write
     await _write(state);
   }
 
@@ -262,30 +286,54 @@ class LocalStoreNotifier extends StateNotifier<LibraryData> {
 
   // ── Parsers ───────────────────────────────────────────────────────────────────
   static List<Track> _parseTracks(dynamic v) {
-    if (v == null) return [];
-    return (v as List<dynamic>)
-        .map((e) => Track.fromJson(e as Map<String, dynamic>))
-        .toList();
+    if (v is! List) return [];
+    final result = <Track>[];
+    for (final e in v) {
+      try {
+        if (e is Map<String, dynamic>) result.add(Track.fromJson(e));
+      } catch (err) {
+        dev.log('LocalStore: skipping malformed track: $err');
+      }
+    }
+    return result;
   }
 
   static List<Playlist> _parsePlaylists(dynamic v) {
-    if (v == null) return [];
-    return (v as List<dynamic>)
-        .map((e) => Playlist.fromJson(e as Map<String, dynamic>))
-        .toList();
+    if (v is! List) return [];
+    final result = <Playlist>[];
+    for (final e in v) {
+      try {
+        if (e is Map<String, dynamic>) result.add(Playlist.fromJson(e));
+      } catch (err) {
+        dev.log('LocalStore: skipping malformed playlist: $err');
+      }
+    }
+    return result;
   }
 
   static List<Artist> _parseArtists(dynamic v) {
-    if (v == null) return [];
-    return (v as List<dynamic>)
-        .map((e) => Artist.fromJson(e as Map<String, dynamic>))
-        .toList();
+    if (v is! List) return [];
+    final result = <Artist>[];
+    for (final e in v) {
+      try {
+        if (e is Map<String, dynamic>) result.add(Artist.fromJson(e));
+      } catch (err) {
+        dev.log('LocalStore: skipping malformed artist: $err');
+      }
+    }
+    return result;
   }
 
   static List<Album> _parseAlbums(dynamic v) {
-    if (v == null) return [];
-    return (v as List<dynamic>)
-        .map((e) => Album.fromJson(e as Map<String, dynamic>))
-        .toList();
+    if (v is! List) return [];
+    final result = <Album>[];
+    for (final e in v) {
+      try {
+        if (e is Map<String, dynamic>) result.add(Album.fromJson(e));
+      } catch (err) {
+        dev.log('LocalStore: skipping malformed album: $err');
+      }
+    }
+    return result;
   }
 }

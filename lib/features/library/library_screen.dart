@@ -338,6 +338,12 @@ class LibraryScreen extends HookConsumerWidget {
                         color: Colors.redAccent.withValues(alpha: 0.7),
                         size: 20),
                     onPressed: () async {
+                      // Clear queue first if we're currently playing from this playlist
+                      final player = ref.read(playerProvider);
+                      final currentId = player.currentTrack?.id;
+                      if (pl.videos.any((t) => t.id == currentId)) {
+                        await ref.read(playerProvider.notifier).setQueue([]);
+                      }
                       await ref
                           .read(localStoreProvider.notifier)
                           .deletePlaylist(pl.id);
@@ -479,29 +485,33 @@ class LibraryScreen extends HookConsumerWidget {
     WidgetRef ref,
   ) async {
     final ctrl = TextEditingController();
-    final title = await showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('New Playlist'),
-        content: TextField(
-          controller: ctrl,
-          autofocus: true,
-          decoration: const InputDecoration(hintText: 'Playlist name'),
+    try {
+      final title = await showDialog<String>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('New Playlist'),
+          content: TextField(
+            controller: ctrl,
+            autofocus: true,
+            decoration: const InputDecoration(hintText: 'Playlist name'),
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Cancel')),
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, ctrl.text),
+                child: const Text('Create')),
+          ],
         ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('Cancel')),
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, ctrl.text),
-              child: const Text('Create')),
-        ],
-      ),
-    );
-    if (title != null && title.trim().isNotEmpty) {
-      await ref
-          .read(localStoreProvider.notifier)
-          .createPlaylist(title.trim());
+      );
+      if (title != null && title.trim().isNotEmpty) {
+        await ref
+            .read(localStoreProvider.notifier)
+            .createPlaylist(title.trim());
+      }
+    } finally {
+      ctrl.dispose();
     }
   }
 

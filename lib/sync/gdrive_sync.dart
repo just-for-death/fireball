@@ -48,22 +48,25 @@ class GDriveSync {
   static Future<void> backup(String libraryJson) async {
     final api = await _getDriveApi();
     final bytes = utf8.encode(libraryJson);
-    final stream = Stream.fromIterable([bytes]);
 
-    // Check if file already exists
-    final existing = await _findFile(api);
+    // Find all existing backup files (duplicates can accumulate over time)
+    final allIds = await _findAllFiles(api);
 
-    final media = drive.Media(stream, bytes.length, contentType: _kMimeType);
+    final media = drive.Media(
+      Stream.fromIterable([bytes]),
+      bytes.length,
+      contentType: _kMimeType,
+    );
 
-    if (existing != null) {
-      // Update existing file
-      await api.files.update(
-        drive.File(),
-        existing,
-        uploadMedia: media,
-      );
+    if (allIds.isNotEmpty) {
+      // Update the first file, delete any extras
+      await api.files.update(drive.File(), allIds.first, uploadMedia: media);
+      for (final id in allIds.skip(1)) {
+        try {
+          await api.files.delete(id);
+        } catch (_) {}
+      }
     } else {
-      // Create new file
       final file = drive.File()
         ..name = _kFileName
         ..parents = ['appDataFolder'];
@@ -106,12 +109,17 @@ class GDriveSync {
 
   // ── Helpers ───────────────────────────────────────────────────────────────
   static Future<String?> _findFile(drive.DriveApi api) async {
+    final ids = await _findAllFiles(api);
+    return ids.firstOrNull;
+  }
+
+  static Future<List<String>> _findAllFiles(drive.DriveApi api) async {
     final list = await api.files.list(
       spaces: 'appDataFolder',
       q: "name='$_kFileName' and trashed=false",
       $fields: 'files(id)',
     );
-    return list.files?.firstOrNull?.id;
+    return list.files?.map((f) => f.id!).whereType<String>().toList() ?? [];
   }
 }
 

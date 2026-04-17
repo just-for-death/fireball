@@ -162,13 +162,17 @@ class FireballApi {
               videoId: v['videoId']?.toString(),
               title: v['title'] ?? '',
               artist: v['author'] ?? v['artist'] ?? '',
-              artwork: v['videoThumbnails'] != null &&
-                      (v['videoThumbnails'] as List).isNotEmpty
-                  ? v['videoThumbnails'][0]['url']
-                  : (v['thumbnails'] != null &&
-                          (v['thumbnails'] as List).isNotEmpty
-                      ? v['thumbnails'][0]['url']
-                      : null),
+              artwork: () {
+                final vt = v['videoThumbnails'];
+                if (vt is List && vt.isNotEmpty && vt[0] is Map) {
+                  return vt[0]['url'] as String?;
+                }
+                final th = v['thumbnails'];
+                if (th is List && th.isNotEmpty && th[0] is Map) {
+                  return th[0]['url'] as String?;
+                }
+                return null;
+              }(),
               duration: v['lengthSeconds'] ?? v['duration'],
             ))
         .toList();
@@ -289,9 +293,12 @@ class FireballApi {
   // ── Last.fm ───────────────────────────────────────────────────────────────
   static const _lastFmApi = 'https://ws.audioscrobbler.com/2.0';
 
+  /// Validates a Last.fm API key using a lightweight read-only endpoint.
+  /// Returns the response map. Throws if the key is invalid or the request fails.
   Future<Map<String, dynamic>> validateLastFmKey(String apiKey) async {
+    // chart.getTopArtists only needs api_key — no api_sig or session required.
     return await _get(
-      '$_lastFmApi/?method=auth.getSession&api_key=${Uri.encodeComponent(apiKey)}&format=json',
+      '$_lastFmApi/?method=chart.gettopartists&limit=1&api_key=${Uri.encodeComponent(apiKey)}&format=json',
     ) as Map<String, dynamic>;
   }
 
