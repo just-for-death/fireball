@@ -739,20 +739,29 @@ class PlayerScreen extends HookConsumerWidget {
             itemBuilder: (context, i) {
               final isActive = i == activeLyricIdx.value;
               final delta = (i - activeLyricIdx.value).abs();
-              return Padding(
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                child: Text(
-                  lyrics.value[i].text,
-                  style: TextStyle(
-                    color: Colors.white.withValues(
-                        alpha: isActive
-                            ? 1.0
-                            : (0.6 - delta * 0.1).clamp(0.1, 0.6)),
-                    fontSize: isActive ? 22 : 18,
-                    fontWeight: isActive
-                        ? FontWeight.w700
-                        : FontWeight.w500,
-                    height: 1.4,
+              final lyric = lyrics.value[i];
+              return GestureDetector(
+                onTap: () {
+                  ref.read(playerProvider.notifier).seekTo(
+                      Duration(milliseconds: (lyric.time * 1000).toInt()));
+                  activeLyricIdx.value = i;
+                  _scrollToLyric(scrollCtrl, i);
+                },
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  child: Text(
+                    lyric.text,
+                    style: TextStyle(
+                      color: Colors.white.withValues(
+                          alpha: isActive
+                              ? 1.0
+                              : (0.6 - delta * 0.1).clamp(0.1, 0.6)),
+                      fontSize: isActive ? 22 : 18,
+                      fontWeight: isActive
+                          ? FontWeight.w700
+                          : FontWeight.w500,
+                      height: 1.4,
+                    ),
                   ),
                 ),
               );
@@ -1152,14 +1161,18 @@ class PlayerScreen extends HookConsumerWidget {
     // inactive lines; active lines are taller (font 22×1.4+16 ≈ 47px). Use 42
     // as a practical average — close enough for centering without GlobalKey overhead.
     const itemH = 42.0;
-    final viewportH = ctrl.position.viewportDimension;
-    final raw = idx * itemH - (viewportH / 2) + itemH / 2;
-    final offset = raw.clamp(0.0, ctrl.position.maxScrollExtent);
-    ctrl.animateTo(
-      offset,
-      duration: const Duration(milliseconds: 300),
-      curve: Curves.easeOutCubic,
-    );
+    try {
+      final viewportH = ctrl.position.viewportDimension;
+      final raw = idx * itemH - (viewportH / 2) + itemH / 2;
+      final offset = raw.clamp(0.0, ctrl.position.maxScrollExtent);
+      ctrl.animateTo(
+        offset,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOutCubic,
+      );
+    } catch (_) {
+      // ScrollPosition may not be laid out yet on first call — safe to ignore.
+    }
   }
 }
 
