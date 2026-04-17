@@ -870,7 +870,7 @@ class SettingsScreen extends HookConsumerWidget {
 
                   // ── PLAYBACK ─────────────────────────────────────────────
                   if (showSection(
-                      'playback quality audio queue lyrics scroll sync english hindi language'))
+                      'playback quality audio queue lyrics scroll sync english hindi language reduced motion accessibility'))
                   _SectionCard(
                     title: 'PLAYBACK',
                     icon: Icons.music_note_rounded,
@@ -921,6 +921,33 @@ class SettingsScreen extends HookConsumerWidget {
                             value: settings.lyricsAutoScroll,
                             onChanged: (v) =>
                                 saveSettings({'lyricsAutoScroll': v}),
+                            activeThumbColor: cs.primary,
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text('Reduced motion for lyrics',
+                                  style: TextStyle(
+                                      color: Colors.white, fontSize: 14)),
+                              Text(
+                                'Jump instead of animating when following the active line',
+                                style: TextStyle(
+                                    fontSize: 11,
+                                    color:
+                                        Colors.white.withValues(alpha: 0.4)),
+                              ),
+                            ],
+                          ),
+                          Switch(
+                            value: settings.lyricsReducedMotion,
+                            onChanged: (v) =>
+                                saveSettings({'lyricsReducedMotion': v}),
                             activeThumbColor: cs.primary,
                           ),
                         ],

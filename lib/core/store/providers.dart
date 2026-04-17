@@ -1,95 +1,25 @@
+import 'dart:async';
 import 'dart:developer' as dev;
 
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import 'package:media_kit/media_kit.dart' hide Track;
+import 'package:media_kit/media_kit.dart' hide PlayerState, Track;
 
 import '../api/fireball_api.dart';
+import '../audio/media_session_bridge.dart';
+import '../audio/media_session_player.dart';
 import '../models/models.dart';
 import '../models/track.dart';
 import '../../remote/remote_server.dart';
 import 'local_store.dart';
+import 'player_state.dart';
 
 export 'local_store.dart' show localStoreProvider, LibraryData, LocalStoreNotifier;
+export 'player_state.dart' show PlayerState, ElysiumRepeatMode;
 
 // ── Settings convenience provider ────────────────────────────────────────────
 final settingsProvider = Provider<FireballSettings>((ref) {
   return ref.watch(localStoreProvider).settings;
 });
-
-// ── Player state ─────────────────────────────────────────────────────────────
-enum ElysiumRepeatMode { off, all, one }
-
-class PlayerState {
-  final List<Track> queue;
-  final int currentIndex;
-  final bool isPlaying;
-  final Duration position;
-  final Duration duration;
-  final bool shuffled;
-  final ElysiumRepeatMode repeatMode;
-  final List<Track> favorites;
-  final bool videoMode;
-  final String? playbackError;
-  /// Wall-clock time when playback should pause (sleep timer).
-  final DateTime? sleepTimerEnd;
-  /// When true, pause after the current track finishes (natural end).
-  final bool sleepAfterCurrentTrack;
-
-  const PlayerState({
-    this.queue = const [],
-    this.currentIndex = -1,
-    this.isPlaying = false,
-    this.position = Duration.zero,
-    this.duration = Duration.zero,
-    this.shuffled = false,
-    this.repeatMode = ElysiumRepeatMode.off,
-    this.favorites = const [],
-    this.videoMode = false,
-    this.playbackError,
-    this.sleepTimerEnd,
-    this.sleepAfterCurrentTrack = false,
-  });
-
-  Track? get currentTrack =>
-      currentIndex >= 0 && currentIndex < queue.length ? queue[currentIndex] : null;
-
-  bool isFavorite(String id) => favorites.any((f) => (f.videoId ?? f.id) == id);
-
-  PlayerState copyWith({
-    List<Track>? queue,
-    int? currentIndex,
-    bool? isPlaying,
-    Duration? position,
-    Duration? duration,
-    bool? shuffled,
-    ElysiumRepeatMode? repeatMode,
-    List<Track>? favorites,
-    bool? videoMode,
-    String? playbackError,
-    bool clearError = false,
-    DateTime? sleepTimerEnd,
-    bool clearSleepTimerEnd = false,
-    bool? sleepAfterCurrentTrack,
-    bool clearSleepAfterTrack = false,
-  }) =>
-      PlayerState(
-        queue: queue ?? this.queue,
-        currentIndex: currentIndex ?? this.currentIndex,
-        isPlaying: isPlaying ?? this.isPlaying,
-        position: position ?? this.position,
-        duration: duration ?? this.duration,
-        shuffled: shuffled ?? this.shuffled,
-        repeatMode: repeatMode ?? this.repeatMode,
-        favorites: favorites ?? this.favorites,
-        videoMode: videoMode ?? this.videoMode,
-        playbackError: clearError ? null : (playbackError ?? this.playbackError),
-        sleepTimerEnd:
-            clearSleepTimerEnd ? null : (sleepTimerEnd ?? this.sleepTimerEnd),
-        sleepAfterCurrentTrack: clearSleepAfterTrack
-            ? false
-            : (sleepAfterCurrentTrack ?? this.sleepAfterCurrentTrack),
-      );
-}
 
 // ── Player Notifier ───────────────────────────────────────────────────────────
 final playerProvider = StateNotifierProvider<PlayerNotifier, PlayerState>((ref) {
@@ -97,15 +27,27 @@ final playerProvider = StateNotifierProvider<PlayerNotifier, PlayerState>((ref) 
 });
 
 class PlayerNotifier extends StateNotifier<PlayerState>
-    implements RemotePlayerProxy {
+    implements RemotePlayerProxy, MediaSessionPlayer {
   late final Player _player;
   final Ref _ref;
   int _playVersion = 0;
   bool _scrobbled = false;
+  Timer? _mediaSessionTicker;
 
   PlayerNotifier(this._ref) : super(const PlayerState()) {
     _player = Player();
     _listenToPlayer();
+    MediaSessionBridge.attachPlayer(this);
+  }
+
+  void _syncMediaSession() => MediaSessionBridge.sync();
+
+  void _setMediaTicker(bool playing) {
+    _mediaSessionTicker?.cancel();
+    _mediaSessionTicker = null;
+    if (!playing) return;
+    _mediaSessionTicker =
+        Timer.periodic(const Duration(seconds: 1), (_) => _syncMediaSession());
   }
 
   FireballApi get _api => const FireballApi();
@@ -113,9 +55,14 @@ class PlayerNotifier extends StateNotifier<PlayerState>
 
   Player get player => _player;
 
+  @override
+  PlayerState get sessionState => state;
+
   void _listenToPlayer() {
     _player.stream.playing.listen((playing) {
       state = state.copyWith(isPlaying: playing);
+      _setMediaTicker(playing);
+      _syncMediaSession();
     });
     _player.stream.position.listen((pos) {
       state = state.copyWith(position: pos);
@@ -124,9 +71,11 @@ class PlayerNotifier extends StateNotifier<PlayerState>
     });
     _player.stream.duration.listen((dur) {
       state = state.copyWith(duration: dur);
+      _syncMediaSession();
     });
     _player.stream.completed.listen((completed) {
       if (completed) _onTrackComplete();
+      _syncMediaSession();
     });
   }
 
@@ -166,6 +115,7 @@ class PlayerNotifier extends StateNotifier<PlayerState>
 
   void playTrackNow(Track track) {
     state = state.copyWith(queue: [track], currentIndex: 0);
+    _syncMediaSession();
     playIndex(0);
   }
 
@@ -177,30 +127,36 @@ class PlayerNotifier extends StateNotifier<PlayerState>
     final newQueue = List<Track>.from(state.queue);
     newQueue.insert(state.currentIndex + 1, track);
     state = state.copyWith(queue: newQueue);
+    _syncMediaSession();
   }
 
   void addToQueue(Track track) {
     state = state.copyWith(queue: [...state.queue, track]);
+    _syncMediaSession();
     if (state.currentIndex == -1) playIndex(0);
   }
 
   void addAllToQueue(List<Track> tracks) {
     final wasEmpty = state.queue.isEmpty;
     state = state.copyWith(queue: [...state.queue, ...tracks]);
+    _syncMediaSession();
     if (wasEmpty) playIndex(0);
   }
 
   void playAll(List<Track> tracks) {
     state = state.copyWith(queue: tracks, currentIndex: 0);
+    _syncMediaSession();
     playIndex(0);
   }
 
+  @override
   Future<void> playIndex(int index) async {
     if (index < 0 || index >= state.queue.length) return;
 
     final version = ++_playVersion;
     _scrobbled = false;
     state = state.copyWith(currentIndex: index, clearError: true);
+    _syncMediaSession();
     final track = state.queue[index];
 
     // Single settings read — used for both playing-now and stream resolution
@@ -334,6 +290,7 @@ class PlayerNotifier extends StateNotifier<PlayerState>
         } catch (_) {}
       }
       state = state.copyWith(playbackError: errMsg);
+      _syncMediaSession();
     }
   }
 
@@ -404,21 +361,27 @@ class PlayerNotifier extends StateNotifier<PlayerState>
       clearSleepTimerEnd: true,
       clearSleepAfterTrack: true,
     );
+    _syncMediaSession();
   }
 
 
+  @override
   void toggleShuffle() {
     state = state.copyWith(shuffled: !state.shuffled);
+    _syncMediaSession();
   }
 
+  @override
   void cycleRepeat() {
     final next = ElysiumRepeatMode
         .values[(state.repeatMode.index + 1) % ElysiumRepeatMode.values.length];
     state = state.copyWith(repeatMode: next);
+    _syncMediaSession();
   }
 
   void clearPlaybackError() {
     state = state.copyWith(clearError: true);
+    _syncMediaSession();
   }
 
   /// Pause after [minutes] (from now). Pass `null` or `0` to clear wall-clock timer only.
@@ -474,6 +437,7 @@ class PlayerNotifier extends StateNotifier<PlayerState>
       newCi = newCi.clamp(0, list.length - 1);
     }
     state = state.copyWith(queue: list, currentIndex: newCi);
+    _syncMediaSession();
   }
 
   Future<void> removeFromQueueAt(int index) async {
@@ -493,6 +457,7 @@ class PlayerNotifier extends StateNotifier<PlayerState>
         clearSleepTimerEnd: true,
         clearSleepAfterTrack: true,
       );
+      _syncMediaSession();
       return;
     }
     var newCi = state.currentIndex;
@@ -502,6 +467,7 @@ class PlayerNotifier extends StateNotifier<PlayerState>
       newCi = newCi.clamp(0, list.length - 1);
     }
     state = state.copyWith(queue: list, currentIndex: newCi);
+    _syncMediaSession();
     if (wasCurrent) {
       await playIndex(newCi);
     }
@@ -575,6 +541,13 @@ class PlayerNotifier extends StateNotifier<PlayerState>
   @override
   Future<void> pause() => _player.pause();
 
+  @override
+  Future<void> stopFromOs() async {
+    await _player.stop();
+    state = state.copyWith(isPlaying: false, position: Duration.zero);
+    _syncMediaSession();
+  }
+
   // ── ListenBrainz scrobbling ──────────────────────────────────────────────
 
   void _checkScrobble(Duration pos) {
@@ -609,6 +582,8 @@ class PlayerNotifier extends StateNotifier<PlayerState>
 
   @override
   void dispose() {
+    _mediaSessionTicker?.cancel();
+    MediaSessionBridge.detachPlayer();
     RemoteServer.stop();
     _player.dispose();
     super.dispose();

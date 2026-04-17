@@ -120,6 +120,8 @@ class FireballSettings {
   final List<String> homeCountries;
   /// When true, synced lyrics auto-scroll to the active line while playing.
   final bool lyricsAutoScroll;
+  /// When true, jump the lyrics list instead of animating (easier with reduced motion).
+  final bool lyricsReducedMotion;
   /// Prefer lyrics in English or Hindi (Latin / Devanagari) when LRCLIB has several variants.
   final bool lyricsPreferEnglishHindi;
 
@@ -157,6 +159,7 @@ class FireballSettings {
     this.remoteHostIp = '',
     this.homeCountries = const [],
     this.lyricsAutoScroll = true,
+    this.lyricsReducedMotion = false,
     this.lyricsPreferEnglishHindi = true,
   });
 
@@ -221,6 +224,7 @@ class FireballSettings {
       remoteHostIp: j['remoteHostIp']?.toString() ?? '',
       homeCountries: toStringList(j['homeCountries']),
       lyricsAutoScroll: toBool(j['lyricsAutoScroll'], true),
+      lyricsReducedMotion: toBool(j['lyricsReducedMotion'], false),
       lyricsPreferEnglishHindi: toBool(j['lyricsPreferEnglishHindi'], true),
     );
   }
@@ -259,6 +263,7 @@ class FireballSettings {
         'remoteHostIp': remoteHostIp,
         'homeCountries': homeCountries,
         'lyricsAutoScroll': lyricsAutoScroll,
+        'lyricsReducedMotion': lyricsReducedMotion,
         'lyricsPreferEnglishHindi': lyricsPreferEnglishHindi,
       };
 
@@ -298,6 +303,7 @@ class FireballSettings {
     String? remoteHostIp,
     List<String>? homeCountries,
     bool? lyricsAutoScroll,
+    bool? lyricsReducedMotion,
     bool? lyricsPreferEnglishHindi,
   }) =>
       FireballSettings(
@@ -337,6 +343,7 @@ class FireballSettings {
         remoteHostIp: remoteHostIp ?? this.remoteHostIp,
         homeCountries: homeCountries ?? this.homeCountries,
         lyricsAutoScroll: lyricsAutoScroll ?? this.lyricsAutoScroll,
+        lyricsReducedMotion: lyricsReducedMotion ?? this.lyricsReducedMotion,
         lyricsPreferEnglishHindi:
             lyricsPreferEnglishHindi ?? this.lyricsPreferEnglishHindi,
       );

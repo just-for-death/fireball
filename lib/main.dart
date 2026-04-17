@@ -1,4 +1,9 @@
+import 'dart:io' show Platform;
 import 'dart:ui';
+
+import 'package:audio_service/audio_service.dart';
+import 'package:audio_service_mpris/audio_service_mpris.dart';
+import 'package:audio_session/audio_session.dart';
 import 'package:dynamic_color/dynamic_color.dart';
 import 'package:flex_color_scheme/flex_color_scheme.dart';
 import 'package:flutter/material.dart';
@@ -6,11 +11,57 @@ import 'package:flutter/services.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:media_kit/media_kit.dart';
 
+import 'core/audio/fireball_audio_handler.dart';
+import 'core/audio/media_session_bridge.dart';
 import 'routes/router.dart';
+
+Future<void> _initAudioSession() async {
+  try {
+    final session = await AudioSession.instance;
+    await session.configure(const AudioSessionConfiguration.music());
+  } catch (e, st) {
+    debugPrint('AudioSession.configure failed: $e $st');
+  }
+}
+
+/// Linux: DBus MPRIS so GNOME/KDE media keys and taskbar controls work.
+void _registerLinuxMpris() {
+  try {
+    if (Platform.isLinux) {
+      AudioServiceMpris.registerWith();
+    }
+  } catch (e, st) {
+    debugPrint('AudioServiceMpris.registerWith failed: $e $st');
+  }
+}
+
+Future<void> _initMediaService() async {
+  try {
+    _registerLinuxMpris();
+    MediaSessionBridge.handler = await AudioService.init<FireballAudioHandler>(
+      builder: FireballAudioHandler.new,
+      config: const AudioServiceConfig(
+        androidNotificationChannelId: 'com.fireball.fireball.playback',
+        androidNotificationChannelName: 'Playback',
+        androidNotificationChannelDescription: 'Now playing controls',
+        androidNotificationIcon: 'mipmap/launcher_icon',
+        notificationColor: Color(0xFF4A378B),
+        androidStopForegroundOnPause: true,
+        androidNotificationOngoing: false,
+        preloadArtwork: true,
+      ),
+    );
+  } catch (e, st) {
+    debugPrint('AudioService.init failed: $e $st');
+  }
+}
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   MediaKit.ensureInitialized();
+
+  await _initMediaService();
+  await _initAudioSession();
 
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
   SystemChrome.setSystemUIOverlayStyle(
