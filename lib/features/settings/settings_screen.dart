@@ -40,6 +40,10 @@ class SettingsScreen extends HookConsumerWidget {
     final testingOllama = useState(false);
     final testingInvidious = useState(false);
 
+    // Invidious playlists
+    final invPlaylists = useState<List<dynamic>>([]);
+    final invPlaylistsLoading = useState(false);
+
     // Sync states
     final gDriveUser = useState<GoogleSignInAccount?>(null);
     final gDriveLoading = useState(false);
@@ -190,6 +194,58 @@ class SettingsScreen extends HookConsumerWidget {
         testingInvidious.value = false;
       }
     }
+
+    Future<void> loadInvidiousPlaylists() async {
+      if (settings.invidiousUsername == null) return;
+      invPlaylistsLoading.value = true;
+      try {
+        final data = await api.getInvidiousPlaylists(
+          instanceUrl: settings.invidiousInstance,
+          sid: settings.invidiousSid,
+        );
+        invPlaylists.value = data;
+      } catch (_) {
+        invPlaylists.value = [];
+      } finally {
+        invPlaylistsLoading.value = false;
+      }
+    }
+
+    Future<void> showInvidiousPlaylistPreview(
+        String playlistId, String title) async {
+      showModalBottomSheet(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (ctx) => _InvidiousPlaylistPreview(
+          playlistId: playlistId,
+          title: title,
+          instanceUrl: settings.invidiousInstance,
+          sid: settings.invidiousSid,
+          onSync: () async {
+            final pl = await api.syncInvidiousPlaylist(
+              playlistId,
+              instanceUrl: settings.invidiousInstance,
+              sid: settings.invidiousSid,
+            );
+            await ref.read(localStoreProvider.notifier).addPlaylist(pl);
+            if (ctx.mounted) {
+              ScaffoldMessenger.of(ctx).showSnackBar(
+                const SnackBar(content: Text('Playlist synced to Library ✓')),
+              );
+            }
+          },
+        ),
+      );
+    }
+
+    // Load playlists when user first logs in
+    useEffect(() {
+      if (settings.invidiousUsername != null && invPlaylists.value.isEmpty) {
+        Future.microtask(loadInvidiousPlaylists);
+      }
+      return null;
+    }, [settings.invidiousUsername]);
 
     Future<void> invidiousLogin() async {
       final instance = invidiousInstanceCtrl.text.trim();
@@ -435,7 +491,7 @@ class SettingsScreen extends HookConsumerWidget {
                       if (settings.invidiousUsername != null) ...[
                         _SettingsLabel('LOGGED IN AS'),
                         Padding(
-                          padding: const EdgeInsets.only(bottom: 12),
+                          padding: const EdgeInsets.only(bottom: 8),
                           child: Row(
                             children: [
                               Icon(Icons.account_circle_rounded,
@@ -448,15 +504,84 @@ class SettingsScreen extends HookConsumerWidget {
                                       fontSize: 14)),
                               const Spacer(),
                               TextButton(
-                                onPressed: () => saveSettings({
-                                  'invidiousSid': null,
-                                  'invidiousUsername': null,
-                                }),
+                                onPressed: () {
+                                  invPlaylists.value = [];
+                                  saveSettings({
+                                    'invidiousSid': null,
+                                    'invidiousUsername': null,
+                                  });
+                                },
                                 child: const Text('Sign out',
                                     style: TextStyle(color: Colors.redAccent)),
                               )
                             ],
                           ),
+                        ),
+                        const SizedBox(height: 8),
+                        _SettingsLabel('PLAYLISTS'),
+                        if (invPlaylistsLoading.value)
+                          const Padding(
+                            padding: EdgeInsets.symmetric(vertical: 12),
+                            child: Center(
+                                child: CircularProgressIndicator(strokeWidth: 2)),
+                          )
+                        else if (invPlaylists.value.isEmpty)
+                          Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 8),
+                            child: Text(
+                              'No playlists found',
+                              style: TextStyle(
+                                  color: Colors.white54, fontSize: 13),
+                            ),
+                          )
+                        else
+                          ...invPlaylists.value.map((pl) {
+                            final id = pl['playlistId']?.toString() ?? '';
+                            final name =
+                                pl['title']?.toString() ?? 'Playlist';
+                            final count =
+                                pl['videoCount']?.toString() ?? '';
+                            return _PlaylistSyncTile(
+                              title: name,
+                              subtitle: count.isNotEmpty
+                                  ? '$count tracks'
+                                  : null,
+                              onSync: () async {
+                                final messenger =
+                                    ScaffoldMessenger.of(context);
+                                try {
+                                  final synced =
+                                      await api.syncInvidiousPlaylist(
+                                    id,
+                                    instanceUrl:
+                                        settings.invidiousInstance,
+                                    sid: settings.invidiousSid,
+                                  );
+                                  await ref
+                                      .read(localStoreProvider.notifier)
+                                      .addPlaylist(synced);
+                                  messenger.showSnackBar(const SnackBar(
+                                      content: Text(
+                                          'Playlist synced to Library ✓')));
+                                } catch (e) {
+                                  messenger.showSnackBar(SnackBar(
+                                      content: Text(
+                                          'Sync failed: ${e.toString().replaceAll("Exception: ", "")}')));
+                                }
+                              },
+                              onTap: () =>
+                                  showInvidiousPlaylistPreview(id, name),
+                            );
+                          }),
+                        Row(
+                          children: [
+                            TextButton.icon(
+                              icon: const Icon(Icons.refresh_rounded,
+                                  size: 16),
+                              label: const Text('Refresh'),
+                              onPressed: loadInvidiousPlaylists,
+                            ),
+                          ],
                         ),
                       ] else ...[
                         _SettingsLabel('LOGIN (OPTIONAL)'),
@@ -1129,6 +1254,225 @@ class _QueueModeSelector extends StatelessWidget {
                 ),
               ))
           .toList(),
+    );
+  }
+}
+
+// ── Invidious playlist sync tile ──────────────────────────────────────────────
+class _PlaylistSyncTile extends StatelessWidget {
+  const _PlaylistSyncTile({
+    required this.title,
+    this.subtitle,
+    required this.onSync,
+    required this.onTap,
+  });
+  final String title;
+  final String? subtitle;
+  final VoidCallback onTap;
+  final Future<void> Function() onSync;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return ListTile(
+      contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+      leading: Icon(Icons.queue_music_rounded,
+          color: cs.primary.withValues(alpha: 0.8), size: 22),
+      title: Text(title,
+          style: const TextStyle(color: Colors.white, fontSize: 14)),
+      subtitle: subtitle != null
+          ? Text(subtitle!,
+              style: const TextStyle(color: Colors.white54, fontSize: 12))
+          : null,
+      onTap: onTap,
+      trailing: _SyncTrailingButton(onSync: onSync),
+    );
+  }
+}
+
+// ── Small async sync button for playlist tiles ────────────────────────────────
+class _SyncTrailingButton extends StatefulWidget {
+  const _SyncTrailingButton({required this.onSync});
+  final Future<void> Function() onSync;
+
+  @override
+  State<_SyncTrailingButton> createState() => _SyncTrailingButtonState();
+}
+
+class _SyncTrailingButtonState extends State<_SyncTrailingButton> {
+  bool _syncing = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return TextButton.icon(
+      onPressed: _syncing
+          ? null
+          : () async {
+              setState(() => _syncing = true);
+              try {
+                await widget.onSync();
+              } finally {
+                if (mounted) setState(() => _syncing = false);
+              }
+            },
+      icon: _syncing
+          ? SizedBox(
+              width: 14,
+              height: 14,
+              child: CircularProgressIndicator(
+                  strokeWidth: 2, color: cs.secondary))
+          : Icon(Icons.download_rounded, size: 16, color: cs.secondary),
+      label: Text(_syncing ? '…' : 'Sync',
+          style: TextStyle(color: cs.secondary, fontSize: 12)),
+      style: TextButton.styleFrom(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      ),
+    );
+  }
+}
+
+// ── Invidious playlist preview bottom sheet ───────────────────────────────────
+class _InvidiousPlaylistPreview extends HookConsumerWidget {
+  const _InvidiousPlaylistPreview({
+    required this.playlistId,
+    required this.title,
+    required this.instanceUrl,
+    this.sid,
+    required this.onSync,
+  });
+  final String playlistId;
+  final String title;
+  final String instanceUrl;
+  final String? sid;
+  final Future<void> Function() onSync;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final cs = Theme.of(context).colorScheme;
+    const api = FireballApi();
+    final playlist = useState<dynamic>(null);
+    final loading = useState(true);
+    final syncing = useState(false);
+
+    useEffect(() {
+      api
+          .getInvidiousPlaylistDetail(playlistId,
+              instanceUrl: instanceUrl, sid: sid)
+          .then((p) {
+        playlist.value = p;
+        loading.value = false;
+      }).catchError((_) {
+        loading.value = false;
+      });
+      return null;
+    }, const []);
+
+    return DraggableScrollableSheet(
+      initialChildSize: 0.6,
+      maxChildSize: 0.9,
+      minChildSize: 0.4,
+      builder: (_, ctrl) => Container(
+        decoration: BoxDecoration(
+          color: cs.surface,
+          borderRadius:
+              const BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: Column(
+          children: [
+            const SizedBox(height: 8),
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.white24,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            Padding(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      title,
+                      style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 17,
+                          fontWeight: FontWeight.w600),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  ElevatedButton.icon(
+                    onPressed: syncing.value
+                        ? null
+                        : () async {
+                            syncing.value = true;
+                            try {
+                              await onSync();
+                              if (context.mounted) {
+                                Navigator.pop(context);
+                              }
+                            } finally {
+                              syncing.value = false;
+                            }
+                          },
+                    icon: syncing.value
+                        ? const SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(strokeWidth: 2))
+                        : const Icon(Icons.download_rounded, size: 16),
+                    label: Text(syncing.value ? 'Syncing…' : 'Sync to Library'),
+                  ),
+                ],
+              ),
+            ),
+            const Divider(height: 1, color: Colors.white12),
+            Expanded(
+              child: loading.value
+                  ? const Center(child: CircularProgressIndicator())
+                  : playlist.value == null
+                      ? const Center(
+                          child: Text('Could not load playlist',
+                              style: TextStyle(color: Colors.white54)))
+                      : ListView.builder(
+                          controller: ctrl,
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          itemCount:
+                              (playlist.value!.videos as List).length,
+                          itemBuilder: (_, i) {
+                            final t = playlist.value!.videos[i];
+                            return ListTile(
+                              leading: t.artwork != null
+                                  ? ClipRRect(
+                                      borderRadius:
+                                          BorderRadius.circular(6),
+                                      child: Image.network(t.artwork!,
+                                          width: 40,
+                                          height: 40,
+                                          fit: BoxFit.cover))
+                                  : const Icon(Icons.music_note_rounded,
+                                      color: Colors.white38),
+                              title: Text(t.title,
+                                  style: const TextStyle(
+                                      color: Colors.white, fontSize: 13),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis),
+                              subtitle: Text(t.artist,
+                                  style: const TextStyle(
+                                      color: Colors.white54, fontSize: 12),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis),
+                            );
+                          },
+                        ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
