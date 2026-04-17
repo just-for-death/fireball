@@ -1,7 +1,7 @@
 import 'dart:developer' as dev;
 
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import 'package:just_audio/just_audio.dart';
+import 'package:media_kit/media_kit.dart' hide Track;
 
 import '../api/fireball_api.dart';
 import '../models/models.dart';
@@ -76,34 +76,32 @@ final playerProvider = StateNotifierProvider<PlayerNotifier, PlayerState>((ref) 
 });
 
 class PlayerNotifier extends StateNotifier<PlayerState> {
-  late final AudioPlayer _player;
+  late final Player _player;
   final Ref _ref;
   int _playVersion = 0;
 
   PlayerNotifier(this._ref) : super(const PlayerState()) {
-    _player = AudioPlayer();
+    _player = Player();
     _listenToPlayer();
   }
 
   FireballApi get _api => const FireballApi();
   FireballSettings get _settings => _ref.read(settingsProvider);
 
-  AudioPlayer get player => _player;
+  Player get player => _player;
 
   void _listenToPlayer() {
-    _player.playingStream.listen((playing) {
+    _player.stream.playing.listen((playing) {
       state = state.copyWith(isPlaying: playing);
     });
-    _player.positionStream.listen((pos) {
+    _player.stream.position.listen((pos) {
       state = state.copyWith(position: pos);
     });
-    _player.durationStream.listen((dur) {
-      if (dur != null) state = state.copyWith(duration: dur);
+    _player.stream.duration.listen((dur) {
+      state = state.copyWith(duration: dur);
     });
-    _player.playerStateStream.listen((ps) {
-      if (ps.processingState == ProcessingState.completed) {
-        _onTrackComplete();
-      }
+    _player.stream.completed.listen((completed) {
+      if (completed) _onTrackComplete();
     });
   }
 
@@ -111,8 +109,7 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     if (state.queue.isEmpty) return;
     switch (state.repeatMode) {
       case ElysiumRepeatMode.one:
-        _player.seek(Duration.zero);
-        _player.play();
+        _player.seek(Duration.zero).then((_) => _player.play());
       case ElysiumRepeatMode.all:
         final next = (state.currentIndex + 1) % state.queue.length;
         playIndex(next);
@@ -275,8 +272,7 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
       }
 
       if (playUrl != null && playUrl.isNotEmpty && version == _playVersion) {
-        await _player.setUrl(playUrl);
-        await _player.play();
+        await _player.open(Media(playUrl));
       } else if (playUrl == null || playUrl.isEmpty) {
         throw Exception('No playable URL found for this track');
       }
@@ -284,8 +280,7 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
       if (version != _playVersion) return;
       dev.log('Playback error: $e');
       if (track.url != null && track.url!.isNotEmpty) {
-        await _player.setUrl(track.url!);
-        await _player.play();
+        await _player.open(Media(track.url!));
       }
     }
   }
@@ -298,7 +293,6 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
       final candidates = List.generate(q.length, (i) => i)
         ..remove(state.currentIndex);
       if (candidates.isEmpty) {
-        // Single-track queue — just restart
         await _player.seek(Duration.zero);
         await _player.play();
         return;
@@ -328,11 +322,7 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
   }
 
   Future<void> togglePlayPause() async {
-    if (_player.playing) {
-      await _player.pause();
-    } else {
-      await _player.play();
-    }
+    await _player.playOrPause();
   }
 
   Future<void> seekTo(Duration position) async {
@@ -349,6 +339,7 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
       duration: Duration.zero,
     );
   }
+
 
   void toggleShuffle() {
     state = state.copyWith(shuffled: !state.shuffled);
