@@ -8,8 +8,8 @@
 # 2. Code signing identities → ensure App Store distribution cert + profile for bundle id
 #    com.fireball.fireball (or use automatic fetch after step 1).
 # 3. Replace `app_store_connect` integration name below with YOUR key name from step 1.
-# 4. Optional: set APP_STORE_APPLE_ID (App Store Connect → App → General → Apple ID) for
-#    automatic build-number bump via `app-store-connect get-latest-app-store-build-number`.
+# 4. Optional: in Codemagic app Environment variables, set APP_STORE_APPLE_ID to your app’s
+#    numeric Apple ID (App Store Connect → App → General) for ASC-based build numbering.
 #
 # Monorepo: if this file lives above the Flutter app, add to the workflow:
 #   working_directory: fireball
@@ -88,8 +88,9 @@ workflows:
       vars:
         # Marketing version (CFBundleShortVersionString), e.g. 1.0.0
         FLUTTER_BUILD_NAME: "1.0.0"
-        # Numeric Apple ID of the app in App Store Connect (optional). If empty, CM_BUILD_NUMBER is used.
-        APP_STORE_APPLE_ID: ""
+        # Optional: add APP_STORE_APPLE_ID in Codemagic → App → Environment variables
+        # (numeric string, e.g. "1234567890") to bump build number from App Store Connect.
+        # Do not define it here empty — Codemagic rejects empty vars.
 
     scripts:
       - name: Set up code signing on Xcode project
