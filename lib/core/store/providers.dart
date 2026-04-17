@@ -28,6 +28,7 @@ class PlayerState {
   final ElysiumRepeatMode repeatMode;
   final List<Track> favorites;
   final bool videoMode;
+  final String? playbackError;
 
   const PlayerState({
     this.queue = const [],
@@ -39,6 +40,7 @@ class PlayerState {
     this.repeatMode = ElysiumRepeatMode.off,
     this.favorites = const [],
     this.videoMode = false,
+    this.playbackError,
   });
 
   Track? get currentTrack =>
@@ -56,6 +58,8 @@ class PlayerState {
     ElysiumRepeatMode? repeatMode,
     List<Track>? favorites,
     bool? videoMode,
+    String? playbackError,
+    bool clearError = false,
   }) =>
       PlayerState(
         queue: queue ?? this.queue,
@@ -67,6 +71,7 @@ class PlayerState {
         repeatMode: repeatMode ?? this.repeatMode,
         favorites: favorites ?? this.favorites,
         videoMode: videoMode ?? this.videoMode,
+        playbackError: clearError ? null : (playbackError ?? this.playbackError),
       );
 }
 
@@ -169,7 +174,7 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     if (index < 0 || index >= state.queue.length) return;
 
     final version = ++_playVersion;
-    state = state.copyWith(currentIndex: index);
+    state = state.copyWith(currentIndex: index, clearError: true);
     final track = state.queue[index];
 
     try {
@@ -279,9 +284,14 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     } catch (e) {
       if (version != _playVersion) return;
       dev.log('Playback error: $e');
+      final errMsg = e.toString().replaceAll('Exception: ', '');
       if (track.url != null && track.url!.isNotEmpty) {
-        await _player.open(Media(track.url!));
+        try {
+          await _player.open(Media(track.url!));
+          return;
+        } catch (_) {}
       }
+      state = state.copyWith(playbackError: errMsg);
     }
   }
 
@@ -329,8 +339,11 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     await _player.seek(position);
   }
 
-  Future<void> setQueue(List<Track> tracks) async {
-    await _player.stop();
+  // State is updated synchronously so callers can immediately call playIndex
+  // without a race; the player stop runs in background and is naturally
+  // superseded by the open() call in playIndex.
+  void setQueue(List<Track> tracks) {
+    _player.stop();
     state = state.copyWith(
       queue: tracks,
       currentIndex: -1,

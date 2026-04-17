@@ -347,7 +347,7 @@ class LibraryScreen extends HookConsumerWidget {
                       final player = ref.read(playerProvider);
                       final currentId = player.currentTrack?.id;
                       if (pl.videos.any((t) => t.id == currentId)) {
-                        await ref.read(playerProvider.notifier).setQueue([]);
+                        ref.read(playerProvider.notifier).setQueue([]);
                       }
                       await ref
                           .read(localStoreProvider.notifier)
