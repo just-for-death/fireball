@@ -9,6 +9,7 @@ import '../../core/api/fireball_api.dart';
 import '../../core/models/track.dart';
 import '../../core/store/providers.dart';
 import '../../core/utils.dart';
+import '../../core/widgets/empty_state.dart';
 import '../../core/widgets/glass_widgets.dart';
 
 const _genres = [
@@ -308,23 +309,11 @@ class SearchScreen extends HookConsumerWidget {
                   ? Center(
                       child: CircularProgressIndicator(color: cs.primary))
                   : displayList.isEmpty && isSearching
-                      ? Center(
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(Icons.music_off_rounded,
-                                  size: 52,
-                                  color:
-                                      Colors.white.withValues(alpha: 0.2)),
-                              const SizedBox(height: 12),
-                              Text(
-                                'No results found',
-                                style: TextStyle(
-                                    color:
-                                        Colors.white.withValues(alpha: 0.4)),
-                              ),
-                            ],
-                          ),
+                      ? const FireballEmptyState(
+                          onDarkGlass: true,
+                          title: 'No results found',
+                          subtitle: 'Try different keywords or a genre chip.',
+                          icon: Icons.music_off_rounded,
                         )
                       : ListView.builder(
                           padding:

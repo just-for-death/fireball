@@ -78,12 +78,16 @@ class _HostMode extends HookWidget {
         title: const Text('Remote Control — Host'),
         backgroundColor: cs.surface,
       ),
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(32),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
+      body: LayoutBuilder(
+        builder: (context, constraints) => SingleChildScrollView(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: constraints.maxHeight),
+            child: Center(
+              child: Padding(
+                padding: const EdgeInsets.all(32),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
               if (serverUrl != null) ...[
                 QrImageView(
                   data: serverUrl,
@@ -134,6 +138,9 @@ class _HostMode extends HookWidget {
                 style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13),
               ),
             ],
+                ),
+              ),
+            ),
           ),
         ),
       ),

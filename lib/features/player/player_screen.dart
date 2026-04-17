@@ -1,16 +1,30 @@
+import 'dart:io' show Platform;
 import 'dart:ui';
 
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 import '../../core/api/fireball_api.dart';
 import '../../core/models/models.dart';
 import '../../core/models/track.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
+
+import '../../core/widgets/empty_state.dart';
 import '../../core/store/providers.dart';
 
 enum _PlayerTab { cover, lyrics, queue }
+
+String? _invidiousWatchUrl(FireballSettings s, Track? t) {
+  final vid = t?.videoId;
+  if (vid == null || vid.isEmpty || s.invidiousInstance.isEmpty) return null;
+  final base = s.invidiousInstance.replaceAll(RegExp(r'/+$'), '');
+  return '$base/watch?v=${Uri.encodeComponent(vid)}';
+}
 
 class PlayerScreen extends HookConsumerWidget {
   const PlayerScreen({super.key});
@@ -96,10 +110,12 @@ class PlayerScreen extends HookConsumerWidget {
       }
       if (idx != activeLyricIdx.value) {
         activeLyricIdx.value = idx;
-        _scrollToLyric(lyricsScrollCtrl, idx);
+        if (settings.lyricsAutoScroll) {
+          _scrollToLyric(lyricsScrollCtrl, idx);
+        }
       }
       return null;
-    }, [player.position, lyrics.value.length]);
+    }, [player.position, lyrics.value.length, settings.lyricsAutoScroll]);
 
     final artworkUrl = track?.artwork ??
         'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=600';
@@ -108,59 +124,92 @@ class PlayerScreen extends HookConsumerWidget {
         ? player.position.inMilliseconds / player.duration.inMilliseconds
         : 0.0;
 
-    return Scaffold(
-      backgroundColor: Colors.black,
-      body: Stack(
-        fit: StackFit.expand,
-        children: [
-          if (track?.artwork != null)
-            CachedNetworkImage(
-              imageUrl: track!.artwork!,
-              fit: BoxFit.cover,
-              errorWidget: (_, __, ___) => const SizedBox.shrink(),
-            ),
-          BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 60, sigmaY: 60),
-            child:
-                Container(color: Colors.black.withValues(alpha: 0.7)),
+    return CallbackShortcuts(
+      bindings: {
+        const SingleActivator(LogicalKeyboardKey.space): () {
+          ref.read(playerProvider.notifier).togglePlayPause();
+        },
+        const SingleActivator(LogicalKeyboardKey.arrowRight): () {
+          ref.read(playerProvider.notifier).next();
+        },
+        const SingleActivator(LogicalKeyboardKey.arrowLeft): () {
+          ref.read(playerProvider.notifier).previous();
+        },
+      },
+      child: Focus(
+        autofocus: true,
+        child: Scaffold(
+          backgroundColor: Colors.black,
+          body: Stack(
+            fit: StackFit.expand,
+            children: [
+              if (track?.artwork != null)
+                CachedNetworkImage(
+                  imageUrl: track!.artwork!,
+                  fit: BoxFit.cover,
+                  errorWidget: (_, __, ___) => const SizedBox.shrink(),
+                ),
+              BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 60, sigmaY: 60),
+                child:
+                    Container(color: Colors.black.withValues(alpha: 0.7)),
+              ),
+              SafeArea(
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final isTablet = constraints.maxWidth >= 600;
+                    if (isTablet) {
+                      return _buildTabletLayout(
+                        context, ref, track, player, settings, api,
+                        artworkUrl, progress, tab, lyrics, lyricsPlain,
+                        lyricsLoading, lyricError, lyricsInstrumental,
+                        activeLyricIdx,
+                        lyricsScrollCtrl, artworkAnim, rotationCtrl,
+                        seekBarKey, aiLoading, cs,
+                      );
+                    }
+                    return _buildPhoneLayout(
+                      context, ref, track, player, settings, api,
+                      artworkUrl, progress, tab, lyrics, lyricsPlain,
+                      lyricsLoading, lyricError, lyricsInstrumental,
+                      activeLyricIdx,
+                      lyricsScrollCtrl, artworkAnim, rotationCtrl,
+                      seekBarKey, aiLoading, cs,
+                    );
+                  },
+                ),
+              ),
+            ],
           ),
-          SafeArea(
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                final isTablet = constraints.maxWidth >= 600;
-                if (isTablet) {
-                  return _buildTabletLayout(
-                    context, ref, track, player, settings, api,
-                    artworkUrl, progress, tab, lyrics, lyricsPlain,
-                    lyricsLoading, lyricError, lyricsInstrumental, activeLyricIdx,
-                    lyricsScrollCtrl, artworkAnim, rotationCtrl,
-                    seekBarKey, aiLoading, cs,
-                  );
-                }
-                return _buildPhoneLayout(
-                  context, ref, track, player, settings, api,
-                  artworkUrl, progress, tab, lyrics, lyricsPlain,
-                  lyricsLoading, lyricError, lyricsInstrumental, activeLyricIdx,
-                  lyricsScrollCtrl, artworkAnim, rotationCtrl,
-                  seekBarKey, aiLoading, cs,
-                );
-              },
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
 
   // ── Shared header row ──────────────────────────────────────────────────────
   Widget _buildHeader(
-    BuildContext context, WidgetRef ref,
+    BuildContext context,
+    WidgetRef ref,
     Track? track,
+    PlayerState player,
     ValueNotifier<bool> aiLoading,
     FireballSettings settings,
     FireballApi api,
     ColorScheme cs,
   ) {
+    String? sleepHint;
+    final end = player.sleepTimerEnd;
+    if (end != null) {
+      final left = end.difference(DateTime.now());
+      if (!left.isNegative) {
+        final m = left.inMinutes;
+        final s = left.inSeconds % 60;
+        sleepHint = 'Sleep in ${m}m ${s}s';
+      }
+    } else if (player.sleepAfterCurrentTrack) {
+      sleepHint = 'Sleep after track';
+    }
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       child: Row(
@@ -171,16 +220,112 @@ class PlayerScreen extends HookConsumerWidget {
             onPressed: () => Navigator.pop(context),
           ),
           Expanded(
-            child: Text(
-              track?.album ?? 'Now Playing',
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: Colors.white60,
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 1,
-              ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  track?.album ?? 'Now Playing',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: Colors.white60,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 1,
+                  ),
+                ),
+                if (sleepHint != null)
+                  Text(
+                    sleepHint,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: cs.primary.withValues(alpha: 0.85),
+                      fontSize: 10,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+              ],
             ),
+          ),
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.more_horiz_rounded,
+                size: 26, color: Colors.white60),
+            color: const Color(0xFF1E1E1E),
+            onSelected: (v) async {
+              final n = ref.read(playerProvider.notifier);
+              switch (v) {
+                case 's15':
+                  n.setSleepTimerMinutes(15);
+                case 's30':
+                  n.setSleepTimerMinutes(30);
+                case 's45':
+                  n.setSleepTimerMinutes(45);
+                case 's60':
+                  n.setSleepTimerMinutes(60);
+                case 'send':
+                  n.setSleepAfterCurrentTrack(true);
+                case 'sclear':
+                  n.clearSleepTimer();
+                case 'share':
+                  if (track != null) {
+                    await Share.share('${track.title} — ${track.artist}',
+                        subject: track.title);
+                  }
+                case 'open':
+                  final u = _invidiousWatchUrl(settings, track);
+                  if (u != null) {
+                    await launchUrl(Uri.parse(u),
+                        mode: LaunchMode.externalApplication);
+                  }
+                case 'lyricsScroll':
+                  final cur = ref.read(settingsProvider).lyricsAutoScroll;
+                  await ref.read(localStoreProvider.notifier).updateSettings({
+                    'lyricsAutoScroll': !cur,
+                  });
+              }
+            },
+            itemBuilder: (ctx) => [
+              PopupMenuItem<String>(
+                enabled: false,
+                child: Text(
+                  'SLEEP TIMER',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.8,
+                    color: Colors.white.withValues(alpha: 0.35),
+                  ),
+                ),
+              ),
+              const PopupMenuItem(value: 's15', child: Text('15 minutes')),
+              const PopupMenuItem(value: 's30', child: Text('30 minutes')),
+              const PopupMenuItem(value: 's45', child: Text('45 minutes')),
+              const PopupMenuItem(value: 's60', child: Text('60 minutes')),
+              const PopupMenuItem(
+                  value: 'send', child: Text('End of current track')),
+              const PopupMenuItem(value: 'sclear', child: Text('Clear timer')),
+              const PopupMenuDivider(),
+              const PopupMenuItem(value: 'share', child: Text('Share track')),
+              if (_invidiousWatchUrl(settings, track) != null)
+                const PopupMenuItem(
+                    value: 'open', child: Text('Open in Invidious')),
+              const PopupMenuDivider(),
+              PopupMenuItem(
+                value: 'lyricsScroll',
+                child: Row(
+                  children: [
+                    Icon(
+                      settings.lyricsAutoScroll
+                          ? Icons.check_box_rounded
+                          : Icons.check_box_outline_blank_rounded,
+                      size: 20,
+                      color: Colors.white70,
+                    ),
+                    const SizedBox(width: 8),
+                    const Text('Auto-scroll lyrics'),
+                  ],
+                ),
+              ),
+            ],
           ),
           IconButton(
             icon: Icon(
@@ -446,7 +591,7 @@ class PlayerScreen extends HookConsumerWidget {
   ) {
     return Column(
       children: [
-        _buildHeader(context, ref, track, aiLoading, settings, api, cs),
+        _buildHeader(context, ref, track, player, aiLoading, settings, api, cs),
         _buildTabPills(tab),
         const SizedBox(height: 8),
         Expanded(
@@ -454,6 +599,7 @@ class PlayerScreen extends HookConsumerWidget {
             context, ref, tab.value, player, artworkUrl,
             lyrics, lyricsPlain, lyricsLoading, lyricError, lyricsInstrumental,
             activeLyricIdx, lyricsScrollCtrl, artworkAnim, rotationCtrl, cs,
+            lyricsColumnMaxWidth: null,
           ),
         ),
         _buildTrackInfo(context, ref, track, player, cs),
@@ -495,7 +641,7 @@ class PlayerScreen extends HookConsumerWidget {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 // Back + AI header for left pane on tablet
-                _buildHeader(context, ref, track, aiLoading, settings, api, cs),
+                _buildHeader(context, ref, track, player, aiLoading, settings, api, cs),
                 const SizedBox(height: 16),
                 // Rotating album art
                 Expanded(
@@ -591,6 +737,7 @@ class PlayerScreen extends HookConsumerWidget {
                   lyrics, lyricsPlain, lyricsLoading, lyricError, lyricsInstrumental,
                   activeLyricIdx, lyricsScrollCtrl, artworkAnim, rotationCtrl,
                   cs,
+                  lyricsColumnMaxWidth: 560,
                 ),
               ),
               _buildProgressBar(context, ref, player, progress, seekBarKey),
@@ -618,8 +765,9 @@ class PlayerScreen extends HookConsumerWidget {
     ScrollController scrollCtrl,
     AnimationController artworkAnim,
     AnimationController rotationCtrl,
-    ColorScheme cs,
-  ) {
+    ColorScheme cs, {
+    double? lyricsColumnMaxWidth,
+  }) {
     switch (tab) {
       case _PlayerTab.cover:
         return Center(
@@ -731,46 +879,65 @@ class PlayerScreen extends HookConsumerWidget {
           );
         }
         if (lyrics.value.isNotEmpty) {
-          return ListView.builder(
+          final list = ListView.builder(
             controller: scrollCtrl,
-            padding: const EdgeInsets.symmetric(
-                horizontal: 24, vertical: 40),
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 40),
             itemCount: lyrics.value.length,
             itemBuilder: (context, i) {
               final isActive = i == activeLyricIdx.value;
               final delta = (i - activeLyricIdx.value).abs();
               final lyric = lyrics.value[i];
+              final seekPos =
+                  Duration(milliseconds: (lyric.time * 1000).toInt());
               return GestureDetector(
                 onTap: () {
-                  ref.read(playerProvider.notifier).seekTo(
-                      Duration(milliseconds: (lyric.time * 1000).toInt()));
+                  if (!kIsWeb &&
+                      (Platform.isIOS || Platform.isAndroid)) {
+                    HapticFeedback.lightImpact();
+                  }
+                  ref.read(playerProvider.notifier).seekTo(seekPos);
                   activeLyricIdx.value = i;
                   _scrollToLyric(scrollCtrl, i);
                 },
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                  child: Text(
-                    lyric.text,
-                    style: TextStyle(
-                      color: Colors.white.withValues(
-                          alpha: isActive
-                              ? 1.0
-                              : (0.6 - delta * 0.1).clamp(0.1, 0.6)),
-                      fontSize: isActive ? 22 : 18,
-                      fontWeight: isActive
-                          ? FontWeight.w700
-                          : FontWeight.w500,
-                      height: 1.4,
+                child: Semantics(
+                  button: true,
+                  label:
+                      'Seek to ${lyric.text}, ${_fmt(seekPos)}',
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    child: Text(
+                      lyric.text,
+                      style: TextStyle(
+                        color: Colors.white.withValues(
+                            alpha: isActive
+                                ? 1.0
+                                : (0.6 - delta * 0.1).clamp(0.1, 0.6)),
+                        fontSize: isActive ? 22 : 18,
+                        fontWeight: isActive
+                            ? FontWeight.w700
+                            : FontWeight.w500,
+                        height: 1.4,
+                      ),
                     ),
                   ),
                 ),
               );
             },
           );
+          if (lyricsColumnMaxWidth != null) {
+            final w = lyricsColumnMaxWidth;
+            return Center(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(maxWidth: w),
+                child: list,
+              ),
+            );
+          }
+          return list;
         }
 
         if (lyricsPlain.value.isNotEmpty) {
-          return SingleChildScrollView(
+          final plain = SingleChildScrollView(
             controller: scrollCtrl,
             padding: const EdgeInsets.symmetric(
                 horizontal: 24, vertical: 40),
@@ -813,6 +980,16 @@ class PlayerScreen extends HookConsumerWidget {
               ],
             ),
           );
+          if (lyricsColumnMaxWidth != null) {
+            final w = lyricsColumnMaxWidth;
+            return Center(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(maxWidth: w),
+                child: plain,
+              ),
+            );
+          }
+          return plain;
         }
 
         return const Center(
@@ -822,18 +999,24 @@ class PlayerScreen extends HookConsumerWidget {
 
       case _PlayerTab.queue:
         if (player.queue.isEmpty) {
-          return const Center(
-            child: Text('Queue is empty',
-                style: TextStyle(color: Colors.white38)),
+          return const FireballEmptyState(
+            onDarkGlass: true,
+            title: 'Queue is empty',
+            subtitle: 'Add tracks from search or home.',
+            icon: Icons.queue_music_rounded,
           );
         }
-        return ListView.builder(
+        return ReorderableListView.builder(
           padding: const EdgeInsets.symmetric(vertical: 8),
           itemCount: player.queue.length,
+          onReorder: (oldIndex, newIndex) {
+            ref.read(playerProvider.notifier).reorderQueue(oldIndex, newIndex);
+          },
           itemBuilder: (context, i) {
             final t = player.queue[i];
             final isActive = i == player.currentIndex;
             return ListTile(
+              key: ValueKey('q-${t.effectiveId}-$i'),
               contentPadding:
                   const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
               leading: ClipRRect(
@@ -874,10 +1057,25 @@ class PlayerScreen extends HookConsumerWidget {
                   maxLines: 1,
                   style: const TextStyle(
                       color: Colors.white54, fontSize: 12)),
-              trailing: isActive
-                  ? Icon(Icons.equalizer_rounded,
-                      color: cs.primary, size: 20)
-                  : null,
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (isActive)
+                    Icon(Icons.equalizer_rounded,
+                        color: cs.primary, size: 20),
+                  IconButton(
+                    icon: Icon(
+                      Icons.remove_circle_outline_rounded,
+                      color: Colors.white.withValues(alpha: 0.35),
+                      size: 22,
+                    ),
+                    onPressed: () => ref
+                        .read(playerProvider.notifier)
+                        .removeFromQueueAt(i),
+                    tooltip: 'Remove from queue',
+                  ),
+                ],
+              ),
               onTap: () =>
                   ref.read(playerProvider.notifier).playIndex(i),
             );
