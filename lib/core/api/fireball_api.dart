@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:http/http.dart' as http;
 
@@ -191,16 +192,71 @@ class FireballApi {
         as Map<String, dynamic>;
   }
 
+  /// Logs into an Invidious instance by form-posting to /login (the web UI
+  /// endpoint), then extracting the SID from the Set-Cookie response header.
+  /// This matches how elysium-server handles login and works on instances that
+  /// have the JSON API /api/v1/auth/signin endpoint disabled.
   Future<Map<String, dynamic>> invidiousLogin(
     String instanceUrl,
     String username,
     String password,
   ) async {
     final base = instanceUrl.replaceAll(RegExp(r'/+$'), '');
-    return await _post(
-      '$base/api/v1/auth/signin',
-      {'username': username, 'password': password},
-    ) as Map<String, dynamic>;
+    final uri = Uri.parse('$base/login');
+
+    // Use dart:io HttpClient so we can disable redirect-following
+    // and read the Set-Cookie from the 302 response directly.
+    final httpClient = HttpClient()
+      ..connectionTimeout = const Duration(seconds: 15)
+      ..autoUncompress = true;
+
+    try {
+      final body =
+          'email=${Uri.encodeComponent(username)}'
+          '&password=${Uri.encodeComponent(password)}'
+          '&action=signin';
+
+      final req = await httpClient.postUrl(uri);
+      req.followRedirects = false; // read SID from the 302 Set-Cookie directly
+      req.headers.set(HttpHeaders.contentTypeHeader,
+          'application/x-www-form-urlencoded');
+      req.headers.set(HttpHeaders.userAgentHeader, 'Fireball/1.0');
+      req.write(body);
+
+      final resp = await req.close().timeout(const Duration(seconds: 15));
+      await resp.drain<void>();
+
+      // Try structured cookie objects first
+      String sid = '';
+      for (final cookie in resp.cookies) {
+        if (cookie.name.toUpperCase() == 'SID') {
+          sid = cookie.value;
+          break;
+        }
+      }
+
+      // Fallback: scan raw Set-Cookie header strings
+      if (sid.isEmpty) {
+        final rawHeaders = resp.headers[HttpHeaders.setCookieHeader] ?? [];
+        final joined = rawHeaders.join('; ');
+        final m =
+            RegExp(r'SID=([^;,\s]+)', caseSensitive: false).firstMatch(joined);
+        if (m != null) sid = m.group(1)!;
+      }
+
+      if (sid.isEmpty) {
+        final code = resp.statusCode;
+        if (code == 401 || code == 403) {
+          throw Exception('Wrong credentials.');
+        }
+        throw Exception(
+            'Login failed — wrong credentials or login is disabled on this instance.');
+      }
+
+      return {'sid': sid, 'username': username, 'instanceUrl': base};
+    } finally {
+      httpClient.close(force: true);
+    }
   }
 
   Future<List<dynamic>> getInvidiousPlaylists({

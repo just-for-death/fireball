@@ -218,19 +218,10 @@ class SettingsScreen extends HookConsumerWidget {
               const SnackBar(content: Text('Invidious login successful ✓')));
         }
       } catch (e) {
-        final msg = e.toString().toLowerCase();
-        final loginDisabled = msg.contains('authenticated') ||
-            msg.contains('forbidden') ||
-            msg.contains('disabled') ||
-            msg.contains('401') ||
-            msg.contains('403');
+        final msg = e.toString().replaceAll('Exception: ', '');
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text(
-              loginDisabled
-                  ? 'This instance has login disabled — instance saved, music playback works without login.'
-                  : 'Login failed: $e',
-            ),
+            content: Text(msg),
             duration: const Duration(seconds: 5),
           ));
         }
