@@ -108,7 +108,7 @@ class HomeScreen extends HookConsumerWidget {
     useEffect(() {
       loadLbTop();
       return null;
-    }, [lbRange.value, lbEnabled, lbUsername]);
+    }, [lbRange.value, lbEnabled, lbUsername, lbToken]);
 
     final screenWidth = MediaQuery.sizeOf(context).width;
     final isTablet = screenWidth >= 600;

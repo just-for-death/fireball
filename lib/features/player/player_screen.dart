@@ -1148,9 +1148,10 @@ class PlayerScreen extends HookConsumerWidget {
 
   void _scrollToLyric(ScrollController ctrl, int idx) {
     if (!ctrl.hasClients) return;
-    // Estimate item height: ~22px font + 16px vertical padding = 38px.
-    // Subtract half viewport to center the active lyric.
-    const itemH = 38.0;
+    // Estimated item height: font 18×1.4 + 16px vertical padding ≈ 41px for
+    // inactive lines; active lines are taller (font 22×1.4+16 ≈ 47px). Use 42
+    // as a practical average — close enough for centering without GlobalKey overhead.
+    const itemH = 42.0;
     final viewportH = ctrl.position.viewportDimension;
     final raw = idx * itemH - (viewportH / 2) + itemH / 2;
     final offset = raw.clamp(0.0, ctrl.position.maxScrollExtent);
