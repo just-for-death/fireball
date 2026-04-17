@@ -321,6 +321,56 @@ class FireballApi {
       getInvidiousPlaylistDetail(playlistId,
           instanceUrl: instanceUrl, sid: sid);
 
+  /// Creates a new playlist on the Invidious instance (or pushes to an
+  /// existing one when [existingInvidiousId] is provided) and returns the
+  /// Invidious playlist ID.
+  ///
+  /// When [existingInvidiousId] is set the method skips playlist creation and
+  /// only appends the tracks from [local] to that existing playlist — ideal
+  /// for incremental auto-push when a single track is added locally.
+  Future<String> pushPlaylistToInvidious(
+    Playlist local, {
+    required String instanceUrl,
+    String? sid,
+    String privacy = 'private',
+    String? existingInvidiousId,
+  }) async {
+    final base = instanceUrl.replaceAll(RegExp(r'/+$'), '');
+    final headers = <String, String>{
+      if (sid != null && sid.isNotEmpty) 'Cookie': 'SID=$sid',
+    };
+
+    String invId = existingInvidiousId ?? '';
+
+    if (invId.isEmpty) {
+      final created = await _post(
+        '$base/api/v1/auth/playlists',
+        {'title': local.title, 'privacy': privacy},
+        headers: headers,
+      );
+      invId = (created as Map<String, dynamic>?)?['playlistId']?.toString() ?? '';
+      if (invId.isEmpty) {
+        throw Exception('Failed to create playlist on Invidious');
+      }
+    }
+
+    for (final track in local.videos) {
+      final videoId = track.videoId?.isNotEmpty == true ? track.videoId! : track.id;
+      if (videoId.isEmpty) continue;
+      try {
+        await _post(
+          '$base/api/v1/auth/playlists/$invId/videos',
+          {'videoId': videoId},
+          headers: headers,
+        );
+      } catch (_) {
+        // Best-effort — skip videos that fail (e.g. already present)
+      }
+    }
+
+    return invId;
+  }
+
   // ── ListenBrainz (direct) ─────────────────────────────────────────────────
   static const _lbApi = 'https://api.listenbrainz.org/1';
 
@@ -370,6 +420,31 @@ class FireballApi {
         'payload': [
           {
             'listened_at': DateTime.now().millisecondsSinceEpoch ~/ 1000,
+            'track_metadata': {
+              'artist_name': artistName,
+              'track_name': trackName,
+              if (releaseName != null) 'release_name': releaseName,
+            },
+          }
+        ],
+      },
+      headers: {'Authorization': 'Token $token'},
+    );
+  }
+
+  /// Submits a "playing now" notification to ListenBrainz (no listened_at).
+  Future<void> submitPlayingNow({
+    required String token,
+    required String artistName,
+    required String trackName,
+    String? releaseName,
+  }) async {
+    await _post(
+      '$_lbApi/submit-listens',
+      {
+        'listen_type': 'playing_now',
+        'payload': [
+          {
             'track_metadata': {
               'artist_name': artistName,
               'track_name': trackName,

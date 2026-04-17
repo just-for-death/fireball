@@ -3,10 +3,12 @@ import 'dart:ui';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 import '../core/store/providers.dart';
+import '../sync/webdav_live_sync.dart';
 import 'mini_player.dart';
 
 // ── Nav data ─────────────────────────────────────────────────────────────────
@@ -28,7 +30,7 @@ const _navItems = [
 ];
 
 // ── Shell scaffold — platform-aware, inspired by Catalyst ────────────────────
-class ShellScaffold extends ConsumerWidget {
+class ShellScaffold extends HookConsumerWidget {
   const ShellScaffold({super.key, required this.shell});
   final StatefulNavigationShell shell;
 
@@ -51,6 +53,29 @@ class ShellScaffold extends ConsumerWidget {
         );
       },
     );
+
+    final settings = ref.watch(settingsProvider);
+    final store = ref.read(localStoreProvider.notifier);
+    final player = ref.read(playerProvider.notifier);
+
+    // WebDAV live sync: pull/push on app resume
+    useEffect(() {
+      if (!settings.webDavLiveSync || settings.webDavUrl.isEmpty) return null;
+      final listener = AppLifecycleListener(
+        onResume: () => WebDavLiveSync.syncIfNeeded(settings, store),
+      );
+      return listener.dispose;
+    }, [settings.webDavLiveSync, settings.webDavUrl]);
+
+    // Remote server: start/stop based on settings toggle
+    useEffect(() {
+      if (settings.remoteServerEnabled) {
+        player.startRemoteServer();
+      } else {
+        player.stopRemoteServer();
+      }
+      return null;
+    }, [settings.remoteServerEnabled]);
 
     final isIOS = !kIsWeb && Platform.isIOS;
     final width = MediaQuery.sizeOf(context).width;

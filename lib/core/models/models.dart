@@ -112,6 +112,10 @@ class FireballSettings {
   final String webDavPassword;
   final bool gDriveEnabled;
   final String? lastBackupAt;
+  final bool webDavLiveSync;
+  // Remote Control
+  final bool remoteServerEnabled;
+  final String remoteHostIp;
 
   const FireballSettings({
     this.ollamaEnabled = false,
@@ -142,6 +146,9 @@ class FireballSettings {
     this.webDavPassword = '',
     this.gDriveEnabled = false,
     this.lastBackupAt,
+    this.webDavLiveSync = false,
+    this.remoteServerEnabled = false,
+    this.remoteHostIp = '',
   });
 
   factory FireballSettings.fromJson(Map<String, dynamic> j) {
@@ -196,6 +203,9 @@ class FireballSettings {
       webDavPassword: j['webDavPassword']?.toString() ?? '',
       gDriveEnabled: toBool(j['gDriveEnabled'], false),
       lastBackupAt: j['lastBackupAt']?.toString(),
+      webDavLiveSync: toBool(j['webDavLiveSync'], false),
+      remoteServerEnabled: toBool(j['remoteServerEnabled'], false),
+      remoteHostIp: j['remoteHostIp']?.toString() ?? '',
     );
   }
 
@@ -228,6 +238,9 @@ class FireballSettings {
         'webDavPassword': webDavPassword,
         'gDriveEnabled': gDriveEnabled,
         if (lastBackupAt != null) 'lastBackupAt': lastBackupAt,
+        'webDavLiveSync': webDavLiveSync,
+        'remoteServerEnabled': remoteServerEnabled,
+        'remoteHostIp': remoteHostIp,
       };
 
   FireballSettings copyWith({
@@ -261,6 +274,9 @@ class FireballSettings {
     String? webDavPassword,
     bool? gDriveEnabled,
     String? lastBackupAt,
+    bool? webDavLiveSync,
+    bool? remoteServerEnabled,
+    String? remoteHostIp,
   }) =>
       FireballSettings(
         ollamaEnabled: ollamaEnabled ?? this.ollamaEnabled,
@@ -294,5 +310,8 @@ class FireballSettings {
         webDavPassword: webDavPassword ?? this.webDavPassword,
         gDriveEnabled: gDriveEnabled ?? this.gDriveEnabled,
         lastBackupAt: lastBackupAt ?? this.lastBackupAt,
+        webDavLiveSync: webDavLiveSync ?? this.webDavLiveSync,
+        remoteServerEnabled: remoteServerEnabled ?? this.remoteServerEnabled,
+        remoteHostIp: remoteHostIp ?? this.remoteHostIp,
       );
 }

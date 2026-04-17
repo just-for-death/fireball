@@ -6,6 +6,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import '../../core/api/fireball_api.dart';
 import '../../core/store/providers.dart';
 import '../../core/widgets/glass_widgets.dart';
+import '../../features/remote/remote_screen.dart';
 import '../../sync/gdrive_sync.dart';
 import '../../sync/webdav_sync.dart';
 
@@ -33,6 +34,7 @@ class SettingsScreen extends HookConsumerWidget {
     final webDavUrlCtrl = useTextEditingController();
     final webDavUserCtrl = useTextEditingController();
     final webDavPassCtrl = useTextEditingController();
+    final remoteHostCtrl = useTextEditingController();
 
     // Testing states
     final testingLB = useState(false);
@@ -64,6 +66,7 @@ class SettingsScreen extends HookConsumerWidget {
       webDavUrlCtrl.text = settings.webDavUrl;
       webDavUserCtrl.text = settings.webDavUsername;
       webDavPassCtrl.text = settings.webDavPassword;
+      remoteHostCtrl.text = settings.remoteHostIp;
       return null;
     }, [settings]);
 
@@ -600,6 +603,33 @@ class SettingsScreen extends HookConsumerWidget {
                           onTap: invidiousLogin,
                         ),
                       ],
+                      const SizedBox(height: 12),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text('Auto-Push to Invidious',
+                                  style: TextStyle(
+                                      color: Colors.white, fontSize: 14)),
+                              Text(
+                                'Sync local playlist changes to Invidious',
+                                style: TextStyle(
+                                    fontSize: 11,
+                                    color:
+                                        Colors.white.withValues(alpha: 0.4)),
+                              ),
+                            ],
+                          ),
+                          Switch(
+                            value: settings.invidiousAutoPush,
+                            onChanged: (v) =>
+                                saveSettings({'invidiousAutoPush': v}),
+                            activeThumbColor: cs.primary,
+                          ),
+                        ],
+                      ),
                     ],
                   ),
 
@@ -645,6 +675,21 @@ class SettingsScreen extends HookConsumerWidget {
                         color: const Color(0xFFEB743B),
                         onTap: testAndSaveLB,
                         loading: testingLB.value,
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text('Submit Playing Now',
+                              style: TextStyle(
+                                  color: Colors.white, fontSize: 14)),
+                          Switch(
+                            value: settings.listenBrainzPlayingNow,
+                            onChanged: (v) =>
+                                saveSettings({'listenBrainzPlayingNow': v}),
+                            activeThumbColor: cs.primary,
+                          ),
+                        ],
                       ),
                     ],
                   ),
@@ -943,6 +988,125 @@ class SettingsScreen extends HookConsumerWidget {
                                   : Colors.greenAccent.withValues(alpha: 0.8)),
                         ),
                       ],
+                      const SizedBox(height: 12),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text('Live Sync',
+                                  style: TextStyle(
+                                      color: Colors.white, fontSize: 14)),
+                              Text(
+                                'Auto pull/push on app resume',
+                                style: TextStyle(
+                                    fontSize: 11,
+                                    color:
+                                        Colors.white.withValues(alpha: 0.4)),
+                              ),
+                            ],
+                          ),
+                          Switch(
+                            value: settings.webDavLiveSync,
+                            onChanged: (v) =>
+                                saveSettings({'webDavLiveSync': v}),
+                            activeThumbColor: cs.primary,
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  // ── REMOTE CONTROL ────────────────────────────────────────
+                  _SectionCard(
+                    title: 'REMOTE CONTROL',
+                    icon: Icons.cast_rounded,
+                    isDark: isDark,
+                    cs: cs,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text('Enable Remote Server',
+                                  style: TextStyle(
+                                      color: Colors.white, fontSize: 14)),
+                              Text(
+                                'This device can be controlled remotely',
+                                style: TextStyle(
+                                    fontSize: 11,
+                                    color:
+                                        Colors.white.withValues(alpha: 0.4)),
+                              ),
+                            ],
+                          ),
+                          Switch(
+                            value: settings.remoteServerEnabled,
+                            onChanged: (v) =>
+                                saveSettings({'remoteServerEnabled': v}),
+                            activeThumbColor: cs.primary,
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      _SettingsLabel('CONNECT TO REMOTE'),
+                      _StyledTextField(
+                        controller: remoteHostCtrl,
+                        hint: '192.168.1.x',
+                        onChanged: (_) {},
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _SyncButton(
+                              label: 'Show Host QR',
+                              icon: Icons.qr_code_rounded,
+                              color: const Color(0xFF7C3AED),
+                              onTap: () {
+                                Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (_) => const _RemoteHostSheet(),
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: _SyncButton(
+                              label: 'Control Remote',
+                              icon: Icons.play_circle_outline_rounded,
+                              color: cs.primary,
+                              onTap: () async {
+                                final ip = remoteHostCtrl.text.trim();
+                                if (ip.isEmpty) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                        content: Text(
+                                            'Enter the remote device IP first')),
+                                  );
+                                  return;
+                                }
+                                await saveSettings({'remoteHostIp': ip});
+                                if (context.mounted) {
+                                  Navigator.of(context).push(
+                                    MaterialPageRoute(
+                                      builder: (_) => _RemoteControlSheet(
+                                          hostIp: ip),
+                                    ),
+                                  );
+                                }
+                              },
+                            ),
+                          ),
+                        ],
+                      ),
                     ],
                   ),
 
@@ -1475,4 +1639,23 @@ class _InvidiousPlaylistPreview extends HookConsumerWidget {
       ),
     );
   }
+}
+
+// ── Remote host sheet ─────────────────────────────────────────────────────────
+
+class _RemoteHostSheet extends StatelessWidget {
+  const _RemoteHostSheet();
+
+  @override
+  Widget build(BuildContext context) => const RemoteScreen();
+}
+
+// ── Remote control sheet ──────────────────────────────────────────────────────
+
+class _RemoteControlSheet extends StatelessWidget {
+  const _RemoteControlSheet({required this.hostIp});
+  final String hostIp;
+
+  @override
+  Widget build(BuildContext context) => RemoteScreen(remoteIp: hostIp);
 }

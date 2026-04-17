@@ -40,6 +40,9 @@ dependencies:
   # WebDAV / Nextcloud sync
   webdav_client: ^1.2.1
 
+  # Remote control QR code
+  qr_flutter: ^4.1.0
+
   # UI
   flex_color_scheme: ^8.2.0
   dynamic_color: ^1.7.0
