@@ -171,16 +171,20 @@ class SettingsScreen extends HookConsumerWidget {
       try {
         final sanitized = Uri.parse(instance).origin;
         invidiousInstanceCtrl.text = sanitized;
-        await api.invidiousSearch('test', instanceUrl: sanitized);
+        // Save the instance first so playback can work regardless of test result
         await saveSettings({'invidiousInstance': sanitized});
+        await api.invidiousSearch('test', instanceUrl: sanitized);
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Invidious instance verified ✓')));
+              const SnackBar(content: Text('Invidious instance saved & verified ✓')));
         }
       } catch (e) {
+        // Instance was already saved above; just warn the user the test failed
         if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('Invidious failed: $e')));
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text('Instance saved, but test search failed: $e\nPlayback may still work.'),
+            duration: const Duration(seconds: 5),
+          ));
         }
       } finally {
         testingInvidious.value = false;
@@ -198,10 +202,14 @@ class SettingsScreen extends HookConsumerWidget {
       }
       try {
         final sanitized = Uri.parse(instance).origin;
+        invidiousInstanceCtrl.text = sanitized;
+
+        // Always persist the instance URL first so playback works even if login fails
+        await saveSettings({'invidiousInstance': sanitized});
+
         final res = await api.invidiousLogin(sanitized, user, pass);
         final sid = res['sid']?.toString() ?? '';
         await saveSettings({
-          'invidiousInstance': sanitized,
           'invidiousUsername': user,
           'invidiousSid': sid,
         });
@@ -210,9 +218,21 @@ class SettingsScreen extends HookConsumerWidget {
               const SnackBar(content: Text('Invidious login successful ✓')));
         }
       } catch (e) {
+        final msg = e.toString().toLowerCase();
+        final loginDisabled = msg.contains('authenticated') ||
+            msg.contains('forbidden') ||
+            msg.contains('disabled') ||
+            msg.contains('401') ||
+            msg.contains('403');
         if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('Login failed: $e')));
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text(
+              loginDisabled
+                  ? 'This instance has login disabled — instance saved, music playback works without login.'
+                  : 'Login failed: $e',
+            ),
+            duration: const Duration(seconds: 5),
+          ));
         }
       }
     }
