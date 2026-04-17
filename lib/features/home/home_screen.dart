@@ -32,8 +32,6 @@ class HomeScreen extends HookConsumerWidget {
     // ── Core state ─────────────────────────────────────────────────────────
     final country      = useState('us');
     final trending     = useState<List<Map<String, dynamic>>>([]);
-    final history      = useState<List<Track>>([]);
-    final favorites    = useState<List<Track>>([]);
     final lbRecent     = useState<List<dynamic>>([]);
     final lbTop        = useState<List<dynamic>>([]);
     final lbRange      = useState('month');
@@ -55,11 +53,16 @@ class HomeScreen extends HookConsumerWidget {
     final lbUsername = settings.listenBrainzUsername;
     final lbToken    = settings.listenBrainzToken;
 
+    // Library rows come from the store (watched) so they appear after async disk
+    // load — a one-shot read inside load() can race and stay empty forever.
+    final library = ref.watch(localStoreProvider);
+    final historyRows = library.history.take(10).toList();
+    final favoritesRows = library.favorites.take(12).toList();
+
     // ── Main load ─────────────────────────────────────────────────────────
     Future<void> load() async {
       loading.value = true;
       try {
-        final libraryData = ref.read(localStoreProvider);
         final trendingFuture =
             api.itunesTopSongs(country.value, limit: 20).catchError((_) => null);
 
@@ -75,9 +78,6 @@ class HomeScreen extends HookConsumerWidget {
                 })
             .toList()
             .cast<Map<String, dynamic>>();
-
-        history.value   = libraryData.history.take(10).toList();
-        favorites.value = libraryData.favorites.take(12).toList();
 
         if (lbEnabled) {
           lbRecent.value = await api
@@ -345,7 +345,7 @@ class HomeScreen extends HookConsumerWidget {
               ),
 
             // ── Recently Played ───────────────────────────────────────────
-            if (history.value.isNotEmpty) ...[
+            if (historyRows.isNotEmpty) ...[
               const SliverToBoxAdapter(child: SizedBox(height: 36)),
               SliverToBoxAdapter(
                 child: Padding(
@@ -365,7 +365,7 @@ class HomeScreen extends HookConsumerWidget {
               SliverList(
                 delegate: SliverChildBuilderDelegate(
                   (context, index) {
-                    final track = history.value[index];
+                    final track = historyRows[index];
                     return Padding(
                       padding: const EdgeInsets.symmetric(
                           horizontal: 20, vertical: 4),
@@ -380,20 +380,20 @@ class HomeScreen extends HookConsumerWidget {
                           onTap: () {
                             ref
                                 .read(playerProvider.notifier)
-                                .setQueue(history.value.sublist(index));
+                                .setQueue(historyRows.sublist(index));
                             ref.read(playerProvider.notifier).playIndex(0);
                           },
                         ),
                       ),
                     );
                   },
-                  childCount: history.value.length,
+                  childCount: historyRows.length,
                 ),
               ),
             ],
 
             // ── Recent Favorites ──────────────────────────────────────────
-            if (favorites.value.isNotEmpty) ...[
+            if (favoritesRows.isNotEmpty) ...[
               const SliverToBoxAdapter(child: SizedBox(height: 36)),
               SliverToBoxAdapter(
                 child: Padding(
@@ -418,13 +418,13 @@ class HomeScreen extends HookConsumerWidget {
               const SliverToBoxAdapter(child: SizedBox(height: 16)),
               SliverToBoxAdapter(
                 child: _FavoritesRow(
-                  favorites: favorites.value,
+                  favorites: favoritesRows,
                   cs: cs,
                   isDark: isDark,
                   onTap: (idx) {
                     ref
                         .read(playerProvider.notifier)
-                        .setQueue(favorites.value.sublist(idx));
+                        .setQueue(favoritesRows.sublist(idx));
                     ref.read(playerProvider.notifier).playIndex(0);
                   },
                 ),
