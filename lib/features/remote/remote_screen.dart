@@ -386,12 +386,21 @@ class _ControlMode extends HookWidget {
   }
 
   static Widget _artPlaceholder(ColorScheme cs, {required double size}) {
-    return Container(
-      width: size,
-      height: size,
-      color: cs.surfaceContainerHighest,
-      child: Icon(Icons.music_note_rounded,
-          size: size * 0.4, color: cs.onSurfaceVariant),
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(size * 0.06),
+      child: Image.asset(
+        'assets/icon.png',
+        width: size,
+        height: size,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => Container(
+          width: size,
+          height: size,
+          color: cs.surfaceContainerHighest,
+          child: Icon(Icons.music_note_rounded,
+              size: size * 0.4, color: cs.onSurfaceVariant),
+        ),
+      ),
     );
   }
 

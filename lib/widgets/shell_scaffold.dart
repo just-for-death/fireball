@@ -8,6 +8,7 @@ import 'package:go_router/go_router.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 import '../core/store/providers.dart';
+import '../core/widgets/fireball_logo.dart';
 import '../sync/webdav_live_sync.dart';
 import 'mini_player.dart';
 
@@ -174,6 +175,10 @@ class _AndroidTabletShell extends StatelessWidget {
             backgroundColor: cs.surfaceContainer,
             minWidth: 72,
             minExtendedWidth: 180,
+            leading: Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: FireballLogo(size: extended ? 44 : 36),
+            ),
             labelType: extended
                 ? NavigationRailLabelType.none
                 : NavigationRailLabelType.selected,
@@ -280,14 +285,20 @@ class _IPadShell extends StatelessWidget {
                       Padding(
                         padding: const EdgeInsets.symmetric(
                             horizontal: 20, vertical: 8),
-                        child: Text(
-                          'Fireball',
-                          style: TextStyle(
-                            fontSize: 22,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: -0.5,
-                            color: isDark ? Colors.white : Colors.black,
-                          ),
+                        child: Row(
+                          children: [
+                            const FireballLogo(size: 40),
+                            const SizedBox(width: 12),
+                            Text(
+                              'Fireball',
+                              style: TextStyle(
+                                fontSize: 22,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: -0.5,
+                                color: isDark ? Colors.white : Colors.black,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                       const SizedBox(height: 16),

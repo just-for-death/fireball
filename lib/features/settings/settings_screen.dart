@@ -6,6 +6,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import '../../core/api/fireball_api.dart';
 import '../../core/countries.dart';
 import '../../core/store/providers.dart';
+import '../../core/widgets/fireball_logo.dart';
 import '../../core/widgets/glass_widgets.dart';
 import '../../features/remote/remote_screen.dart';
 import '../../sync/gdrive_sync.dart';
@@ -869,7 +870,7 @@ class SettingsScreen extends HookConsumerWidget {
 
                   // ── PLAYBACK ─────────────────────────────────────────────
                   if (showSection(
-                      'playback quality audio queue lyrics scroll sync'))
+                      'playback quality audio queue lyrics scroll sync english hindi language'))
                   _SectionCard(
                     title: 'PLAYBACK',
                     icon: Icons.music_note_rounded,
@@ -920,6 +921,33 @@ class SettingsScreen extends HookConsumerWidget {
                             value: settings.lyricsAutoScroll,
                             onChanged: (v) =>
                                 saveSettings({'lyricsAutoScroll': v}),
+                            activeThumbColor: cs.primary,
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text('Prefer English / Hindi lyrics',
+                                  style: TextStyle(
+                                      color: Colors.white, fontSize: 14)),
+                              Text(
+                                'When LRCLIB has several scripts, favor Latin or Devanagari',
+                                style: TextStyle(
+                                    fontSize: 11,
+                                    color:
+                                        Colors.white.withValues(alpha: 0.4)),
+                              ),
+                            ],
+                          ),
+                          Switch(
+                            value: settings.lyricsPreferEnglishHindi,
+                            onChanged: (v) =>
+                                saveSettings({'lyricsPreferEnglishHindi': v}),
                             activeThumbColor: cs.primary,
                           ),
                         ],
@@ -1381,13 +1409,20 @@ class SettingsScreen extends HookConsumerWidget {
 
                   const SizedBox(height: 16),
 
-                  // App version
+                  // App mark + version
                   Center(
-                    child: Text(
-                      'Fireball v1.0.0',
-                      style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.2),
-                          fontSize: 12),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const FireballLogo(size: 56),
+                        const SizedBox(height: 10),
+                        Text(
+                          'Fireball v1.0.0',
+                          style: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.2),
+                              fontSize: 12),
+                        ),
+                      ],
                     ),
                   ),
                 ],

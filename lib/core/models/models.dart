@@ -120,6 +120,8 @@ class FireballSettings {
   final List<String> homeCountries;
   /// When true, synced lyrics auto-scroll to the active line while playing.
   final bool lyricsAutoScroll;
+  /// Prefer lyrics in English or Hindi (Latin / Devanagari) when LRCLIB has several variants.
+  final bool lyricsPreferEnglishHindi;
 
   const FireballSettings({
     this.ollamaEnabled = false,
@@ -155,6 +157,7 @@ class FireballSettings {
     this.remoteHostIp = '',
     this.homeCountries = const [],
     this.lyricsAutoScroll = true,
+    this.lyricsPreferEnglishHindi = true,
   });
 
   factory FireballSettings.fromJson(Map<String, dynamic> j) {
@@ -218,6 +221,7 @@ class FireballSettings {
       remoteHostIp: j['remoteHostIp']?.toString() ?? '',
       homeCountries: toStringList(j['homeCountries']),
       lyricsAutoScroll: toBool(j['lyricsAutoScroll'], true),
+      lyricsPreferEnglishHindi: toBool(j['lyricsPreferEnglishHindi'], true),
     );
   }
 
@@ -255,6 +259,7 @@ class FireballSettings {
         'remoteHostIp': remoteHostIp,
         'homeCountries': homeCountries,
         'lyricsAutoScroll': lyricsAutoScroll,
+        'lyricsPreferEnglishHindi': lyricsPreferEnglishHindi,
       };
 
   FireballSettings copyWith({
@@ -293,6 +298,7 @@ class FireballSettings {
     String? remoteHostIp,
     List<String>? homeCountries,
     bool? lyricsAutoScroll,
+    bool? lyricsPreferEnglishHindi,
   }) =>
       FireballSettings(
         ollamaEnabled: ollamaEnabled ?? this.ollamaEnabled,
@@ -331,5 +337,7 @@ class FireballSettings {
         remoteHostIp: remoteHostIp ?? this.remoteHostIp,
         homeCountries: homeCountries ?? this.homeCountries,
         lyricsAutoScroll: lyricsAutoScroll ?? this.lyricsAutoScroll,
+        lyricsPreferEnglishHindi:
+            lyricsPreferEnglishHindi ?? this.lyricsPreferEnglishHindi,
       );
 }
