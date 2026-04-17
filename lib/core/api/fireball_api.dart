@@ -107,6 +107,7 @@ class FireballApi {
 
   // ── LRCLIB ────────────────────────────────────────────────────────────────
   static const _lrclibBase = 'https://lrclib.net/api';
+  static const _lrclibHeaders = {'Lrclib-Client': 'Fireball Music Player'};
 
   Future<dynamic> lrclibGet(String artist, String title,
       {String? album, int? duration}) async {
@@ -118,18 +119,19 @@ class FireballApi {
     };
     final qs =
         params.entries.map((e) => '${e.key}=${Uri.encodeComponent(e.value)}').join('&');
-    return _get('$_lrclibBase/get?$qs');
+    return _get('$_lrclibBase/get?$qs', headers: _lrclibHeaders);
   }
 
   Future<dynamic> lrclibSearch(String query) async {
-    return _get('$_lrclibBase/search?q=${Uri.encodeComponent(query)}');
+    return _get('$_lrclibBase/search?q=${Uri.encodeComponent(query)}',
+        headers: _lrclibHeaders);
   }
 
   /// Structured field search — more precise than a combined [query] string.
   Future<dynamic> lrclibSearchByFields(String trackName, String artistName) async {
     final qs =
         'track_name=${Uri.encodeComponent(trackName)}&artist_name=${Uri.encodeComponent(artistName)}';
-    return _get('$_lrclibBase/search?$qs');
+    return _get('$_lrclibBase/search?$qs', headers: _lrclibHeaders);
   }
 
   // ── NetEase (lyrics fallback for Asian music) ─────────────────────────────
