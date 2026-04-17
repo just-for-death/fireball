@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
+import '../core/store/providers.dart';
 import 'mini_player.dart';
 
 // ── Nav data ─────────────────────────────────────────────────────────────────
@@ -36,6 +37,21 @@ class ShellScaffold extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // Show a SnackBar whenever playback fails
+    ref.listen<String?>(
+      playerProvider.select((s) => s.playbackError),
+      (_, error) {
+        if (error == null) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Playback error: $error'),
+            duration: const Duration(seconds: 4),
+            backgroundColor: Theme.of(context).colorScheme.error,
+          ),
+        );
+      },
+    );
+
     final isIOS = !kIsWeb && Platform.isIOS;
     final width = MediaQuery.sizeOf(context).width;
     final isTablet = width >= 600;
