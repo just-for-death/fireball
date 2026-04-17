@@ -22,6 +22,17 @@ class SettingsScreen extends HookConsumerWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     final saving = useState(false);
+    final searchQuery = useState('');
+
+    bool showSection(String keywords) {
+      final q = searchQuery.value.trim().toLowerCase();
+      if (q.isEmpty) return true;
+      final hay = keywords.toLowerCase();
+      for (final part in q.split(RegExp(r'\s+'))) {
+        if (part.isNotEmpty && !hay.contains(part)) return false;
+      }
+      return true;
+    }
 
     // Controller state
     final lbTokenCtrl = useTextEditingController();
@@ -469,12 +480,88 @@ class SettingsScreen extends HookConsumerWidget {
               ),
             ),
 
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+              child: TextField(
+                style: const TextStyle(color: Colors.white, fontSize: 15),
+                cursorColor: cs.primary,
+                decoration: InputDecoration(
+                  hintText: 'Search settings',
+                  hintStyle:
+                      TextStyle(color: Colors.white.withValues(alpha: 0.35)),
+                  prefixIcon: Icon(Icons.search_rounded,
+                      color: Colors.white.withValues(alpha: 0.45)),
+                  suffixIcon: searchQuery.value.isEmpty
+                      ? null
+                      : IconButton(
+                          icon: Icon(Icons.clear_rounded,
+                              color: Colors.white.withValues(alpha: 0.45)),
+                          onPressed: () => searchQuery.value = '',
+                        ),
+                  filled: true,
+                  fillColor: Colors.white.withValues(alpha: 0.06),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14),
+                    borderSide: BorderSide(
+                        color: Colors.white.withValues(alpha: 0.08)),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14),
+                    borderSide: BorderSide(
+                        color: Colors.white.withValues(alpha: 0.08)),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14),
+                    borderSide: BorderSide(color: cs.primary.withValues(alpha: 0.6)),
+                  ),
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                ),
+                onChanged: (v) => searchQuery.value = v,
+              ),
+            ),
+
             Expanded(
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 160),
                 children: [
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Material(
+                      color: Colors.white.withValues(alpha: 0.06),
+                      borderRadius: BorderRadius.circular(14),
+                      child: ListTile(
+                        leading:
+                            Icon(Icons.cast_rounded, color: cs.primary, size: 26),
+                        title: const Text(
+                          'Remote control',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 15,
+                          ),
+                        ),
+                        subtitle: Text(
+                          'Host QR or control another device on your network',
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.45),
+                            fontSize: 12,
+                          ),
+                        ),
+                        trailing: Icon(Icons.chevron_right_rounded,
+                            color: Colors.white.withValues(alpha: 0.35)),
+                        onTap: () => Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) => const RemoteScreen(),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
 
                   // ── YOUTUBE / INVIDIOUS ─────────────────────────────────
+                  if (showSection(
+                      'youtube invidious instance playlist login trending video'))
                   _SectionCard(
                     title: 'YOUTUBE / INVIDIOUS',
                     icon: Icons.play_circle_outline_rounded,
@@ -642,6 +729,8 @@ class SettingsScreen extends HookConsumerWidget {
                   const SizedBox(height: 16),
 
                   // ── LISTENBRAINZ ─────────────────────────────────────────
+                  if (showSection(
+                      'listenbrainz brainz token scrobble playing now'))
                   _SectionCard(
                     title: 'LISTENBRAINZ',
                     icon: Icons.graphic_eq_rounded,
@@ -703,6 +792,7 @@ class SettingsScreen extends HookConsumerWidget {
                   const SizedBox(height: 16),
 
                   // ── LAST.FM ──────────────────────────────────────────────
+                  if (showSection('last.fm lastfm chart radio api'))
                   _SectionCard(
                     title: 'LAST.FM',
                     icon: Icons.radio_rounded,
@@ -730,6 +820,7 @@ class SettingsScreen extends HookConsumerWidget {
                   const SizedBox(height: 16),
 
                   // ── OLLAMA AI ────────────────────────────────────────────
+                  if (showSection('ollama ai llm queue model'))
                   _SectionCard(
                     title: 'OLLAMA AI QUEUE',
                     icon: Icons.auto_awesome_rounded,
@@ -777,6 +868,8 @@ class SettingsScreen extends HookConsumerWidget {
                   const SizedBox(height: 16),
 
                   // ── PLAYBACK ─────────────────────────────────────────────
+                  if (showSection(
+                      'playback quality audio queue lyrics scroll sync'))
                   _SectionCard(
                     title: 'PLAYBACK',
                     icon: Icons.music_note_rounded,
@@ -804,12 +897,41 @@ class SettingsScreen extends HookConsumerWidget {
                         onChanged: (v) => saveSettings({'queueMode': v}),
                         cs: cs,
                       ),
+                      const SizedBox(height: 12),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text('Auto-scroll synced lyrics',
+                                  style: TextStyle(
+                                      color: Colors.white, fontSize: 14)),
+                              Text(
+                                'Follow the active line while playing',
+                                style: TextStyle(
+                                    fontSize: 11,
+                                    color:
+                                        Colors.white.withValues(alpha: 0.4)),
+                              ),
+                            ],
+                          ),
+                          Switch(
+                            value: settings.lyricsAutoScroll,
+                            onChanged: (v) =>
+                                saveSettings({'lyricsAutoScroll': v}),
+                            activeThumbColor: cs.primary,
+                          ),
+                        ],
+                      ),
                     ],
                   ),
 
                   const SizedBox(height: 16),
 
                   // ── BACKUP & SYNC ─────────────────────────────────────────
+                  if (showSection(
+                      'backup sync google drive webdav nextcloud cloud'))
                   _SectionCard(
                     title: 'BACKUP & SYNC',
                     icon: Icons.cloud_sync_rounded,
@@ -1028,6 +1150,8 @@ class SettingsScreen extends HookConsumerWidget {
                   const SizedBox(height: 16),
 
                   // ── TRENDING COUNTRIES ────────────────────────────────────
+                  if (showSection(
+                      'trending countries home charts region picker'))
                   _SectionCard(
                     title: 'TRENDING COUNTRIES',
                     icon: Icons.public_rounded,
@@ -1115,6 +1239,8 @@ class SettingsScreen extends HookConsumerWidget {
                   const SizedBox(height: 16),
 
                   // ── REMOTE CONTROL ────────────────────────────────────────
+                  if (showSection(
+                      'remote control cast network qr server host client'))
                   _SectionCard(
                     title: 'REMOTE CONTROL',
                     icon: Icons.cast_rounded,
@@ -1207,6 +1333,7 @@ class SettingsScreen extends HookConsumerWidget {
                   const SizedBox(height: 16),
 
                   // ── DATA MANAGEMENT ──────────────────────────────────────
+                  if (showSection('data management cache history clear reset'))
                   _SectionCard(
                     title: 'DATA',
                     icon: Icons.storage_rounded,

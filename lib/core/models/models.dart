@@ -118,6 +118,8 @@ class FireballSettings {
   final String remoteHostIp;
   // Home
   final List<String> homeCountries;
+  /// When true, synced lyrics auto-scroll to the active line while playing.
+  final bool lyricsAutoScroll;
 
   const FireballSettings({
     this.ollamaEnabled = false,
@@ -152,6 +154,7 @@ class FireballSettings {
     this.remoteServerEnabled = false,
     this.remoteHostIp = '',
     this.homeCountries = const [],
+    this.lyricsAutoScroll = true,
   });
 
   factory FireballSettings.fromJson(Map<String, dynamic> j) {
@@ -214,6 +217,7 @@ class FireballSettings {
       remoteServerEnabled: toBool(j['remoteServerEnabled'], false),
       remoteHostIp: j['remoteHostIp']?.toString() ?? '',
       homeCountries: toStringList(j['homeCountries']),
+      lyricsAutoScroll: toBool(j['lyricsAutoScroll'], true),
     );
   }
 
@@ -250,6 +254,7 @@ class FireballSettings {
         'remoteServerEnabled': remoteServerEnabled,
         'remoteHostIp': remoteHostIp,
         'homeCountries': homeCountries,
+        'lyricsAutoScroll': lyricsAutoScroll,
       };
 
   FireballSettings copyWith({
@@ -287,6 +292,7 @@ class FireballSettings {
     bool? remoteServerEnabled,
     String? remoteHostIp,
     List<String>? homeCountries,
+    bool? lyricsAutoScroll,
   }) =>
       FireballSettings(
         ollamaEnabled: ollamaEnabled ?? this.ollamaEnabled,
@@ -324,5 +330,6 @@ class FireballSettings {
         remoteServerEnabled: remoteServerEnabled ?? this.remoteServerEnabled,
         remoteHostIp: remoteHostIp ?? this.remoteHostIp,
         homeCountries: homeCountries ?? this.homeCountries,
+        lyricsAutoScroll: lyricsAutoScroll ?? this.lyricsAutoScroll,
       );
 }

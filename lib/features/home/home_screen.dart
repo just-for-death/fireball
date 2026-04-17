@@ -9,6 +9,7 @@ import '../../core/countries.dart';
 import '../../core/models/track.dart';
 import '../../core/store/providers.dart';
 import '../../core/utils.dart';
+import '../../core/widgets/empty_state.dart';
 import '../../core/widgets/glass_widgets.dart';
 
 const _lbRanges = [
@@ -242,7 +243,15 @@ class HomeScreen extends HookConsumerWidget {
             if (loading.value)
               SliverToBoxAdapter(child: _TrendingShimmer(isDark: isDark))
             else if (trending.value.isEmpty)
-              SliverToBoxAdapter(child: _EmptyTrending(cs: cs))
+              const SliverToBoxAdapter(
+                child: FireballEmptyState(
+                  onDarkGlass: true,
+                  title: 'Could not load trending',
+                  subtitle:
+                      'Check your internet connection or try again later.',
+                  icon: Icons.wifi_off_rounded,
+                ),
+              )
             else if (isTablet)
               SliverPadding(
                 padding: EdgeInsets.symmetric(horizontal: hPad),
@@ -1165,31 +1174,6 @@ class _LBListShimmer extends StatelessWidget {
             ),
           ),
         ),
-      ),
-    );
-  }
-}
-
-class _EmptyTrending extends StatelessWidget {
-  const _EmptyTrending({required this.cs});
-  final ColorScheme cs;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.all(32),
-      child: Column(
-        children: [
-          Icon(Icons.wifi_off_rounded,
-              size: 40, color: cs.onSurfaceVariant.withValues(alpha: 0.4)),
-          const SizedBox(height: 12),
-          Text(
-            'Could not load trending.\nCheck your internet connection.',
-            textAlign: TextAlign.center,
-            style:
-                TextStyle(color: cs.onSurfaceVariant.withValues(alpha: 0.6)),
-          ),
-        ],
       ),
     );
   }

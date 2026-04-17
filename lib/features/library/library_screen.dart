@@ -5,6 +5,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 import '../../core/models/track.dart';
 import '../../core/store/providers.dart';
+import '../../core/widgets/empty_state.dart';
 import '../../core/widgets/glass_widgets.dart';
 
 enum _LibTab { favorites, playlists, artists, albums }
@@ -302,10 +303,11 @@ class LibraryScreen extends HookConsumerWidget {
 
       case _LibTab.playlists:
         if (library.playlists.isEmpty) {
-          return _EmptyState(
+          return const FireballEmptyState(
+            onDarkGlass: true,
+            title: 'No playlists yet',
+            subtitle: 'Tap + to create one.',
             icon: Icons.queue_music_rounded,
-            message: 'No playlists yet.\nTap + to create one.',
-            cs: cs,
           );
         }
         return ListView.builder(
@@ -370,10 +372,10 @@ class LibraryScreen extends HookConsumerWidget {
 
       case _LibTab.artists:
         if (library.artists.isEmpty) {
-          return _EmptyState(
+          return const FireballEmptyState(
+            onDarkGlass: true,
+            title: 'No artists saved yet',
             icon: Icons.person_outline_rounded,
-            message: 'No artists saved yet.',
-            cs: cs,
           );
         }
         return GridView.builder(
@@ -418,10 +420,10 @@ class LibraryScreen extends HookConsumerWidget {
 
       case _LibTab.albums:
         if (library.albums.isEmpty) {
-          return _EmptyState(
+          return const FireballEmptyState(
+            onDarkGlass: true,
+            title: 'No albums saved yet',
             icon: Icons.album_rounded,
-            message: 'No albums saved yet.',
-            cs: cs,
           );
         }
         return GridView.builder(
@@ -558,7 +560,13 @@ class _TrackList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (tracks.isEmpty) {
-      return _EmptyState(icon: emptyIcon, message: emptyMessage, cs: cs);
+      final parts = emptyMessage.split('\n');
+      return FireballEmptyState(
+        title: parts.first,
+        subtitle: parts.length > 1 ? parts.sublist(1).join('\n') : null,
+        icon: emptyIcon,
+        onDarkGlass: true,
+      );
     }
     return ListView.builder(
       padding: const EdgeInsets.only(bottom: 160),
@@ -610,35 +618,4 @@ class _TrackList extends StatelessWidget {
         child: Icon(Icons.music_note_rounded,
             color: cs.primary.withValues(alpha: 0.4), size: 22),
       );
-}
-
-class _EmptyState extends StatelessWidget {
-  const _EmptyState({
-    required this.icon,
-    required this.message,
-    required this.cs,
-  });
-  final IconData icon;
-  final String message;
-  final ColorScheme cs;
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon,
-              size: 52, color: cs.onSurfaceVariant.withValues(alpha: 0.3)),
-          const SizedBox(height: 16),
-          Text(
-            message,
-            textAlign: TextAlign.center,
-            style:
-                TextStyle(color: cs.onSurfaceVariant.withValues(alpha: 0.5)),
-          ),
-        ],
-      ),
-    );
-  }
 }

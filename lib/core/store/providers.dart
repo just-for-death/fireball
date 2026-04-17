@@ -30,6 +30,10 @@ class PlayerState {
   final List<Track> favorites;
   final bool videoMode;
   final String? playbackError;
+  /// Wall-clock time when playback should pause (sleep timer).
+  final DateTime? sleepTimerEnd;
+  /// When true, pause after the current track finishes (natural end).
+  final bool sleepAfterCurrentTrack;
 
   const PlayerState({
     this.queue = const [],
@@ -42,6 +46,8 @@ class PlayerState {
     this.favorites = const [],
     this.videoMode = false,
     this.playbackError,
+    this.sleepTimerEnd,
+    this.sleepAfterCurrentTrack = false,
   });
 
   Track? get currentTrack =>
@@ -61,6 +67,10 @@ class PlayerState {
     bool? videoMode,
     String? playbackError,
     bool clearError = false,
+    DateTime? sleepTimerEnd,
+    bool clearSleepTimerEnd = false,
+    bool? sleepAfterCurrentTrack,
+    bool clearSleepAfterTrack = false,
   }) =>
       PlayerState(
         queue: queue ?? this.queue,
@@ -73,6 +83,11 @@ class PlayerState {
         favorites: favorites ?? this.favorites,
         videoMode: videoMode ?? this.videoMode,
         playbackError: clearError ? null : (playbackError ?? this.playbackError),
+        sleepTimerEnd:
+            clearSleepTimerEnd ? null : (sleepTimerEnd ?? this.sleepTimerEnd),
+        sleepAfterCurrentTrack: clearSleepAfterTrack
+            ? false
+            : (sleepAfterCurrentTrack ?? this.sleepAfterCurrentTrack),
       );
 }
 
@@ -105,6 +120,7 @@ class PlayerNotifier extends StateNotifier<PlayerState>
     _player.stream.position.listen((pos) {
       state = state.copyWith(position: pos);
       _checkScrobble(pos);
+      _checkSleepTimer();
     });
     _player.stream.duration.listen((dur) {
       state = state.copyWith(duration: dur);
@@ -115,6 +131,11 @@ class PlayerNotifier extends StateNotifier<PlayerState>
   }
 
   void _onTrackComplete() {
+    if (state.sleepAfterCurrentTrack) {
+      state = state.copyWith(clearSleepAfterTrack: true, isPlaying: false);
+      _player.pause();
+      return;
+    }
     if (state.queue.isEmpty) return;
     switch (state.repeatMode) {
       case ElysiumRepeatMode.one:
@@ -396,6 +417,92 @@ class PlayerNotifier extends StateNotifier<PlayerState>
 
   void clearPlaybackError() {
     state = state.copyWith(clearError: true);
+  }
+
+  /// Pause after [minutes] (from now). Pass `null` or `0` to clear wall-clock timer only.
+  void setSleepTimerMinutes(int? minutes) {
+    if (minutes == null || minutes <= 0) {
+      state = state.copyWith(clearSleepTimerEnd: true);
+      return;
+    }
+    state = state.copyWith(
+      sleepTimerEnd: DateTime.now().add(Duration(minutes: minutes)),
+      sleepAfterCurrentTrack: false,
+    );
+  }
+
+  void setSleepAfterCurrentTrack(bool value) {
+    state = state.copyWith(
+      sleepAfterCurrentTrack: value,
+      clearSleepTimerEnd: value,
+    );
+  }
+
+  void clearSleepTimer() {
+    state = state.copyWith(clearSleepTimerEnd: true, clearSleepAfterTrack: true);
+  }
+
+  void _checkSleepTimer() {
+    final end = state.sleepTimerEnd;
+    if (end == null) return;
+    if (DateTime.now().isBefore(end)) return;
+    _player.pause();
+    state = state.copyWith(clearSleepTimerEnd: true, isPlaying: false);
+  }
+
+  void reorderQueue(int oldIndex, int newIndex) {
+    final q = state.queue;
+    if (oldIndex < 0 ||
+        oldIndex >= q.length ||
+        newIndex < 0 ||
+        newIndex > q.length) {
+      return;
+    }
+    var ni = newIndex;
+    if (ni > oldIndex) ni -= 1;
+    final list = List<Track>.from(q);
+    final item = list.removeAt(oldIndex);
+    list.insert(ni, item);
+    final id = state.currentTrack?.effectiveId;
+    var newCi = state.currentIndex;
+    if (id != null) {
+      final found = list.indexWhere((t) => t.effectiveId == id);
+      if (found >= 0) newCi = found;
+    } else {
+      newCi = newCi.clamp(0, list.length - 1);
+    }
+    state = state.copyWith(queue: list, currentIndex: newCi);
+  }
+
+  Future<void> removeFromQueueAt(int index) async {
+    final q = state.queue;
+    if (index < 0 || index >= q.length) return;
+    final list = List<Track>.from(q);
+    final wasCurrent = index == state.currentIndex;
+    list.removeAt(index);
+    if (list.isEmpty) {
+      _player.stop();
+      state = state.copyWith(
+        queue: [],
+        currentIndex: -1,
+        position: Duration.zero,
+        duration: Duration.zero,
+        isPlaying: false,
+        clearSleepTimerEnd: true,
+        clearSleepAfterTrack: true,
+      );
+      return;
+    }
+    var newCi = state.currentIndex;
+    if (index < newCi) {
+      newCi--;
+    } else if (index == newCi) {
+      newCi = newCi.clamp(0, list.length - 1);
+    }
+    state = state.copyWith(queue: list, currentIndex: newCi);
+    if (wasCurrent) {
+      await playIndex(newCi);
+    }
   }
 
   void setFavorites(List<Track> favs) {
