@@ -90,7 +90,7 @@ No server required. All data lives in `fireball_library.json` in the app's docum
 
 | Package | Purpose |
 |---|---|
-| `just_audio` + `audio_service` | Streaming playback + background / lock screen |
+| `media_kit` + `audio_service` | Streaming playback + background / lock screen |
 | `hooks_riverpod` + `flutter_hooks` | State management |
 | `go_router` | Declarative navigation |
 | `path_provider` | Local JSON library store |

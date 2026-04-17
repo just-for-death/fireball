@@ -10,11 +10,11 @@ dependencies:
   flutter:
     sdk: flutter
 
-  # Audio
-  just_audio: ^0.9.41
-  just_audio_media_kit: ^2.1.0
+  # Audio (media_kit + libmpv per platform — without *_libs_*, stub plugins break playback)
   media_kit: ^1.1.10
   media_kit_video: ^1.2.4
+  media_kit_libs_ios_video: ^1.1.4
+  media_kit_libs_android_video: ^1.3.8
   media_kit_libs_linux: ^1.2.1
   audio_service: ^0.18.15
   audio_session: ^0.1.25
@@ -29,7 +29,6 @@ dependencies:
 
   # Networking & persistence
   http: ^1.2.2
-  shared_preferences: ^2.3.2
   path_provider: ^2.1.4
   cached_network_image: ^3.4.1
   flutter_cache_manager: ^3.4.1

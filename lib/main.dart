@@ -1,6 +1,8 @@
 import 'dart:async';
-import 'dart:io' show Platform;
 import 'dart:ui';
+
+import 'package:flutter/foundation.dart'
+    show TargetPlatform, defaultTargetPlatform, kIsWeb;
 
 import 'package:audio_service/audio_service.dart';
 import 'package:audio_service_mpris/audio_service_mpris.dart';
@@ -28,7 +30,7 @@ Future<void> _initAudioSession() async {
 /// Linux: DBus MPRIS so GNOME/KDE media keys and taskbar controls work.
 void _registerLinuxMpris() {
   try {
-    if (Platform.isLinux) {
+    if (defaultTargetPlatform == TargetPlatform.linux) {
       AudioServiceMpris.registerWith();
     }
   } catch (e, st) {
@@ -59,8 +61,6 @@ Future<void> _initMediaService() async {
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  // Required before any media_kit Player is created (PlayerNotifier ctor).
-  MediaKit.ensureInitialized();
 
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
   SystemChrome.setSystemUIOverlayStyle(
@@ -70,16 +70,41 @@ void main() async {
     ),
   );
 
-  // Show UI immediately. Do not await AudioService / AudioSession here — on iOS those
-  // calls can stall; blocking main() before runApp() leaves the native splash forever.
+  // Show UI immediately. Do not run native media init before runApp():
+  // MediaKit.ensureInitialized(), media_kit Player(), AudioService.init, and
+  // AudioSession can block the UI isolate on iOS — the native splash stays up
+  // until the first frame is fully rendered.
   runApp(const ProviderScope(child: FireballApp()));
 
+  _scheduleIosFriendlyMediaBootstrap();
+}
+
+/// After the first frame, load native media (libmpv, audio_service). On iOS we
+/// wait an extra tick so the launch snapshot is dismissed before heavy native work.
+void _scheduleIosFriendlyMediaBootstrap() {
+  void start() => unawaited(_bootstrapAudioAfterFirstFrame());
+
   WidgetsBinding.instance.addPostFrameCallback((_) {
-    unawaited(_bootstrapAudioAfterFirstFrame());
+    if (kIsWeb) {
+      start();
+      return;
+    }
+    if (defaultTargetPlatform == TargetPlatform.iOS ||
+        defaultTargetPlatform == TargetPlatform.macOS) {
+      // Second microtask turn after paint — avoids contending with Impeller/surface setup.
+      Future<void>(() async {
+        await Future<void>.delayed(Duration.zero);
+        start();
+      });
+    } else {
+      start();
+    }
   });
 }
 
 Future<void> _bootstrapAudioAfterFirstFrame() async {
+  // Must run before any Player() — see PlayerNotifier._ensurePlayer.
+  MediaKit.ensureInitialized();
   await _initMediaService();
   await _initAudioSession();
   MediaSessionBridge.sync();
