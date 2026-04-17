@@ -63,9 +63,12 @@ class ShellScaffold extends HookConsumerWidget {
     final player = ref.read(playerProvider.notifier);
 
     // Sync player-state fields that are derived from persisted settings
-    // (e.g. videoMode) on first frame, so the player doesn't start with stale defaults.
+    // (e.g. videoMode) on first frame, so the player doesn't start with stale
+    // defaults.  Deferred via Future() so it runs after the widget tree has
+    // finished building — calling state= synchronously inside useEffect's
+    // initHook fires Riverpod's _debugCanModifyProviders assertion.
     useEffect(() {
-      player.fetchSettings();
+      Future(() => player.fetchSettings());
       return null;
     }, const []);
 
