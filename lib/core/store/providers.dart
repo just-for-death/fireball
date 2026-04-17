@@ -218,7 +218,7 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
         }
 
         if (bestFormat != null && bestFormat['url'] != null) {
-          playUrl = bestFormat['url'];
+          playUrl = _proxyStreamUrl(bestFormat['url'] as String, instance);
         }
       } else if (playUrl != null &&
           (playUrl.contains('apple.com') || playUrl.contains('itunes'))) {
@@ -242,7 +242,7 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
             orElse: () => formats.isEmpty ? null : formats.first,
           );
           if (bestFormat != null && bestFormat['url'] != null) {
-            playUrl = bestFormat['url'];
+            playUrl = _proxyStreamUrl(bestFormat['url'] as String, instance);
           }
         }
       } else if (playUrl == null || playUrl.isEmpty) {
@@ -269,7 +269,7 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
             orElse: () => formats.isEmpty ? null : formats.first,
           );
           if (bestFormat != null && bestFormat['url'] != null) {
-            playUrl = bestFormat['url'];
+            playUrl = _proxyStreamUrl(bestFormat['url'] as String, instance);
           }
         }
       }
@@ -374,6 +374,28 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     state = state.copyWith(
       favorites: state.favorites.where((f) => (f.videoId ?? f.id) != id).toList(),
     );
+  }
+
+  /// Rewrites a direct YouTube CDN URL to route through the Invidious proxy.
+  /// YouTube ties stream URLs to the server IP that requested them; proxying
+  /// through the same Invidious instance that resolved the URL avoids 403s.
+  String _proxyStreamUrl(String url, String instance) {
+    if (instance.isEmpty) return url;
+    try {
+      final uri = Uri.parse(url);
+      // Only rewrite googlevideo.com CDN URLs
+      if (!uri.host.contains('googlevideo.com')) return url;
+      final base = instance.replaceAll(RegExp(r'/+$'), '');
+      // Proxy format: instance/videoplayback?...&host=original-host
+      final newUri = Uri.parse('$base/videoplayback')
+          .replace(queryParameters: {
+        ...uri.queryParameters,
+        'host': uri.host,
+      });
+      return newUri.toString();
+    } catch (_) {
+      return url;
+    }
   }
 
   @override
