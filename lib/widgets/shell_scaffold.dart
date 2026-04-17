@@ -44,6 +44,7 @@ class ShellScaffold extends HookConsumerWidget {
       playerProvider.select((s) => s.playbackError),
       (_, error) {
         if (error == null) return;
+        if (!context.mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Playback error: $error'),
@@ -51,6 +52,9 @@ class ShellScaffold extends HookConsumerWidget {
             backgroundColor: Theme.of(context).colorScheme.error,
           ),
         );
+        // Clear the error so the same message doesn't re-fire on the next
+        // state rebuild that happens to pass the same non-null value through.
+        ref.read(playerProvider.notifier).clearPlaybackError();
       },
     );
 

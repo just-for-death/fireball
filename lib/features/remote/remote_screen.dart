@@ -274,16 +274,21 @@ class _ControlMode extends HookWidget {
                           max: s.durationMs > 0
                               ? s.durationMs.toDouble()
                               : 1,
-                          onChangeStart: (_) => seeking.value = true,
-                          onChanged: (v) => seekValue.value = v,
-                          onChangeEnd: (v) async {
-                            // Send seek first; clear seeking flag after so
-                            // the slider doesn't snap back prematurely.
-                            try {
-                              await client.sendCommand('seek', value: v);
-                            } catch (_) {}
-                            seeking.value = false;
-                          },
+                          // Disable all interactions when duration is unknown
+                          // to prevent sending semantically wrong seek values.
+                          onChangeStart:
+                              s.durationMs > 0 ? (_) => seeking.value = true : null,
+                          onChanged:
+                              s.durationMs > 0 ? (v) => seekValue.value = v : null,
+                          onChangeEnd: s.durationMs > 0
+                              ? (v) async {
+                                  // Send seek first; clear seeking flag after so
+                                  // the slider doesn't snap back prematurely.
+                                  await _send(context, cs,
+                                      () => client.sendCommand('seek', value: v));
+                                  seeking.value = false;
+                                }
+                              : null,
                           activeColor: cs.primary,
                         ),
                         Row(
