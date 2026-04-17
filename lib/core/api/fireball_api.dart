@@ -281,9 +281,45 @@ class FireballApi {
       if (sid != null) 'Cookie': 'SID=$sid',
     };
     final data =
-        await _get('$base/api/v1/playlists/$playlistId', headers: headers);
-    return Playlist.fromJson(data as Map<String, dynamic>);
+        await _get('$base/api/v1/playlists/$playlistId', headers: headers)
+            as Map<String, dynamic>;
+
+    // Invidious returns playlistId not id; map to local Playlist format
+    final id = data['playlistId']?.toString() ?? playlistId;
+    final title = data['title']?.toString() ?? 'Playlist';
+    final videos = (data['videos'] as List<dynamic>? ?? [])
+        .whereType<Map>()
+        .map((v) {
+          final videoId = v['videoId']?.toString() ?? '';
+          if (videoId.isEmpty) return null;
+          String? artwork;
+          final thumbs = v['videoThumbnails'];
+          if (thumbs is List && thumbs.isNotEmpty && thumbs[0] is Map) {
+            artwork = thumbs[0]['url'] as String?;
+          }
+          return Track(
+            id: videoId,
+            videoId: videoId,
+            title: v['title']?.toString() ?? '',
+            artist: v['author']?.toString() ?? '',
+            artwork: artwork,
+            duration: v['lengthSeconds'] is int ? v['lengthSeconds'] as int : null,
+          );
+        })
+        .whereType<Track>()
+        .toList();
+
+    return Playlist(id: id, title: title, videos: videos);
   }
+
+  /// Fetches an Invidious playlist and returns it ready to be saved locally.
+  Future<Playlist> syncInvidiousPlaylist(
+    String playlistId, {
+    required String instanceUrl,
+    String? sid,
+  }) =>
+      getInvidiousPlaylistDetail(playlistId,
+          instanceUrl: instanceUrl, sid: sid);
 
   // ── ListenBrainz (direct) ─────────────────────────────────────────────────
   static const _lbApi = 'https://api.listenbrainz.org/1';
