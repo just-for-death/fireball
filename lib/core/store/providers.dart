@@ -401,6 +401,8 @@ class PlayerNotifier extends StateNotifier<PlayerState>
       isPlaying: false,
       position: Duration.zero,
       duration: Duration.zero,
+      clearSleepTimerEnd: true,
+      clearSleepAfterTrack: true,
     );
   }
 
