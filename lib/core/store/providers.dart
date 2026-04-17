@@ -1,6 +1,9 @@
 import 'dart:async';
 import 'dart:developer' as dev;
 
+import 'package:flutter/foundation.dart'
+    show TargetPlatform, defaultTargetPlatform, kIsWeb;
+import 'package:flutter/widgets.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:media_kit/media_kit.dart' hide PlayerState, Track;
 
@@ -28,16 +31,46 @@ final playerProvider = StateNotifierProvider<PlayerNotifier, PlayerState>((ref) 
 
 class PlayerNotifier extends StateNotifier<PlayerState>
     implements RemotePlayerProxy, MediaSessionPlayer {
-  late final Player _player;
+  /// Created after the first frame so native `Player()` does not block splash dismissal.
+  Player? _player;
+  bool _disposed = false;
   final Ref _ref;
   int _playVersion = 0;
   bool _scrobbled = false;
   Timer? _mediaSessionTicker;
 
   PlayerNotifier(this._ref) : super(const PlayerState()) {
+    void schedule() {
+      if (_disposed) return;
+      final apple = !kIsWeb &&
+          (defaultTargetPlatform == TargetPlatform.iOS ||
+              defaultTargetPlatform == TargetPlatform.macOS);
+      if (!apple) {
+        _ensurePlayer();
+        return;
+      }
+      // iOS/macOS: create Player one frame after the first paint so we never
+      // contend with splash teardown / first raster.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!_disposed) _ensurePlayer();
+      });
+    }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) => schedule());
+  }
+
+  /// Idempotent; safe to call from any playback path before using [Player].
+  void _ensurePlayer() {
+    if (_disposed || _player != null) return;
+    MediaKit.ensureInitialized();
     _player = Player();
     _listenToPlayer();
     MediaSessionBridge.attachPlayer(this);
+  }
+
+  Player get _p {
+    _ensurePlayer();
+    return _player!;
   }
 
   void _syncMediaSession() => MediaSessionBridge.sync();
@@ -53,27 +86,28 @@ class PlayerNotifier extends StateNotifier<PlayerState>
   FireballApi get _api => const FireballApi();
   FireballSettings get _settings => _ref.read(settingsProvider);
 
-  Player get player => _player;
+  Player get player => _p;
 
   @override
   PlayerState get sessionState => state;
 
   void _listenToPlayer() {
-    _player.stream.playing.listen((playing) {
+    final pl = _player!;
+    pl.stream.playing.listen((playing) {
       state = state.copyWith(isPlaying: playing);
       _setMediaTicker(playing);
       _syncMediaSession();
     });
-    _player.stream.position.listen((pos) {
+    pl.stream.position.listen((pos) {
       state = state.copyWith(position: pos);
       _checkScrobble(pos);
       _checkSleepTimer();
     });
-    _player.stream.duration.listen((dur) {
+    pl.stream.duration.listen((dur) {
       state = state.copyWith(duration: dur);
       _syncMediaSession();
     });
-    _player.stream.completed.listen((completed) {
+    pl.stream.completed.listen((completed) {
       if (completed) _onTrackComplete();
       _syncMediaSession();
     });
@@ -82,13 +116,13 @@ class PlayerNotifier extends StateNotifier<PlayerState>
   void _onTrackComplete() {
     if (state.sleepAfterCurrentTrack) {
       state = state.copyWith(clearSleepAfterTrack: true, isPlaying: false);
-      _player.pause();
+      _p.pause();
       return;
     }
     if (state.queue.isEmpty) return;
     switch (state.repeatMode) {
       case ElysiumRepeatMode.one:
-        _player.seek(Duration.zero).then((_) => _player.play());
+        _p.seek(Duration.zero).then((_) => _p.play());
       case ElysiumRepeatMode.all:
         final next = (state.currentIndex + 1) % state.queue.length;
         playIndex(next);
@@ -275,7 +309,7 @@ class PlayerNotifier extends StateNotifier<PlayerState>
       }
 
       if (playUrl != null && playUrl.isNotEmpty && version == _playVersion) {
-        await _player.open(Media(playUrl));
+        await _p.open(Media(playUrl));
       } else if (playUrl == null || playUrl.isEmpty) {
         throw Exception('No playable URL found for this track');
       }
@@ -285,7 +319,7 @@ class PlayerNotifier extends StateNotifier<PlayerState>
       final errMsg = e.toString().replaceAll('Exception: ', '');
       if (track.url != null && track.url!.isNotEmpty) {
         try {
-          await _player.open(Media(track.url!));
+          await _p.open(Media(track.url!));
           return;
         } catch (_) {}
       }
@@ -303,8 +337,8 @@ class PlayerNotifier extends StateNotifier<PlayerState>
       final candidates = List.generate(q.length, (i) => i)
         ..remove(state.currentIndex);
       if (candidates.isEmpty) {
-        await _player.seek(Duration.zero);
-        await _player.play();
+        await _p.seek(Duration.zero);
+        await _p.play();
         return;
       }
       candidates.shuffle();
@@ -330,7 +364,7 @@ class PlayerNotifier extends StateNotifier<PlayerState>
       return;
     }
     if (state.position > const Duration(seconds: 3)) {
-      await _player.seek(Duration.zero);
+      await _p.seek(Duration.zero);
       return;
     }
     final prev = (state.currentIndex - 1 + q.length) % q.length;
@@ -339,19 +373,19 @@ class PlayerNotifier extends StateNotifier<PlayerState>
 
   @override
   Future<void> togglePlayPause() async {
-    await _player.playOrPause();
+    await _p.playOrPause();
   }
 
   @override
   Future<void> seekTo(Duration position) async {
-    await _player.seek(position);
+    await _p.seek(position);
   }
 
   // State is updated synchronously so callers can immediately call playIndex
   // without a race; the player stop runs in background and is naturally
   // superseded by the open() call in playIndex.
   void setQueue(List<Track> tracks) {
-    _player.stop();
+    _player?.stop();
     state = state.copyWith(
       queue: tracks,
       currentIndex: -1,
@@ -411,7 +445,7 @@ class PlayerNotifier extends StateNotifier<PlayerState>
     final end = state.sleepTimerEnd;
     if (end == null) return;
     if (DateTime.now().isBefore(end)) return;
-    _player.pause();
+    _p.pause();
     state = state.copyWith(clearSleepTimerEnd: true, isPlaying: false);
   }
 
@@ -447,7 +481,7 @@ class PlayerNotifier extends StateNotifier<PlayerState>
     final wasCurrent = index == state.currentIndex;
     list.removeAt(index);
     if (list.isEmpty) {
-      _player.stop();
+      _player?.stop();
       state = state.copyWith(
         queue: [],
         currentIndex: -1,
@@ -536,14 +570,14 @@ class PlayerNotifier extends StateNotifier<PlayerState>
   }
 
   @override
-  Future<void> play() => _player.play();
+  Future<void> play() => _p.play();
 
   @override
-  Future<void> pause() => _player.pause();
+  Future<void> pause() => _p.pause();
 
   @override
   Future<void> stopFromOs() async {
-    await _player.stop();
+    await _p.stop();
     state = state.copyWith(isPlaying: false, position: Duration.zero);
     _syncMediaSession();
   }
@@ -582,10 +616,11 @@ class PlayerNotifier extends StateNotifier<PlayerState>
 
   @override
   void dispose() {
+    _disposed = true;
     _mediaSessionTicker?.cancel();
     MediaSessionBridge.detachPlayer();
     RemoteServer.stop();
-    _player.dispose();
+    _player?.dispose();
     super.dispose();
   }
 }
