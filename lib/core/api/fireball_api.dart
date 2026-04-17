@@ -41,12 +41,14 @@ class FireballApi {
       switch (method.toUpperCase()) {
         case 'POST':
           res = await http
-              .post(uri, headers: requestHeaders, body: json.encode(body))
+              .post(uri, headers: requestHeaders,
+                  body: body != null ? json.encode(body) : null)
               .timeout(timeout);
           break;
         case 'PUT':
           res = await http
-              .put(uri, headers: requestHeaders, body: json.encode(body))
+              .put(uri, headers: requestHeaders,
+                  body: body != null ? json.encode(body) : null)
               .timeout(timeout);
           break;
         case 'DELETE':
@@ -466,9 +468,14 @@ class FireballApi {
   /// Returns the response map. Throws if the key is invalid or the request fails.
   Future<Map<String, dynamic>> validateLastFmKey(String apiKey) async {
     // chart.getTopArtists only needs api_key — no api_sig or session required.
-    return await _get(
+    final data = await _get(
       '$_lastFmApi/?method=chart.gettopartists&limit=1&api_key=${Uri.encodeComponent(apiKey)}&format=json',
     ) as Map<String, dynamic>;
+    // Last.fm returns HTTP 200 even for invalid keys, using a JSON error body.
+    if (data.containsKey('error')) {
+      throw Exception(data['message']?.toString() ?? 'Invalid Last.fm API key');
+    }
+    return data;
   }
 
   // ── Ollama (local AI — user-configured URL) ───────────────────────────────

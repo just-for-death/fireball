@@ -78,7 +78,12 @@ class SettingsScreen extends HookConsumerWidget {
     }, const []);
 
     Future<void> saveSettings(Map<String, dynamic> patch) async {
-      await ref.read(localStoreProvider.notifier).updateSettings(patch);
+      saving.value = true;
+      try {
+        await ref.read(localStoreProvider.notifier).updateSettings(patch);
+      } finally {
+        saving.value = false;
+      }
     }
 
     Future<void> testAndSaveLB() async {

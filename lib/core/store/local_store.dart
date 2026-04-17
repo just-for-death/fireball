@@ -79,8 +79,11 @@ class LocalStoreNotifier extends StateNotifier<LibraryData> {
     try {
       final file = await _dbFile;
       if (!await file.exists()) {
+        // No file yet — flush the default state through the serialization chain
+        // so a concurrent _save() from an early mutation stays ordered.
         _ready.complete();
-        await _write(state);
+        _lastWrite = _lastWrite.catchError((_) {}).then((_) => _write(state));
+        await _lastWrite;
         return;
       }
       final raw = await file.readAsString();
@@ -99,7 +102,11 @@ class LocalStoreNotifier extends StateNotifier<LibraryData> {
         }
       } catch (_) {}
       if (!_ready.isCompleted) {
-        await _write(state);
+        // Route corrupt-recovery write through the chain so it stays ordered
+        // with any concurrent _save() calls.
+        _ready.complete();
+        _lastWrite = _lastWrite.catchError((_) {}).then((_) => _write(state));
+        await _lastWrite;
       }
     } finally {
       if (!_ready.isCompleted) _ready.complete();

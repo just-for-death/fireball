@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
@@ -50,73 +52,82 @@ class SearchScreen extends HookConsumerWidget {
       return null;
     }, const []);
 
-    // Debounced search
+    // Debounced search — uses a Timer so cancellation also cancels the callback.
+    // The old Stream.fromFuture approach only cancelled the listener, not the
+    // inner Future.delayed, which could still fire and overwrite newer results.
     useEffect(() {
       if (query.value.trim().isEmpty) {
         results.value = [];
         return null;
       }
-      final timer = Stream.fromFuture(
-        Future.delayed(
-          const Duration(milliseconds: 450),
-          () async {
-            loading.value = true;
-            try {
-              if (searchMode.value == 'invidious') {
-                final instance = settings.invidiousInstance;
-                if (instance.isEmpty) {
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                          content: Text(
-                              'Please configure an Invidious instance in Settings')),
-                    );
-                  }
-                  loading.value = false;
-                  results.value = [];
-                  return;
-                }
+      // Capture a request id at the time the effect fires.
+      // The async callback checks whether a newer effect has already replaced it.
+      final capturedQuery = query.value;
+      final capturedMode  = searchMode.value;
 
-                final tracks = await api.invidiousSearch(query.value,
-                    instanceUrl: instance);
-                results.value = tracks
-                    .map((t) => {
-                          'id': t.id,
-                          'videoId': t.videoId,
-                          'title': t.title,
-                          'artist': t.artist,
-                          'artwork': t.artwork,
-                          'duration': t.duration,
-                        })
-                    .toList()
-                    .cast();
-              } else {
-                final data = await api.itunesSearch(query.value);
-                results.value = ((data['results'] as List<dynamic>? ?? [])
-                      .map((t) => {
-                            'id': t['trackId']?.toString() ?? '',
-                            'title': t['trackName'] ?? '—',
-                            'artist': t['artistName'] ?? '—',
-                            'artwork': (t['artworkUrl100'] as String?)
-                                ?.replaceAll('100x100bb', '400x400bb'),
-                            'url': t['previewUrl'],
-                          })
-                      .toList())
-                    .cast();
-              }
-            } catch (e) {
+      final timer = Timer(const Duration(milliseconds: 450), () async {
+        // Bail out if the query changed while we were waiting.
+        if (query.value != capturedQuery || searchMode.value != capturedMode) {
+          return;
+        }
+        loading.value = true;
+        try {
+          if (capturedMode == 'invidious') {
+            final instance = settings.invidiousInstance;
+            if (instance.isEmpty) {
               if (context.mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('Search failed: $e')),
+                  const SnackBar(
+                      content: Text(
+                          'Please configure an Invidious instance in Settings')),
                 );
               }
-              results.value = [];
-            } finally {
               loading.value = false;
+              results.value = [];
+              return;
             }
-          },
-        ),
-      ).listen((_) {});
+
+            final tracks = await api.invidiousSearch(capturedQuery,
+                instanceUrl: instance);
+            // Guard again: user may have typed more while we awaited the network
+            if (query.value != capturedQuery) return;
+            results.value = tracks
+                .map((t) => {
+                      'id': t.id,
+                      'videoId': t.videoId,
+                      'title': t.title,
+                      'artist': t.artist,
+                      'artwork': t.artwork,
+                      'duration': t.duration,
+                    })
+                .toList()
+                .cast();
+          } else {
+            final data = await api.itunesSearch(capturedQuery);
+            if (query.value != capturedQuery) return;
+            results.value = ((data['results'] as List<dynamic>? ?? [])
+                  .map((t) => {
+                        'id': t['trackId']?.toString() ?? '',
+                        'title': t['trackName'] ?? '—',
+                        'artist': t['artistName'] ?? '—',
+                        'artwork': (t['artworkUrl100'] as String?)
+                            ?.replaceAll('100x100bb', '400x400bb'),
+                        'url': t['previewUrl'],
+                      })
+                  .toList())
+                .cast();
+          }
+        } catch (e) {
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Search failed: $e')),
+            );
+          }
+          results.value = [];
+        } finally {
+          if (query.value == capturedQuery) loading.value = false;
+        }
+      });
       return timer.cancel;
     }, [query.value, searchMode.value]);
 

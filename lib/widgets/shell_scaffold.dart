@@ -62,6 +62,13 @@ class ShellScaffold extends HookConsumerWidget {
     final store = ref.read(localStoreProvider.notifier);
     final player = ref.read(playerProvider.notifier);
 
+    // Sync player-state fields that are derived from persisted settings
+    // (e.g. videoMode) on first frame, so the player doesn't start with stale defaults.
+    useEffect(() {
+      player.fetchSettings();
+      return null;
+    }, const []);
+
     // WebDAV live sync: pull/push on app resume.
     // Read fresh settings via ref.read inside the callback so that credential
     // changes (password, username) are picked up without restarting the listener.

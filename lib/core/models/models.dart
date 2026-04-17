@@ -195,9 +195,13 @@ class FireballSettings {
       listenBrainzEnabled: toBool(j['listenBrainzEnabled'], false),
       listenBrainzPlayingNow: toBool(j['listenBrainzPlayingNow'], false),
       listenBrainzScrobblePercent:
-          j['listenBrainzScrobblePercent'] is int ? j['listenBrainzScrobblePercent'] : 50,
+          j['listenBrainzScrobblePercent'] is num
+              ? (j['listenBrainzScrobblePercent'] as num).toInt()
+              : 50,
       listenBrainzScrobbleMaxSeconds:
-          j['listenBrainzScrobbleMaxSeconds'] is int ? j['listenBrainzScrobbleMaxSeconds'] : 240,
+          j['listenBrainzScrobbleMaxSeconds'] is num
+              ? (j['listenBrainzScrobbleMaxSeconds'] as num).toInt()
+              : 240,
       invidiousPlaylistPrivacy: j['invidiousPlaylistPrivacy']?.toString() ?? 'private',
       invidiousAutoPush: toBool(j['invidiousAutoPush'], false),
       invidiousPlaylistMappings: toStringMap(j['invidiousPlaylistMappings']),

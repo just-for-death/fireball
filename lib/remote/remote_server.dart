@@ -66,8 +66,14 @@ class RemoteServer {
         final body = await utf8.decoder.bind(req).join();
         final Map<String, dynamic> cmd =
             body.isNotEmpty ? jsonDecode(body) as Map<String, dynamic> : {};
-        await _dispatch(cmd, player);
-        req.response.write('{"ok":true}');
+        try {
+          await _dispatch(cmd, player);
+          req.response.write('{"ok":true}');
+        } on ArgumentError catch (e) {
+          // Unknown / missing action → 400 Bad Request, not 500
+          req.response.statusCode = 400;
+          req.response.write(jsonEncode({'error': e.message.toString()}));
+        }
       } else {
         req.response.statusCode = 404;
         req.response.write('{"error":"not found"}');
