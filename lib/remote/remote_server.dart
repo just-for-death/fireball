@@ -24,14 +24,18 @@ class RemoteServer {
   static Future<void> start(RemotePlayerProxy player) async {
     if (_server != null) return;
     try {
-      _cachedIp = await _resolveLocalIp();
+      // Bind first; only set _cachedIp on success so the QR code / host URL
+      // is never shown when the server failed to start.
       _server = await HttpServer.bind(InternetAddress.anyIPv4, port);
+      _cachedIp = await _resolveLocalIp();
       dev.log('RemoteServer: listening on ${_cachedIp ?? '0.0.0.0'}:$port');
       _server!.listen(
         (req) => _handle(req, player),
         onError: (e) => dev.log('RemoteServer error: $e'),
       );
     } catch (e) {
+      _cachedIp = null;
+      _server = null;
       dev.log('RemoteServer.start failed: $e');
     }
   }
@@ -93,7 +97,9 @@ class RemoteServer {
         await player.previous();
       case 'seek':
         final ms = (cmd['value'] as num?)?.toInt() ?? 0;
-        await player.seekTo(Duration(milliseconds: ms));
+        await player.seekTo(Duration(milliseconds: ms.clamp(0, 86400000)));
+      default:
+        throw ArgumentError('Unknown action: ${cmd['action']}');
     }
   }
 

@@ -21,13 +21,16 @@ class RemoteClient {
     final res = await http
         .get(Uri.parse('$_base/state'))
         .timeout(const Duration(seconds: 5));
+    if (res.statusCode != 200) {
+      throw Exception('Remote /state returned ${res.statusCode}');
+    }
     final Map<String, dynamic> j = jsonDecode(res.body) as Map<String, dynamic>;
     return RemoteState.fromJson(j);
   }
 
   /// Sends a playback command to the remote host.
   Future<void> sendCommand(String action, {num? value}) async {
-    await http
+    final res = await http
         .post(
           Uri.parse('$_base/command'),
           headers: {'Content-Type': 'application/json'},
@@ -37,6 +40,9 @@ class RemoteClient {
           }),
         )
         .timeout(const Duration(seconds: 5));
+    if (res.statusCode != 200) {
+      throw Exception('Remote /command returned ${res.statusCode}');
+    }
   }
 }
 

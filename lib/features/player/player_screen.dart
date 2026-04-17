@@ -65,7 +65,18 @@ class PlayerScreen extends HookConsumerWidget {
       lyricError.value = '';
       // Capture trackId so async result can be discarded if track changed
       final fetchId = track.effectiveId;
-      _doFetchLyrics(api, track, fetchId, lyrics, lyricsPlain, lyricError, lyricsLoading);
+      // Pass a live getter so stale() compares against the CURRENTLY playing
+      // track, not the captured `track` object (which always equals fetchId).
+      _doFetchLyrics(
+        api,
+        track,
+        fetchId,
+        () => ref.read(playerProvider).currentTrack?.effectiveId ?? '',
+        lyrics,
+        lyricsPlain,
+        lyricError,
+        lyricsLoading,
+      );
       return null;
     }, [tab.value, track?.effectiveId]);
 
@@ -872,13 +883,16 @@ class PlayerScreen extends HookConsumerWidget {
     FireballApi api,
     Track track,
     String fetchId,
+    String Function() liveId,
     ValueNotifier<List<({double time, String text})>> lyrics,
     ValueNotifier<List<String>> lyricsPlain,
     ValueNotifier<String> lyricError,
     ValueNotifier<bool> lyricsLoading,
   ) async {
-    // Helper: discard result if track has changed since fetch was initiated
-    bool stale() => track.effectiveId != fetchId;
+    // Helper: discard result if track has changed since fetch was initiated.
+    // Uses liveId() to read the CURRENT track from the player, not the
+    // captured `track` object (which would always equal fetchId).
+    bool stale() => liveId() != fetchId;
 
     try {
       final artist = track.artist;

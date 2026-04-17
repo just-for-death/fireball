@@ -812,7 +812,8 @@ class SettingsScreen extends HookConsumerWidget {
                     cs: cs,
                     children: [
                       // Last backup info
-                      if (settings.lastBackupAt != null)
+                      if (settings.lastBackupAt != null &&
+                          DateTime.tryParse(settings.lastBackupAt!) != null)
                         Padding(
                           padding: const EdgeInsets.only(bottom: 12),
                           child: Row(
@@ -822,7 +823,7 @@ class SettingsScreen extends HookConsumerWidget {
                                   color: Colors.white.withValues(alpha: 0.4)),
                               const SizedBox(width: 6),
                               Text(
-                                'Last backup: ${_fmtTime(DateTime.parse(settings.lastBackupAt!))}',
+                                'Last backup: ${_fmtTime(DateTime.tryParse(settings.lastBackupAt!)!)}',
                                 style: TextStyle(
                                     fontSize: 12,
                                     color:

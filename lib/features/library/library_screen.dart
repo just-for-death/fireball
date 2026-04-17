@@ -345,8 +345,8 @@ class LibraryScreen extends HookConsumerWidget {
                     onPressed: () async {
                       // Clear queue first if we're currently playing from this playlist
                       final player = ref.read(playerProvider);
-                      final currentId = player.currentTrack?.id;
-                      if (pl.videos.any((t) => t.id == currentId)) {
+                      final currentId = player.currentTrack?.effectiveId;
+                      if (pl.videos.any((t) => t.effectiveId == currentId)) {
                         ref.read(playerProvider.notifier).setQueue([]);
                       }
                       await ref

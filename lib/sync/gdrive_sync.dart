@@ -110,7 +110,7 @@ class GDriveSync {
   // ── Helpers ───────────────────────────────────────────────────────────────
   static Future<String?> _findFile(drive.DriveApi api) async {
     final ids = await _findAllFiles(api);
-    return ids.firstOrNull;
+    return ids.isEmpty ? null : ids.first;
   }
 
   static Future<List<String>> _findAllFiles(drive.DriveApi api) async {

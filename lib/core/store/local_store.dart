@@ -65,6 +65,10 @@ class LocalStoreNotifier extends StateNotifier<LibraryData> {
   // so that a late-finishing _init() cannot overwrite mutations made after init.
   final Completer<void> _ready = Completer<void>();
 
+  // Serializes concurrent _write() calls so a slower write can never land
+  // after a faster write and overwrite newer data with older data.
+  Future<void> _lastWrite = Future.value();
+
   Future<File> get _dbFile async {
     final dir = await getApplicationDocumentsDirectory();
     return File('${dir.path}/fireball_library.json');
@@ -139,7 +143,13 @@ class LocalStoreNotifier extends StateNotifier<LibraryData> {
     // Mark ready immediately when a mutation occurs so _init cannot overwrite
     if (!_ready.isCompleted) _ready.complete();
     await _ready.future; // ensures any in-flight init has finished before we write
-    await _write(state);
+    // Chain onto the previous write so concurrent saves are serialized.
+    // The closure captures `state` lazily (at execution time), so each write
+    // always persists the latest state — never an older one.
+    _lastWrite = _lastWrite
+        .catchError((_) {}) // recover from a prior write failure
+        .then((_) => _write(state));
+    await _lastWrite;
   }
 
   // ── Settings ──────────────────────────────────────────────────────────────────

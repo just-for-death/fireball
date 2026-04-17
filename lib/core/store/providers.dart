@@ -332,8 +332,13 @@ class PlayerNotifier extends StateNotifier<PlayerState>
       candidates.shuffle();
       await playIndex(candidates.first);
     } else {
-      final next = (state.currentIndex + 1) % q.length;
-      await playIndex(next);
+      final nextIdx = state.currentIndex + 1;
+      // With repeat-off, don't wrap past the last track — consistent with
+      // _onTrackComplete which also stops at the end rather than looping.
+      if (state.repeatMode == ElysiumRepeatMode.off && nextIdx >= q.length) {
+        return;
+      }
+      await playIndex(nextIdx % q.length);
     }
   }
 
@@ -387,6 +392,10 @@ class PlayerNotifier extends StateNotifier<PlayerState>
     final next = ElysiumRepeatMode
         .values[(state.repeatMode.index + 1) % ElysiumRepeatMode.values.length];
     state = state.copyWith(repeatMode: next);
+  }
+
+  void clearPlaybackError() {
+    state = state.copyWith(clearError: true);
   }
 
   void setFavorites(List<Track> favs) {
