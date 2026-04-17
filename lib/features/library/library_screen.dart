@@ -21,9 +21,14 @@ class LibraryScreen extends HookConsumerWidget {
 
     final tab = useState(_LibTab.favorites);
 
-    // Keep player favorites in sync with local store
+    // Keep player favorites in sync with local store.
+    // Deferred via Future.microtask to avoid modifying a provider during build.
     useEffect(() {
-      ref.read(playerProvider.notifier).setFavorites(library.favorites);
+      Future.microtask(() {
+        if (ref.context.mounted) {
+          ref.read(playerProvider.notifier).setFavorites(library.favorites);
+        }
+      });
       return null;
     }, [library.favorites]);
 

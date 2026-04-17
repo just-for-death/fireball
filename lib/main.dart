@@ -1,21 +1,21 @@
 import 'dart:io';
 import 'dart:ui';
+import 'package:just_audio_media_kit/just_audio_media_kit.dart';
 import 'package:dynamic_color/dynamic_color.dart';
 import 'package:flex_color_scheme/flex_color_scheme.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import 'package:just_audio_mpv/just_audio_mpv.dart';
+import 'package:media_kit/media_kit.dart';
 
 import 'routes/router.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  MediaKit.ensureInitialized();
 
-  // Register the MPV-based audio backend on Linux
-  if (!kIsWeb && Platform.isLinux) {
-    JustAudioMpv.registerWith();
+  if (Platform.isLinux) {
+    JustAudioMediaKit.ensureInitialized();
   }
 
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
