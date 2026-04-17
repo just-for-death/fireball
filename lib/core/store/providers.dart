@@ -294,11 +294,17 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     final q = state.queue;
     if (q.isEmpty) return;
     if (state.shuffled) {
-      final next = (List.generate(q.length, (i) => i)
-            ..remove(state.currentIndex)
-            ..shuffle())
-          .first;
-      await playIndex(next);
+      // Build candidate list excluding current index; fall back to current if only one track
+      final candidates = List.generate(q.length, (i) => i)
+        ..remove(state.currentIndex);
+      if (candidates.isEmpty) {
+        // Single-track queue — just restart
+        await _player.seek(Duration.zero);
+        await _player.play();
+        return;
+      }
+      candidates.shuffle();
+      await playIndex(candidates.first);
     } else {
       final next = (state.currentIndex + 1) % q.length;
       await playIndex(next);
@@ -306,13 +312,18 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
   }
 
   Future<void> previous() async {
-    if (state.queue.isEmpty) return;
+    final q = state.queue;
+    if (q.isEmpty) return;
+    // Guard against uninitialised index
+    if (state.currentIndex < 0) {
+      await playIndex(0);
+      return;
+    }
     if (state.position > const Duration(seconds: 3)) {
       await _player.seek(Duration.zero);
       return;
     }
-    final len = state.queue.length;
-    final prev = (state.currentIndex - 1 + len) % len;
+    final prev = (state.currentIndex - 1 + q.length) % q.length;
     await playIndex(prev);
   }
 
@@ -328,8 +339,15 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     await _player.seek(position);
   }
 
-  void setQueue(List<Track> tracks) {
-    state = state.copyWith(queue: tracks, currentIndex: -1);
+  Future<void> setQueue(List<Track> tracks) async {
+    await _player.stop();
+    state = state.copyWith(
+      queue: tracks,
+      currentIndex: -1,
+      isPlaying: false,
+      position: Duration.zero,
+      duration: Duration.zero,
+    );
   }
 
   void toggleShuffle() {

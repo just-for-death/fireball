@@ -63,12 +63,14 @@ class PlayerScreen extends HookConsumerWidget {
       if (lyrics.value.isNotEmpty || lyricsPlain.value.isNotEmpty) return null;
       lyricsLoading.value = true;
       lyricError.value = '';
-      _doFetchLyrics(
-          api, track, lyrics, lyricsPlain, lyricError, lyricsLoading);
+      // Capture trackId so async result can be discarded if track changed
+      final fetchId = track.effectiveId;
+      _doFetchLyrics(api, track, fetchId, lyrics, lyricsPlain, lyricError, lyricsLoading);
       return null;
     }, [tab.value, track?.effectiveId]);
 
     useEffect(() {
+      // Recalculate active lyric index when lyrics first load or position changes
       if (lyrics.value.isEmpty) return null;
       final currentSec = player.position.inMilliseconds / 1000;
       int idx = 0;
@@ -83,7 +85,7 @@ class PlayerScreen extends HookConsumerWidget {
         _scrollToLyric(lyricsScrollCtrl, idx);
       }
       return null;
-    }, [player.position]);
+    }, [player.position, lyrics.value.length]);
 
     final artworkUrl = track?.artwork ??
         'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=600';
@@ -187,6 +189,13 @@ class PlayerScreen extends HookConsumerWidget {
                       if (aiTrack != null) {
                         ref.read(playerProvider.notifier).playNext(aiTrack);
                       }
+                    } catch (e) {
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                          content: Text('AI queue failed: $e'),
+                          duration: const Duration(seconds: 3),
+                        ));
+                      }
                     } finally {
                       aiLoading.value = false;
                     }
@@ -275,43 +284,31 @@ class PlayerScreen extends HookConsumerWidget {
       padding: const EdgeInsets.symmetric(horizontal: 24),
       child: Column(
         children: [
-          GestureDetector(
-            onHorizontalDragUpdate: (details) {
-              final box =
-                  seekBarKey.currentContext?.findRenderObject() as RenderBox?;
-              final w = box?.size.width ?? 1.0;
-              final dx = details.localPosition.dx.clamp(0.0, w);
-              final target = Duration(
-                milliseconds:
-                    ((dx / w) * player.duration.inMilliseconds).toInt(),
-              );
-              ref.read(playerProvider.notifier).seekTo(target);
-            },
-            child: Container(
-              key: seekBarKey,
-              height: 30,
-              alignment: Alignment.center,
-              child: SliderTheme(
-                data: SliderTheme.of(context).copyWith(
-                  trackHeight: 4,
-                  thumbShape:
-                      const RoundSliderThumbShape(enabledThumbRadius: 6),
-                  overlayShape:
-                      const RoundSliderOverlayShape(overlayRadius: 14),
-                  activeTrackColor: Colors.white,
-                  inactiveTrackColor: Colors.white.withValues(alpha: 0.25),
-                  thumbColor: Colors.white,
-                  trackShape: const RoundedRectSliderTrackShape(),
-                ),
-                child: Slider(
-                  value: progress.clamp(0.0, 1.0),
-                  onChanged: (v) {
-                    final target = Duration(
-                        milliseconds:
-                            (v * player.duration.inMilliseconds).toInt());
-                    ref.read(playerProvider.notifier).seekTo(target);
-                  },
-                ),
+          SizedBox(
+            key: seekBarKey,
+            height: 30,
+            child: SliderTheme(
+              data: SliderTheme.of(context).copyWith(
+                trackHeight: 4,
+                thumbShape:
+                    const RoundSliderThumbShape(enabledThumbRadius: 6),
+                overlayShape:
+                    const RoundSliderOverlayShape(overlayRadius: 14),
+                activeTrackColor: Colors.white,
+                inactiveTrackColor: Colors.white.withValues(alpha: 0.25),
+                thumbColor: Colors.white,
+                trackShape: const RoundedRectSliderTrackShape(),
+              ),
+              child: Slider(
+                value: progress.clamp(0.0, 1.0),
+                onChanged: player.duration.inMilliseconds <= 0
+                    ? null
+                    : (v) {
+                        final target = Duration(
+                            milliseconds:
+                                (v * player.duration.inMilliseconds).toInt());
+                        ref.read(playerProvider.notifier).seekTo(target);
+                      },
               ),
             ),
           ),
@@ -874,11 +871,15 @@ class PlayerScreen extends HookConsumerWidget {
   Future<void> _doFetchLyrics(
     FireballApi api,
     Track track,
+    String fetchId,
     ValueNotifier<List<({double time, String text})>> lyrics,
     ValueNotifier<List<String>> lyricsPlain,
     ValueNotifier<String> lyricError,
     ValueNotifier<bool> lyricsLoading,
   ) async {
+    // Helper: discard result if track has changed since fetch was initiated
+    bool stale() => track.effectiveId != fetchId;
+
     try {
       final artist = track.artist;
       final title = track.title;
@@ -892,12 +893,15 @@ class PlayerScreen extends HookConsumerWidget {
           album: track.album,
           duration: track.duration,
         );
+        if (stale()) return;
         if (_applyLrclibResult(data, lyrics, lyricsPlain)) return;
       } on Exception catch (_) {}
+      if (stale()) return;
 
       // 2. LRCLIB structured field search (track_name + artist_name)
       try {
         final raw = await api.lrclibSearchByFields(title, artist);
+        if (stale()) return;
         final results = raw is List<dynamic> ? raw : null;
         if (results != null && results.isNotEmpty) {
           final best = _bestLrclibMatch(results, title, artist);
@@ -905,10 +909,12 @@ class PlayerScreen extends HookConsumerWidget {
               _applyLrclibResult(best, lyrics, lyricsPlain)) { return; }
         }
       } on Exception catch (_) {}
+      if (stale()) return;
 
       // 3. LRCLIB fuzzy combined-query search
       try {
         final raw = await api.lrclibSearch(query);
+        if (stale()) return;
         final results = raw is List<dynamic> ? raw : null;
         if (results != null && results.isNotEmpty) {
           final best = _bestLrclibMatch(results, title, artist);
@@ -916,28 +922,38 @@ class PlayerScreen extends HookConsumerWidget {
               _applyLrclibResult(best, lyrics, lyricsPlain)) { return; }
         }
       } on Exception catch (_) {}
+      if (stale()) return;
 
       // 4. NetEase fallback (may be geo-blocked outside China)
       try {
         final searchData = await api.lyricsSearch(query);
+        if (stale()) return;
         final songs = searchData?['result']?['songs'] as List<dynamic>?;
         if (songs != null && songs.isNotEmpty) {
           final best = _bestNetEaseMatch(songs, artist);
-          final lyricData = await api.lyricsGet(best['id'].toString());
-          final lrc = lyricData?['lrc']?['lyric'] as String? ?? '';
-          final parsed = _parseLRC(lrc);
-          if (parsed.isNotEmpty) {
-            lyrics.value = parsed;
-            return;
+          final bestId = best['id'];
+          if (bestId != null) {
+            final lyricData = await api.lyricsGet(bestId.toString());
+            if (stale()) return;
+            final lrc = lyricData?['lrc']?['lyric'] as String? ?? '';
+            final parsed = _parseLRC(lrc);
+            if (parsed.isNotEmpty) {
+              lyrics.value = parsed;
+              return;
+            }
           }
         }
       } on Exception catch (_) {}
 
       throw Exception('No lyrics found');
     } catch (e) {
-      lyricError.value = 'No lyrics found';
+      if (!stale()) {
+        lyricError.value = 'No lyrics found';
+      }
     } finally {
-      lyricsLoading.value = false;
+      if (!stale()) {
+        lyricsLoading.value = false;
+      }
     }
   }
 
@@ -998,14 +1014,26 @@ class PlayerScreen extends HookConsumerWidget {
 
   List<({double time, String text})> _parseLRC(String lrc) {
     final result = <({double time, String text})>[];
-    for (final line in lrc.split('\n')) {
-      final m =
-          RegExp(r'\[(\d+):(\d+(?:\.\d+)?)\](.*)').firstMatch(line);
-      if (m != null) {
-        final time = int.parse(m.group(1)!) * 60 +
-            double.parse(m.group(2)!);
-        final text = m.group(3)!.trim();
-        if (text.isNotEmpty) result.add((time: time, text: text));
+    // Matches all timestamps in a line: [mm:ss.xx] or [mm:ss:xx]
+    final tsRe = RegExp(r'\[(\d+):(\d+(?:[.:]\d+)?)\]');
+    for (final rawLine in lrc.split('\n')) {
+      final line = rawLine.trim();
+      // Skip metadata tags like [ar:...] [ti:...] [offset:...]
+      if (RegExp(r'^\[[a-zA-Z]+:').hasMatch(line)) continue;
+      final matches = tsRe.allMatches(line);
+      if (matches.isEmpty) continue;
+      // Text is everything after the last timestamp tag
+      final lastMatch = matches.last;
+      final text = line.substring(lastMatch.end).trim();
+      if (text.isEmpty) continue;
+      for (final m in matches) {
+        try {
+          final secStr = m.group(2)!.replaceAll(':', '.');
+          final time = int.parse(m.group(1)!) * 60 + double.parse(secStr);
+          result.add((time: time, text: text));
+        } catch (_) {
+          // Skip malformed timestamp
+        }
       }
     }
     result.sort((a, b) => a.time.compareTo(b.time));
@@ -1014,8 +1042,12 @@ class PlayerScreen extends HookConsumerWidget {
 
   void _scrollToLyric(ScrollController ctrl, int idx) {
     if (!ctrl.hasClients) return;
-    final offset =
-        (idx * 60.0).clamp(0.0, ctrl.position.maxScrollExtent);
+    // Estimate item height: ~22px font + 16px vertical padding = 38px.
+    // Subtract half viewport to center the active lyric.
+    const itemH = 38.0;
+    final viewportH = ctrl.position.viewportDimension;
+    final raw = idx * itemH - (viewportH / 2) + itemH / 2;
+    final offset = raw.clamp(0.0, ctrl.position.maxScrollExtent);
     ctrl.animateTo(
       offset,
       duration: const Duration(milliseconds: 300),

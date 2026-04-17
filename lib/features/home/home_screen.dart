@@ -103,7 +103,7 @@ class HomeScreen extends HookConsumerWidget {
     useEffect(() {
       load();
       return null;
-    }, [country.value, lbEnabled]);
+    }, [country.value, lbEnabled, lbUsername, lbToken]);
 
     useEffect(() {
       loadLbTop();
@@ -449,8 +449,11 @@ class HomeScreen extends HookConsumerWidget {
               SliverList(
                 delegate: SliverChildBuilderDelegate(
                   (context, index) {
-                    final listen = lbRecent.value[index] as Map;
-                    final meta = listen['track_metadata'] as Map? ?? {};
+                    final rawListen = lbRecent.value[index];
+                    if (rawListen is! Map) return const SizedBox.shrink();
+                    final listen = rawListen;
+                    final rawMeta = listen['track_metadata'];
+                    final meta = rawMeta is Map ? rawMeta : const <String, dynamic>{};
                     final mbidMapping = meta['mbid_mapping'] as Map?;
                     final caaMbid = mbidMapping?['caa_release_mbid'] as String?;
                     final listenedAt = listen['listened_at'] as int?;
