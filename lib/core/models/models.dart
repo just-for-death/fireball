@@ -116,6 +116,8 @@ class FireballSettings {
   // Remote Control
   final bool remoteServerEnabled;
   final String remoteHostIp;
+  // Home
+  final List<String> homeCountries;
 
   const FireballSettings({
     this.ollamaEnabled = false,
@@ -149,6 +151,7 @@ class FireballSettings {
     this.webDavLiveSync = false,
     this.remoteServerEnabled = false,
     this.remoteHostIp = '',
+    this.homeCountries = const [],
   });
 
   factory FireballSettings.fromJson(Map<String, dynamic> j) {
@@ -206,6 +209,7 @@ class FireballSettings {
       webDavLiveSync: toBool(j['webDavLiveSync'], false),
       remoteServerEnabled: toBool(j['remoteServerEnabled'], false),
       remoteHostIp: j['remoteHostIp']?.toString() ?? '',
+      homeCountries: toStringList(j['homeCountries']),
     );
   }
 
@@ -241,6 +245,7 @@ class FireballSettings {
         'webDavLiveSync': webDavLiveSync,
         'remoteServerEnabled': remoteServerEnabled,
         'remoteHostIp': remoteHostIp,
+        'homeCountries': homeCountries,
       };
 
   FireballSettings copyWith({
@@ -277,6 +282,7 @@ class FireballSettings {
     bool? webDavLiveSync,
     bool? remoteServerEnabled,
     String? remoteHostIp,
+    List<String>? homeCountries,
   }) =>
       FireballSettings(
         ollamaEnabled: ollamaEnabled ?? this.ollamaEnabled,
@@ -313,5 +319,6 @@ class FireballSettings {
         webDavLiveSync: webDavLiveSync ?? this.webDavLiveSync,
         remoteServerEnabled: remoteServerEnabled ?? this.remoteServerEnabled,
         remoteHostIp: remoteHostIp ?? this.remoteHostIp,
+        homeCountries: homeCountries ?? this.homeCountries,
       );
 }

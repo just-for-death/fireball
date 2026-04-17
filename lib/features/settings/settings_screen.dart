@@ -4,6 +4,7 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 import '../../core/api/fireball_api.dart';
+import '../../core/countries.dart';
 import '../../core/store/providers.dart';
 import '../../core/widgets/glass_widgets.dart';
 import '../../features/remote/remote_screen.dart';
@@ -1012,6 +1013,93 @@ class SettingsScreen extends HookConsumerWidget {
                             onChanged: (v) =>
                                 saveSettings({'webDavLiveSync': v}),
                             activeThumbColor: cs.primary,
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  // ── TRENDING COUNTRIES ────────────────────────────────────
+                  _SectionCard(
+                    title: 'TRENDING COUNTRIES',
+                    icon: Icons.public_rounded,
+                    isDark: isDark,
+                    cs: cs,
+                    children: [
+                      Text(
+                        'Choose which countries appear in the home screen trending picker.',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.white.withValues(alpha: 0.5),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: kAllCountries.map((entry) {
+                          final (code, label) = entry;
+                          final selected = settings.homeCountries.isEmpty
+                              ? kDefaultHomeCountries.contains(code)
+                              : settings.homeCountries.contains(code);
+                          return GestureDetector(
+                            onTap: () {
+                              final current = settings.homeCountries.isEmpty
+                                  ? List<String>.from(kDefaultHomeCountries)
+                                  : List<String>.from(settings.homeCountries);
+                              if (selected) {
+                                if (current.length <= 1) return;
+                                current.remove(code);
+                              } else {
+                                current.add(code);
+                              }
+                              saveSettings({'homeCountries': current});
+                            },
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 180),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 12, vertical: 7),
+                              decoration: BoxDecoration(
+                                color: selected
+                                    ? cs.primary.withValues(alpha: 0.25)
+                                    : Colors.white.withValues(alpha: 0.06),
+                                borderRadius: BorderRadius.circular(20),
+                                border: Border.all(
+                                  color: selected
+                                      ? cs.primary
+                                      : Colors.white.withValues(alpha: 0.12),
+                                  width: 1.5,
+                                ),
+                              ),
+                              child: Text(
+                                label,
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: selected
+                                      ? FontWeight.w600
+                                      : FontWeight.w400,
+                                  color: selected
+                                      ? Colors.white
+                                      : Colors.white.withValues(alpha: 0.55),
+                                ),
+                              ),
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          TextButton(
+                            onPressed: () =>
+                                saveSettings({'homeCountries': kDefaultHomeCountries}),
+                            child: Text('Reset to defaults',
+                                style: TextStyle(
+                                    fontSize: 12,
+                                    color: cs.primary.withValues(alpha: 0.8))),
                           ),
                         ],
                       ),

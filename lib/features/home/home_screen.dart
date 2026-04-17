@@ -5,19 +5,11 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:shimmer/shimmer.dart';
 
 import '../../core/api/fireball_api.dart';
+import '../../core/countries.dart';
 import '../../core/models/track.dart';
 import '../../core/store/providers.dart';
 import '../../core/utils.dart';
 import '../../core/widgets/glass_widgets.dart';
-
-const _countries = [
-  ('us', '🇺🇸 US'),
-  ('gb', '🇬🇧 UK'),
-  ('jp', '🇯🇵 Japan'),
-  ('kr', '🇰🇷 Korea'),
-  ('in', '🇮🇳 India'),
-  ('de', '🇩🇪 Germany'),
-];
 
 const _lbRanges = [
   ('week', 'Week'),
@@ -46,6 +38,14 @@ class HomeScreen extends HookConsumerWidget {
     final lbRange      = useState('month');
     final loading      = useState(true);
     final lbTopLoading = useState(false);
+
+    // ── Visible countries (filtered by settings, fallback to defaults) ──────
+    final savedCodes = settings.homeCountries;
+    final visibleCountries = savedCodes.isEmpty
+        ? kAllCountries
+            .where((c) => kDefaultHomeCountries.contains(c.$1))
+            .toList()
+        : kAllCountries.where((c) => savedCodes.contains(c.$1)).toList();
 
     // ── LB availability ────────────────────────────────────────────────────
     final lbEnabled = settings.listenBrainzEnabled &&
@@ -185,7 +185,7 @@ class HomeScreen extends HookConsumerWidget {
                       child: Wrap(
                         spacing: 10,
                         runSpacing: 10,
-                        children: _countries.map((c) {
+                        children: visibleCountries.map((c) {
                           final (cc, label) = c;
                           return GlassPill(
                             label: label,
@@ -201,10 +201,10 @@ class HomeScreen extends HookConsumerWidget {
                       child: ListView.separated(
                         scrollDirection: Axis.horizontal,
                         padding: const EdgeInsets.symmetric(horizontal: 24),
-                        itemCount: _countries.length,
+                        itemCount: visibleCountries.length,
                         separatorBuilder: (_, __) => const SizedBox(width: 10),
                         itemBuilder: (context, i) {
-                          final (cc, label) = _countries[i];
+                          final (cc, label) = visibleCountries[i];
                           return GlassPill(
                             label: label,
                             selected: country.value == cc,
