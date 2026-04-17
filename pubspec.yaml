@@ -76,10 +76,19 @@ flutter_native_splash:
     color: "#050505"
     icon_background_color: "#050505"
 
+# Launcher icons: Android uses adaptive layers (circle / squircle / rounded-rect masks).
+# Foreground inset keeps the mark inside the safe zone on all OEM shapes.
 flutter_launcher_icons:
   android: "launcher_icon"
   ios: true
   linux: true
   remove_alpha_ios: true
   image_path: "assets/icon.png"
+  image_path_ios: "assets/icon.png"
+  background_color_ios: "#050505"
+  # Adaptive (API 26+): background color + foreground; inset % = safe zone padding
+  adaptive_icon_foreground: "assets/icon.png"
   adaptive_icon_background: "#050505"
+  adaptive_icon_foreground_inset: 22
+  # Android 13+ themed / monochrome launcher icon
+  adaptive_icon_monochrome: "assets/icon-monochrome.png"
