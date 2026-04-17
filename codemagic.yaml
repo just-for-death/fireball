@@ -16,8 +16,37 @@
 #
 # Unsigned IPA: use workflow `fireball-ios-unsigned-ipa` (no Apple signing; artifact is not
 # installable on real devices until you sign it yourself).
+#
+# Android APK: workflow `fireball-android-apk` — release APK (add android_signing + keystore in
+# Codemagic for Play Store–style signing; project currently uses debug signing for release).
 
 workflows:
+  fireball-android-apk:
+    name: Fireball Android APK
+    max_build_duration: 120
+    instance_type: linux_x2
+    environment:
+      flutter: stable
+      vars:
+        FLUTTER_BUILD_NAME: "1.0.0"
+    scripts:
+      - name: Install dependencies
+        script: |
+          set -e
+          flutter pub get
+
+      - name: Build release APK
+        script: |
+          set -e
+          VERSION_NAME="${FLUTTER_BUILD_NAME:-1.0.0}"
+          BN="${CM_BUILD_NUMBER:-1}"
+          flutter build apk --release \
+            --build-name="$VERSION_NAME" \
+            --build-number="$BN"
+
+    artifacts:
+      - build/app/outputs/flutter-apk/*.apk
+
   fireball-ios-unsigned-ipa:
     name: Fireball iOS unsigned IPA
     max_build_duration: 120

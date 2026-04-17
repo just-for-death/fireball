@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io' show Platform;
 import 'dart:ui';
 
@@ -58,10 +59,8 @@ Future<void> _initMediaService() async {
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // Required before any media_kit Player is created (PlayerNotifier ctor).
   MediaKit.ensureInitialized();
-
-  await _initMediaService();
-  await _initAudioSession();
 
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
   SystemChrome.setSystemUIOverlayStyle(
@@ -71,7 +70,19 @@ void main() async {
     ),
   );
 
+  // Show UI immediately. Do not await AudioService / AudioSession here — on iOS those
+  // calls can stall; blocking main() before runApp() leaves the native splash forever.
   runApp(const ProviderScope(child: FireballApp()));
+
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    unawaited(_bootstrapAudioAfterFirstFrame());
+  });
+}
+
+Future<void> _bootstrapAudioAfterFirstFrame() async {
+  await _initMediaService();
+  await _initAudioSession();
+  MediaSessionBridge.sync();
 }
 
 class FireballApp extends ConsumerWidget {
