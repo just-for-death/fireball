@@ -25,7 +25,11 @@ class WebDavLiveSync {
       final files = await client.readDir('/fireball');
       webdav.File? remote;
       for (final f in files) {
-        if (f.name == 'library.json') {
+        // Match by name or by full path suffix in case the server returns
+        // the full path instead of just the filename.
+        final name = f.name ?? '';
+        final path = f.path ?? '';
+        if (name == 'library.json' || path.endsWith('library.json')) {
           remote = f;
           break;
         }
