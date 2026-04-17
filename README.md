@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/icon.png" alt="Fireball" width="120" height="120">
+</p>
+
 # 🔥 Fireball
 
 **Your music, anywhere.** A standalone, server-free music player for iOS and Android built with Flutter.

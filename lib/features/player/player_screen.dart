@@ -15,6 +15,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/widgets/empty_state.dart';
+import '../../core/widgets/fireball_logo.dart';
 import '../../core/store/providers.dart';
 
 enum _PlayerTab { cover, lyrics, queue }
@@ -24,6 +25,101 @@ String? _invidiousWatchUrl(FireballSettings s, Track? t) {
   if (vid == null || vid.isEmpty || s.invidiousInstance.isEmpty) return null;
   final base = s.invidiousInstance.replaceAll(RegExp(r'/+$'), '');
   return '$base/watch?v=${Uri.encodeComponent(vid)}';
+}
+
+String _lrclibLyricsBlobDynamic(dynamic r) {
+  if (r == null) return '';
+  final synced = r['syncedLyrics'] as String?;
+  if (synced != null && synced.trim().isNotEmpty) return synced;
+  final plain = r['plainLyrics'] as String?;
+  if (plain != null && plain.trim().isNotEmpty) return plain;
+  return '';
+}
+
+/// Higher = more Latin + Devanagari (English / Hindi); lower = e.g. Urdu/Arabic script.
+double _englishHindiLyricsScore(String text) {
+  if (text.trim().isEmpty) return 0;
+  final sample = text.length > 900 ? text.substring(0, 900) : text;
+  var latin = 0, deva = 0, arabic = 0, total = 0;
+  for (final c in sample.runes) {
+    if (c == 0x20 || c == 0x0A || c == 0x0D) continue;
+    total++;
+    if ((c >= 0x0041 && c <= 0x024F) || (c >= 0x1E00 && c <= 0x1EFF)) {
+      latin++;
+    } else if (c >= 0x0900 && c <= 0x097F) {
+      deva++;
+    } else if ((c >= 0x0600 && c <= 0x06FF) ||
+        (c >= 0x0750 && c <= 0x077F) ||
+        (c >= 0xFB50 && c <= 0xFDFF)) {
+      arabic++;
+    }
+  }
+  if (total == 0) return 0;
+  final enHi = (latin + deva) / total;
+  final ar = arabic / total;
+  return (enHi - ar * 0.85).clamp(0.0, 1.0);
+}
+
+bool _isArabicScriptDominant(String text) {
+  final sample = text.length > 500 ? text.substring(0, 500) : text;
+  var arabic = 0, letters = 0;
+  for (final c in sample.runes) {
+    if (c == 0x20 || c == 0x0A) continue;
+    if (c > 0x20) letters++;
+    if ((c >= 0x0600 && c <= 0x06FF) ||
+        (c >= 0x0750 && c <= 0x077F) ||
+        (c >= 0xFB50 && c <= 0xFDFF)) {
+      arabic++;
+    }
+  }
+  if (letters < 10) return false;
+  return (arabic / letters) > 0.38;
+}
+
+bool _skipLrclibGetForEnHi(dynamic data, bool preferEnHi) {
+  if (!preferEnHi || data == null) return false;
+  final blob = _lrclibLyricsBlobDynamic(data);
+  if (blob.isEmpty) return false;
+  if (_englishHindiLyricsScore(blob) >= 0.22) return false;
+  return _isArabicScriptDominant(blob);
+}
+
+int _lrclibStructuralRank(dynamic r, String title, String artist) {
+  final tl = title.toLowerCase();
+  final al = artist.toLowerCase();
+  final ra = (r['artistName'] as String? ?? '').toLowerCase();
+  final rt = (r['trackName'] as String? ?? '').toLowerCase();
+  if ((ra.contains(al) || al.contains(ra)) &&
+      (rt.contains(tl) || tl.contains(rt))) {
+    return 100;
+  }
+  if (rt.contains(tl) || tl.contains(rt)) return 50;
+  return 10;
+}
+
+double _combinedLrclibSort(
+  dynamic r,
+  String title,
+  String artist,
+  bool preferEnHi,
+) {
+  var score = _lrclibStructuralRank(r, title, artist).toDouble();
+  if (preferEnHi) {
+    score += _englishHindiLyricsScore(_lrclibLyricsBlobDynamic(r)) * 45;
+  }
+  return score;
+}
+
+List<dynamic> _sortedLrclibPool(
+  List<dynamic> pool,
+  String title,
+  String artist,
+  bool preferEnHi,
+) {
+  final list = List<dynamic>.from(pool);
+  list.sort((a, b) => _combinedLrclibSort(b, title, artist, preferEnHi)
+      .compareTo(_combinedLrclibSort(a, title, artist, preferEnHi)));
+  return list;
 }
 
 class PlayerScreen extends HookConsumerWidget {
@@ -49,6 +145,7 @@ class PlayerScreen extends HookConsumerWidget {
     final seekBarKey = useMemoized(() => GlobalKey(), const []);
     final artworkAnim = useAnimationController(
         duration: const Duration(milliseconds: 300));
+    final resolvedArtwork = useState<String?>(null);
 
     useEffect(() {
       artworkAnim
@@ -60,6 +157,25 @@ class PlayerScreen extends HookConsumerWidget {
       lyricsInstrumental.value = false;
       activeLyricIdx.value = 0;
       return null;
+    }, [track?.effectiveId]);
+
+    useEffect(() {
+      resolvedArtwork.value = null;
+      final t = track;
+      if (t == null) return null;
+      if (t.artwork != null && t.artwork!.isNotEmpty) return null;
+      var cancelled = false;
+      Future(() async {
+        try {
+          final url = await api.itunesArtworkForTrack(t.artist, t.title);
+          if (!cancelled && url != null) {
+            resolvedArtwork.value = url;
+          }
+        } catch (_) {}
+      });
+      return () {
+        cancelled = true;
+      };
     }, [track?.effectiveId]);
 
     final rotationCtrl =
@@ -93,9 +209,10 @@ class PlayerScreen extends HookConsumerWidget {
         lyricError,
         lyricsLoading,
         lyricsInstrumental,
+        settings.lyricsPreferEnglishHindi,
       );
       return null;
-    }, [tab.value, track?.effectiveId]);
+    }, [tab.value, track?.effectiveId, settings.lyricsPreferEnglishHindi]);
 
     useEffect(() {
       // Recalculate active lyric index when lyrics first load or position changes
@@ -117,8 +234,9 @@ class PlayerScreen extends HookConsumerWidget {
       return null;
     }, [player.position, lyrics.value.length, settings.lyricsAutoScroll]);
 
-    final artworkUrl = track?.artwork ??
-        'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=600';
+    final displayArtwork = (track?.artwork?.isNotEmpty ?? false)
+        ? track!.artwork
+        : resolvedArtwork.value;
 
     final progress = player.duration.inMilliseconds > 0
         ? player.position.inMilliseconds / player.duration.inMilliseconds
@@ -143,12 +261,16 @@ class PlayerScreen extends HookConsumerWidget {
           body: Stack(
             fit: StackFit.expand,
             children: [
-              if (track?.artwork != null)
-                CachedNetworkImage(
-                  imageUrl: track!.artwork!,
-                  fit: BoxFit.cover,
-                  errorWidget: (_, __, ___) => const SizedBox.shrink(),
-                ),
+              Positioned.fill(
+                child: displayArtwork != null
+                    ? CachedNetworkImage(
+                        imageUrl: displayArtwork,
+                        fit: BoxFit.cover,
+                        errorWidget: (_, __, ___) =>
+                            Image.asset('assets/icon.png', fit: BoxFit.cover),
+                      )
+                    : Image.asset('assets/icon.png', fit: BoxFit.cover),
+              ),
               BackdropFilter(
                 filter: ImageFilter.blur(sigmaX: 60, sigmaY: 60),
                 child:
@@ -161,7 +283,7 @@ class PlayerScreen extends HookConsumerWidget {
                     if (isTablet) {
                       return _buildTabletLayout(
                         context, ref, track, player, settings, api,
-                        artworkUrl, progress, tab, lyrics, lyricsPlain,
+                        displayArtwork, progress, tab, lyrics, lyricsPlain,
                         lyricsLoading, lyricError, lyricsInstrumental,
                         activeLyricIdx,
                         lyricsScrollCtrl, artworkAnim, rotationCtrl,
@@ -170,7 +292,7 @@ class PlayerScreen extends HookConsumerWidget {
                     }
                     return _buildPhoneLayout(
                       context, ref, track, player, settings, api,
-                      artworkUrl, progress, tab, lyrics, lyricsPlain,
+                      displayArtwork, progress, tab, lyrics, lyricsPlain,
                       lyricsLoading, lyricError, lyricsInstrumental,
                       activeLyricIdx,
                       lyricsScrollCtrl, artworkAnim, rotationCtrl,
@@ -574,7 +696,7 @@ class PlayerScreen extends HookConsumerWidget {
     BuildContext context, WidgetRef ref,
     Track? track, PlayerState player,
     FireballSettings settings, FireballApi api,
-    String artworkUrl, double progress,
+    String? artworkUrl, double progress,
     ValueNotifier<_PlayerTab> tab,
     ValueNotifier<List<({double time, String text})>> lyrics,
     ValueNotifier<List<String>> lyricsPlain,
@@ -615,7 +737,7 @@ class PlayerScreen extends HookConsumerWidget {
     BuildContext context, WidgetRef ref,
     Track? track, PlayerState player,
     FireballSettings settings, FireballApi api,
-    String artworkUrl, double progress,
+    String? artworkUrl, double progress,
     ValueNotifier<_PlayerTab> tab,
     ValueNotifier<List<({double time, String text})>> lyrics,
     ValueNotifier<List<String>> lyricsPlain,
@@ -678,16 +800,9 @@ class PlayerScreen extends HookConsumerWidget {
                                       color: Colors.white10, width: 2),
                                 ),
                                 child: ClipOval(
-                                  child: CachedNetworkImage(
-                                    imageUrl: artworkUrl,
+                                  child: FireballPlayerArtwork(
+                                    networkUrl: artworkUrl,
                                     fit: BoxFit.cover,
-                                    errorWidget: (_, __, ___) => Container(
-                                      color: cs.surfaceContainerHighest,
-                                      child: Icon(Icons.music_note_rounded,
-                                          size: 80,
-                                          color: cs.primary
-                                              .withValues(alpha: 0.4)),
-                                    ),
                                   ),
                                 ),
                               ),
@@ -755,7 +870,7 @@ class PlayerScreen extends HookConsumerWidget {
     WidgetRef ref,
     _PlayerTab tab,
     PlayerState player,
-    String artworkUrl,
+    String? artworkUrl,
     ValueNotifier<List<({double time, String text})>> lyrics,
     ValueNotifier<List<String>> lyricsPlain,
     ValueNotifier<bool> lyricsLoading,
@@ -807,16 +922,9 @@ class PlayerScreen extends HookConsumerWidget {
                               color: Colors.white10, width: 2),
                         ),
                         child: ClipOval(
-                          child: CachedNetworkImage(
-                            imageUrl: artworkUrl,
+                          child: FireballPlayerArtwork(
+                            networkUrl: artworkUrl,
                             fit: BoxFit.cover,
-                            errorWidget: (_, __, ___) => Container(
-                              color: cs.surfaceContainerHighest,
-                              child: Icon(Icons.music_note_rounded,
-                                  size: 80,
-                                  color: cs.primary
-                                      .withValues(alpha: 0.4)),
-                            ),
                           ),
                         ),
                       ),
@@ -1122,6 +1230,7 @@ class PlayerScreen extends HookConsumerWidget {
     ValueNotifier<String> lyricError,
     ValueNotifier<bool> lyricsLoading,
     ValueNotifier<bool> lyricsInstrumental,
+    bool preferEnglishHindi,
   ) async {
     // Returns true when the player has moved on to a different track.
     bool stale() => liveId() != fetchId;
@@ -1156,7 +1265,8 @@ class PlayerScreen extends HookConsumerWidget {
       // ── Parse LRCLIB result ─────────────────────────────────────────────
       var lrclibSynced = <({double time, String text})>[];
       var lrclibPlain = <String>[];
-      if (lrclibData != null) {
+      if (lrclibData != null &&
+          !_skipLrclibGetForEnHi(lrclibData, preferEnglishHindi)) {
         final syncedStr = lrclibData['syncedLyrics'] as String?;
         if (syncedStr != null && syncedStr.trim().isNotEmpty) {
           lrclibSynced = _parseLRC(syncedStr);
@@ -1238,9 +1348,15 @@ class PlayerScreen extends HookConsumerWidget {
                 .where((r) => (r['syncedLyrics'] as String?) != null)
                 .toList();
             final pool = withSync.isNotEmpty ? withSync : results;
-            final best = _bestLrclibMatch(pool, title, artist);
-            if (best != null && _applyLrclibResult(best, lyrics, lyricsPlain)) {
-              return;
+            for (final candidate in _sortedLrclibPool(
+              pool,
+              title,
+              artist,
+              preferEnglishHindi,
+            )) {
+              if (_applyLrclibResult(candidate, lyrics, lyricsPlain)) {
+                return;
+              }
             }
           }
         } on Exception catch (_) {}
@@ -1253,10 +1369,15 @@ class PlayerScreen extends HookConsumerWidget {
           if (stale()) return;
           final results = raw is List<dynamic> ? raw : null;
           if (results != null && results.isNotEmpty) {
-            final best = _bestLrclibMatch(results, title, artist);
-            if (best != null &&
-                _applyLrclibResult(best, lyrics, lyricsPlain)) {
-              return;
+            for (final candidate in _sortedLrclibPool(
+              results,
+              title,
+              artist,
+              preferEnglishHindi,
+            )) {
+              if (_applyLrclibResult(candidate, lyrics, lyricsPlain)) {
+                return;
+              }
             }
           }
         } on Exception catch (_) {}
@@ -1290,25 +1411,6 @@ class PlayerScreen extends HookConsumerWidget {
       return true;
     }
     return false;
-  }
-
-  dynamic _bestLrclibMatch(
-      List<dynamic> results, String title, String artist) {
-    final tl = title.toLowerCase();
-    final al = artist.toLowerCase();
-    for (final r in results) {
-      final ra = (r['artistName'] as String? ?? '').toLowerCase();
-      final rt = (r['trackName'] as String? ?? '').toLowerCase();
-      if ((ra.contains(al) || al.contains(ra)) &&
-          (rt.contains(tl) || tl.contains(rt))) {
-        return r;
-      }
-    }
-    for (final r in results) {
-      final rt = (r['trackName'] as String? ?? '').toLowerCase();
-      if (rt.contains(tl) || tl.contains(rt)) return r;
-    }
-    return results.first;
   }
 
   Map<String, dynamic> _bestNetEaseMatch(

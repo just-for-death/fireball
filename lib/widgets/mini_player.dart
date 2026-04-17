@@ -405,12 +405,18 @@ class _ArtworkTile extends StatelessWidget {
     );
   }
 
-  Widget _placeholder() => Container(
+  Widget _placeholder() => Image.asset(
+        'assets/icon.png',
         width: size,
         height: size,
-        color: cs.surfaceContainerHighest,
-        child: Icon(Icons.music_note_rounded,
-            color: cs.primary.withValues(alpha: 0.6), size: size * 0.5),
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => Container(
+          width: size,
+          height: size,
+          color: cs.surfaceContainerHighest,
+          child: Icon(Icons.music_note_rounded,
+              color: cs.primary.withValues(alpha: 0.6), size: size * 0.5),
+        ),
       );
 }
 

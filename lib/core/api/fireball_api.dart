@@ -107,6 +107,39 @@ class FireballApi {
     );
   }
 
+  /// Album art from iTunes Search when Invidious (or other sources) have none.
+  /// Returns a ~600×600 URL, or null.
+  Future<String?> itunesArtworkForTrack(String artist, String title,
+      {int limit = 12}) async {
+    final term = '$artist $title'.trim();
+    if (term.length < 2) return null;
+    try {
+      final data = await itunesSearch(term, limit: limit);
+      final raw = data['results'] as List<dynamic>? ?? [];
+      if (raw.isEmpty) return null;
+      final tl = title.toLowerCase();
+      final al = artist.toLowerCase();
+      for (final t in raw) {
+        final tn = (t['trackName'] as String? ?? '').toLowerCase();
+        final an = (t['artistName'] as String? ?? '').toLowerCase();
+        final url = t['artworkUrl100'] as String?;
+        if (url == null || url.isEmpty) continue;
+        final titleMatch =
+            tn.contains(tl) || tl.contains(tn) || tl.runes.length < 4;
+        final artistMatch =
+            an.contains(al) || al.contains(an) || al.runes.length < 3;
+        if (titleMatch && artistMatch) {
+          return url.replaceAll('100x100bb', '600x600bb');
+        }
+      }
+      final url = raw.first['artworkUrl100'] as String?;
+      if (url == null || url.isEmpty) return null;
+      return url.replaceAll('100x100bb', '600x600bb');
+    } catch (_) {
+      return null;
+    }
+  }
+
   // ── LRCLIB ────────────────────────────────────────────────────────────────
   static const _lrclibBase = 'https://lrclib.net/api';
   static const _lrclibHeaders = {'Lrclib-Client': 'Fireball Music Player'};
