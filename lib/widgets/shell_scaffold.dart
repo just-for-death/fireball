@@ -58,11 +58,16 @@ class ShellScaffold extends HookConsumerWidget {
     final store = ref.read(localStoreProvider.notifier);
     final player = ref.read(playerProvider.notifier);
 
-    // WebDAV live sync: pull/push on app resume
+    // WebDAV live sync: pull/push on app resume.
+    // Read fresh settings via ref.read inside the callback so that credential
+    // changes (password, username) are picked up without restarting the listener.
     useEffect(() {
       if (!settings.webDavLiveSync || settings.webDavUrl.isEmpty) return null;
       final listener = AppLifecycleListener(
-        onResume: () => WebDavLiveSync.syncIfNeeded(settings, store),
+        onResume: () => WebDavLiveSync.syncIfNeeded(
+          ref.read(localStoreProvider).settings,
+          store,
+        ),
       );
       return listener.dispose;
     }, [settings.webDavLiveSync, settings.webDavUrl]);

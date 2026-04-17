@@ -182,14 +182,17 @@ class PlayerNotifier extends StateNotifier<PlayerState>
     state = state.copyWith(currentIndex: index, clearError: true);
     final track = state.queue[index];
 
+    // Single settings read — used for both playing-now and stream resolution
+    // below, so we don't risk two divergent snapshots if settings mutate.
+    final settings = _settings;
+
     // Submit "playing now" to ListenBrainz
-    final s = _settings;
-    if (s.listenBrainzEnabled &&
-        s.listenBrainzPlayingNow &&
-        s.listenBrainzToken.isNotEmpty) {
+    if (settings.listenBrainzEnabled &&
+        settings.listenBrainzPlayingNow &&
+        settings.listenBrainzToken.isNotEmpty) {
       _api
           .submitPlayingNow(
-            token: s.listenBrainzToken,
+            token: settings.listenBrainzToken,
             artistName: track.artist,
             trackName: track.title,
           )
@@ -198,7 +201,6 @@ class PlayerNotifier extends StateNotifier<PlayerState>
 
     try {
       String? playUrl = track.url;
-      final settings = _settings;
       if (version != _playVersion) return;
 
       state = state.copyWith(videoMode: settings.videoMode);
@@ -463,8 +465,8 @@ class PlayerNotifier extends StateNotifier<PlayerState>
     final track = state.currentTrack;
     if (track == null || _scrobbled) return;
     final dur = state.duration;
-    if (dur.inSeconds < 30) return;
-    final pct = pos.inSeconds / dur.inSeconds * 100;
+    if (dur.inSeconds < 30) return; // also guards dur == 0
+    final pct = pos.inSeconds / dur.inSeconds * 100.0;
     final maxSec = s.listenBrainzScrobbleMaxSeconds;
     if (pct >= s.listenBrainzScrobblePercent ||
         (maxSec > 0 && pos.inSeconds >= maxSec)) {
