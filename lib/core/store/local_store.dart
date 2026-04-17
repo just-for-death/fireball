@@ -1,0 +1,291 @@
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:path_provider/path_provider.dart';
+
+import '../models/models.dart';
+import '../models/track.dart';
+
+// ── Schema version ─────────────────────────────────────────────────────────────
+const _kDbVersion = 2;
+
+// ── Provider ────────────────────────────────────────────────────────────────────
+final localStoreProvider =
+    StateNotifierProvider<LocalStoreNotifier, LibraryData>((ref) {
+  return LocalStoreNotifier();
+});
+
+// ── Library data model ──────────────────────────────────────────────────────────
+class LibraryData {
+  final FireballSettings settings;
+  final List<Track> history;
+  final List<Track> favorites;
+  final List<Playlist> playlists;
+  final List<Artist> artists;
+  final List<Album> albums;
+
+  const LibraryData({
+    this.settings = const FireballSettings(),
+    this.history = const [],
+    this.favorites = const [],
+    this.playlists = const [],
+    this.artists = const [],
+    this.albums = const [],
+  });
+
+  LibraryData copyWith({
+    FireballSettings? settings,
+    List<Track>? history,
+    List<Track>? favorites,
+    List<Playlist>? playlists,
+    List<Artist>? artists,
+    List<Album>? albums,
+  }) =>
+      LibraryData(
+        settings: settings ?? this.settings,
+        history: history ?? this.history,
+        favorites: favorites ?? this.favorites,
+        playlists: playlists ?? this.playlists,
+        artists: artists ?? this.artists,
+        albums: albums ?? this.albums,
+      );
+}
+
+// ── Notifier ────────────────────────────────────────────────────────────────────
+class LocalStoreNotifier extends StateNotifier<LibraryData> {
+  LocalStoreNotifier() : super(const LibraryData()) {
+    _init();
+  }
+
+  Future<File> get _dbFile async {
+    final dir = await getApplicationDocumentsDirectory();
+    return File('${dir.path}/fireball_library.json');
+  }
+
+  // ── Init ──────────────────────────────────────────────────────────────────────
+  Future<void> _init() async {
+    try {
+      final file = await _dbFile;
+      if (!await file.exists()) {
+        await _write(state);
+        return;
+      }
+      final raw = await file.readAsString();
+      final json = jsonDecode(raw) as Map<String, dynamic>;
+      state = _fromJson(json);
+    } catch (e) {
+      // If the file is corrupt start fresh
+      await _write(state);
+    }
+  }
+
+  LibraryData _fromJson(Map<String, dynamic> j) {
+    return LibraryData(
+      settings: j['settings'] != null
+          ? FireballSettings.fromJson(j['settings'] as Map<String, dynamic>)
+          : const FireballSettings(),
+      history: _parseTracks(j['history']),
+      favorites: _parseTracks(j['favorites']),
+      playlists: _parsePlaylists(j['playlists']),
+      artists: _parseArtists(j['artists']),
+      albums: _parseAlbums(j['albums']),
+    );
+  }
+
+  Map<String, dynamic> _toJson(LibraryData data) => {
+        'version': _kDbVersion,
+        'settings': data.settings.toJson(),
+        'history': data.history.map((t) => t.toJson()).toList(),
+        'favorites': data.favorites.map((t) => t.toJson()).toList(),
+        'playlists': data.playlists.map((p) => p.toJson()).toList(),
+        'artists': data.artists.map((a) => a.toJson()).toList(),
+        'albums': data.albums.map((a) => a.toJson()).toList(),
+      };
+
+  Future<void> _write(LibraryData data) async {
+    final file = await _dbFile;
+    // Write to temp file first, then rename for atomicity
+    final tmpPath = '${file.path}.tmp';
+    final tmp = File(tmpPath);
+    await tmp.writeAsString(jsonEncode(_toJson(data)));
+    // rename returns FileSystemEntity; no return value needed
+    await tmp.rename(file.path);
+  }
+
+  Future<void> _save() async {
+    await _write(state);
+  }
+
+  // ── Settings ──────────────────────────────────────────────────────────────────
+  Future<void> updateSettings(Map<String, dynamic> patch) async {
+    final merged = {...state.settings.toJson(), ...patch};
+    state = state.copyWith(settings: FireballSettings.fromJson(merged));
+    await _save();
+  }
+
+  Future<void> setSettings(FireballSettings s) async {
+    state = state.copyWith(settings: s);
+    await _save();
+  }
+
+  // ── History ───────────────────────────────────────────────────────────────────
+  Future<void> addHistory(Track track) async {
+    final list = [track, ...state.history.where((t) => t.effectiveId != track.effectiveId)]
+        .take(200)
+        .toList();
+    state = state.copyWith(history: list);
+    await _save();
+  }
+
+  Future<void> deleteHistoryItem(String id) async {
+    state = state.copyWith(
+      history: state.history.where((t) => t.effectiveId != id).toList(),
+    );
+    await _save();
+  }
+
+  Future<void> clearHistory() async {
+    state = state.copyWith(history: []);
+    await _save();
+  }
+
+  // ── Favorites ─────────────────────────────────────────────────────────────────
+  Future<void> addFavorite(Track track) async {
+    if (state.favorites.any((f) => f.effectiveId == track.effectiveId)) return;
+    state = state.copyWith(favorites: [...state.favorites, track]);
+    await _save();
+  }
+
+  Future<void> deleteFavorite(String id) async {
+    state = state.copyWith(
+      favorites: state.favorites.where((f) => f.effectiveId != id).toList(),
+    );
+    await _save();
+  }
+
+  // ── Playlists ─────────────────────────────────────────────────────────────────
+  Future<Playlist> createPlaylist(String title) async {
+    final id = 'pl_${DateTime.now().millisecondsSinceEpoch}';
+    final pl = Playlist(id: id, title: title);
+    state = state.copyWith(playlists: [...state.playlists, pl]);
+    await _save();
+    return pl;
+  }
+
+  Future<void> addPlaylist(Playlist playlist) async {
+    final existing = state.playlists.indexWhere((p) => p.id == playlist.id);
+    if (existing >= 0) {
+      final list = List<Playlist>.from(state.playlists);
+      list[existing] = playlist;
+      state = state.copyWith(playlists: list);
+    } else {
+      state = state.copyWith(playlists: [...state.playlists, playlist]);
+    }
+    await _save();
+  }
+
+  Future<void> deletePlaylist(String id) async {
+    state = state.copyWith(
+      playlists: state.playlists.where((p) => p.id != id).toList(),
+    );
+    await _save();
+  }
+
+  Future<void> addTrackToPlaylist(String playlistId, Track track) async {
+    final idx = state.playlists.indexWhere((p) => p.id == playlistId);
+    if (idx < 0) return;
+    final pl = state.playlists[idx];
+    if (pl.videos.any((t) => t.effectiveId == track.effectiveId)) return;
+    final updated = Playlist(id: pl.id, title: pl.title, videos: [...pl.videos, track]);
+    final list = List<Playlist>.from(state.playlists);
+    list[idx] = updated;
+    state = state.copyWith(playlists: list);
+    await _save();
+  }
+
+  Future<void> removeTrackFromPlaylist(String playlistId, String trackId) async {
+    final idx = state.playlists.indexWhere((p) => p.id == playlistId);
+    if (idx < 0) return;
+    final pl = state.playlists[idx];
+    final updated = Playlist(
+      id: pl.id,
+      title: pl.title,
+      videos: pl.videos.where((t) => t.effectiveId != trackId).toList(),
+    );
+    final list = List<Playlist>.from(state.playlists);
+    list[idx] = updated;
+    state = state.copyWith(playlists: list);
+    await _save();
+  }
+
+  // ── Artists ───────────────────────────────────────────────────────────────────
+  Future<void> addArtist(Artist artist) async {
+    if (state.artists.any((a) => a.artistId == artist.artistId)) return;
+    state = state.copyWith(artists: [...state.artists, artist]);
+    await _save();
+  }
+
+  Future<void> deleteArtist(String id) async {
+    state = state.copyWith(
+      artists: state.artists.where((a) => a.artistId != id).toList(),
+    );
+    await _save();
+  }
+
+  // ── Albums ────────────────────────────────────────────────────────────────────
+  Future<void> addAlbum(Album album) async {
+    if (state.albums.any((a) => a.id == album.id)) return;
+    state = state.copyWith(albums: [...state.albums, album]);
+    await _save();
+  }
+
+  Future<void> deleteAlbum(String id) async {
+    state = state.copyWith(
+      albums: state.albums.where((a) => a.id != id).toList(),
+    );
+    await _save();
+  }
+
+  // ── Full restore (used by sync) ───────────────────────────────────────────────
+  Future<void> restore(String libraryJson) async {
+    try {
+      final j = jsonDecode(libraryJson) as Map<String, dynamic>;
+      state = _fromJson(j);
+      await _save();
+    } catch (e) {
+      throw Exception('Failed to restore library: $e');
+    }
+  }
+
+  String exportJson() => jsonEncode(_toJson(state));
+
+  // ── Parsers ───────────────────────────────────────────────────────────────────
+  static List<Track> _parseTracks(dynamic v) {
+    if (v == null) return [];
+    return (v as List<dynamic>)
+        .map((e) => Track.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  static List<Playlist> _parsePlaylists(dynamic v) {
+    if (v == null) return [];
+    return (v as List<dynamic>)
+        .map((e) => Playlist.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  static List<Artist> _parseArtists(dynamic v) {
+    if (v == null) return [];
+    return (v as List<dynamic>)
+        .map((e) => Artist.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  static List<Album> _parseAlbums(dynamic v) {
+    if (v == null) return [];
+    return (v as List<dynamic>)
+        .map((e) => Album.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+}

@@ -1,0 +1,70 @@
+name: fireball
+description: "Fireball — your music, anywhere."
+publish_to: "none"
+version: 1.0.0+1
+
+environment:
+  sdk: ">=3.0.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # Audio
+  just_audio: ^0.9.41
+  audio_service: ^0.18.15
+
+  # State
+  hooks_riverpod: ^2.6.1
+  flutter_hooks: ^0.20.5
+  riverpod_annotation: ^2.3.5
+
+  # Navigation
+  go_router: ^14.2.7
+
+  # Networking & persistence
+  http: ^1.2.2
+  shared_preferences: ^2.3.2
+  path_provider: ^2.1.4
+  cached_network_image: ^3.4.1
+  flutter_cache_manager: ^3.4.1
+
+  # Google Drive sync
+  google_sign_in: ^6.2.2
+  googleapis: ^13.2.0
+
+  # WebDAV / Nextcloud sync
+  webdav_client: ^1.2.1
+
+  # UI
+  flex_color_scheme: ^8.2.0
+  dynamic_color: ^1.7.0
+  gap: ^3.0.1
+  shimmer: ^3.0.0
+  cupertino_icons: ^1.0.8
+  url_launcher: ^6.3.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+  build_runner: ^2.4.14
+  riverpod_generator: ^2.4.3
+  flutter_launcher_icons: ^0.14.3
+  flutter_native_splash: ^2.4.4
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/
+
+flutter_native_splash:
+  color: "#050505"
+  color_dark: "#050505"
+
+flutter_launcher_icons:
+  android: "launcher_icon"
+  ios: true
+  remove_alpha_ios: true
+  image_path: "assets/icon.png"
+  adaptive_icon_background: "#050505"
