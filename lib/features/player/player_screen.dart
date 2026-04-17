@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
+import 'package:go_router/go_router.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 import '../../core/api/fireball_api.dart';
@@ -228,11 +229,21 @@ class PlayerScreen extends HookConsumerWidget {
       if (idx != activeLyricIdx.value) {
         activeLyricIdx.value = idx;
         if (settings.lyricsAutoScroll) {
-          _scrollToLyric(lyricsScrollCtrl, idx);
+          _scrollToLyric(
+            context,
+            lyricsScrollCtrl,
+            idx,
+            settings.lyricsReducedMotion,
+          );
         }
       }
       return null;
-    }, [player.position, lyrics.value.length, settings.lyricsAutoScroll]);
+    }, [
+      player.position,
+      lyrics.value.length,
+      settings.lyricsAutoScroll,
+      settings.lyricsReducedMotion,
+    ]);
 
     final displayArtwork = (track?.artwork?.isNotEmpty ?? false)
         ? track!.artwork
@@ -339,7 +350,9 @@ class PlayerScreen extends HookConsumerWidget {
           IconButton(
             icon: const Icon(Icons.keyboard_arrow_down_rounded,
                 size: 32, color: Colors.white),
-            onPressed: () => Navigator.pop(context),
+            onPressed: () {
+              if (context.canPop()) context.pop();
+            },
           ),
           Expanded(
             child: Column(
@@ -1005,7 +1018,12 @@ class PlayerScreen extends HookConsumerWidget {
                   }
                   ref.read(playerProvider.notifier).seekTo(seekPos);
                   activeLyricIdx.value = i;
-                  _scrollToLyric(scrollCtrl, i);
+                  _scrollToLyric(
+                    context,
+                    scrollCtrl,
+                    i,
+                    ref.read(settingsProvider).lyricsReducedMotion,
+                  );
                 },
                 child: Semantics(
                   button: true,
@@ -1455,7 +1473,12 @@ class PlayerScreen extends HookConsumerWidget {
     return result;
   }
 
-  void _scrollToLyric(ScrollController ctrl, int idx) {
+  void _scrollToLyric(
+    BuildContext context,
+    ScrollController ctrl,
+    int idx,
+    bool lyricsReducedMotion,
+  ) {
     if (!ctrl.hasClients) return;
     // Estimated item height: font 18×1.4 + 16px vertical padding ≈ 41px for
     // inactive lines; active lines are taller (font 22×1.4+16 ≈ 47px). Use 42
@@ -1465,11 +1488,17 @@ class PlayerScreen extends HookConsumerWidget {
       final viewportH = ctrl.position.viewportDimension;
       final raw = idx * itemH - (viewportH / 2) + itemH / 2;
       final offset = raw.clamp(0.0, ctrl.position.maxScrollExtent);
-      ctrl.animateTo(
-        offset,
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeOutCubic,
-      );
+      final instant = lyricsReducedMotion ||
+          MediaQuery.of(context).disableAnimations;
+      if (instant) {
+        ctrl.jumpTo(offset);
+      } else {
+        ctrl.animateTo(
+          offset,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOutCubic,
+        );
+      }
     } catch (_) {
       // ScrollPosition may not be laid out yet on first call — safe to ignore.
     }

@@ -10,6 +10,47 @@ import '../core/models/track.dart';
 import '../core/store/providers.dart';
 import '../features/remote/remote_screen.dart';
 
+void showMiniPlayerOverflowMenu({
+  required BuildContext context,
+  required Track track,
+}) {
+  showModalBottomSheet<void>(
+    context: context,
+    showDragHandle: true,
+    backgroundColor: Theme.of(context).colorScheme.surfaceContainerHigh,
+    builder: (ctx) => SafeArea(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ListTile(
+            leading: const Icon(Icons.cast_rounded),
+            title: const Text('Remote control'),
+            onTap: () {
+              Navigator.pop(ctx);
+              Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => const RemoteScreen(),
+                ),
+              );
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.share_rounded),
+            title: const Text('Share track'),
+            onTap: () async {
+              Navigator.pop(ctx);
+              await Share.share(
+                '${track.title} — ${track.artist}',
+                subject: track.title,
+              );
+            },
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
 class MiniPlayer extends ConsumerWidget {
   /// [compact] = true renders a small sidebar strip (iPad glass sidebar).
   const MiniPlayer({super.key, this.compact = false});
@@ -80,43 +121,10 @@ class _MiniPlayerCard extends StatelessWidget {
           ref.read(playerProvider.notifier).next();
         }
       },
-      onLongPress: () {
-        showModalBottomSheet<void>(
-          context: context,
-          showDragHandle: true,
-          backgroundColor: Theme.of(context).colorScheme.surfaceContainerHigh,
-          builder: (ctx) => SafeArea(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                ListTile(
-                  leading: const Icon(Icons.cast_rounded),
-                  title: const Text('Remote control'),
-                  onTap: () {
-                    Navigator.pop(ctx);
-                    Navigator.of(context).push(
-                      MaterialPageRoute<void>(
-                        builder: (_) => const RemoteScreen(),
-                      ),
-                    );
-                  },
-                ),
-                ListTile(
-                  leading: const Icon(Icons.share_rounded),
-                  title: const Text('Share track'),
-                  onTap: () async {
-                    Navigator.pop(ctx);
-                    await Share.share(
-                      '${track.title} — ${track.artist}',
-                      subject: track.title,
-                    );
-                  },
-                ),
-              ],
-            ),
+      onLongPress: () => showMiniPlayerOverflowMenu(
+            context: context,
+            track: track,
           ),
-        );
-      },
       child: ClipRRect(
         borderRadius: BorderRadius.circular(18),
         child: BackdropFilter(
@@ -282,6 +290,10 @@ class _CompactMiniPlayer extends StatelessWidget {
 
     return GestureDetector(
       onTap: () => context.push('/player'),
+      onLongPress: () => showMiniPlayerOverflowMenu(
+            context: context,
+            track: track,
+          ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(14),
         child: BackdropFilter(

@@ -1,14 +1,10 @@
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
+// Full-app widget tests need timer/async harnessing (ShellScaffold useEffect, etc.).
+// Use `dart analyze`, `flutter build`, and on-device manual QA for integration coverage.
 
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  testWidgets('App smoke test', (WidgetTester tester) async {
+  testWidgets('Sanity: test binding works', (WidgetTester tester) async {
     expect(true, isTrue);
   });
 }
