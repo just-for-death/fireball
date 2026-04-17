@@ -6,6 +6,7 @@ import 'package:media_kit/media_kit.dart' hide Track;
 import '../api/fireball_api.dart';
 import '../models/models.dart';
 import '../models/track.dart';
+import '../../remote/remote_server.dart';
 import 'local_store.dart';
 
 export 'local_store.dart' show localStoreProvider, LibraryData, LocalStoreNotifier;
@@ -80,10 +81,12 @@ final playerProvider = StateNotifierProvider<PlayerNotifier, PlayerState>((ref) 
   return PlayerNotifier(ref);
 });
 
-class PlayerNotifier extends StateNotifier<PlayerState> {
+class PlayerNotifier extends StateNotifier<PlayerState>
+    implements RemotePlayerProxy {
   late final Player _player;
   final Ref _ref;
   int _playVersion = 0;
+  bool _scrobbled = false;
 
   PlayerNotifier(this._ref) : super(const PlayerState()) {
     _player = Player();
@@ -101,6 +104,7 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     });
     _player.stream.position.listen((pos) {
       state = state.copyWith(position: pos);
+      _checkScrobble(pos);
     });
     _player.stream.duration.listen((dur) {
       state = state.copyWith(duration: dur);
@@ -174,8 +178,23 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     if (index < 0 || index >= state.queue.length) return;
 
     final version = ++_playVersion;
+    _scrobbled = false;
     state = state.copyWith(currentIndex: index, clearError: true);
     final track = state.queue[index];
+
+    // Submit "playing now" to ListenBrainz
+    final s = _settings;
+    if (s.listenBrainzEnabled &&
+        s.listenBrainzPlayingNow &&
+        s.listenBrainzToken.isNotEmpty) {
+      _api
+          .submitPlayingNow(
+            token: s.listenBrainzToken,
+            artistName: track.artist,
+            trackName: track.title,
+          )
+          .catchError((Object e) => dev.log('Playing-now error: $e'));
+    }
 
     try {
       String? playUrl = track.url;
@@ -295,6 +314,7 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     }
   }
 
+  @override
   Future<void> next() async {
     final q = state.queue;
     if (q.isEmpty) return;
@@ -315,6 +335,7 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     }
   }
 
+  @override
   Future<void> previous() async {
     final q = state.queue;
     if (q.isEmpty) return;
@@ -331,10 +352,12 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     await playIndex(prev);
   }
 
+  @override
   Future<void> togglePlayPause() async {
     await _player.playOrPause();
   }
 
+  @override
   Future<void> seekTo(Duration position) async {
     await _player.seek(position);
   }
@@ -402,8 +425,68 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     }
   }
 
+  // ── _RemotePlayerProxy implementation ───────────────────────────────────
+
+  @override
+  Map<String, dynamic> stateSnapshot() {
+    final t = state.currentTrack;
+    return {
+      'isPlaying': state.isPlaying,
+      'position': state.position.inMilliseconds,
+      'duration': state.duration.inMilliseconds,
+      'shuffled': state.shuffled,
+      'repeatMode': state.repeatMode.name,
+      'track': t == null
+          ? null
+          : {
+              'id': t.effectiveId,
+              'title': t.title,
+              'artist': t.artist,
+              'artwork': t.artwork,
+            },
+      'queueLength': state.queue.length,
+      'currentIndex': state.currentIndex,
+    };
+  }
+
+  @override
+  Future<void> play() => _player.play();
+
+  @override
+  Future<void> pause() => _player.pause();
+
+  // ── ListenBrainz scrobbling ──────────────────────────────────────────────
+
+  void _checkScrobble(Duration pos) {
+    final s = _settings;
+    if (!s.listenBrainzEnabled || s.listenBrainzToken.isEmpty) return;
+    final track = state.currentTrack;
+    if (track == null || _scrobbled) return;
+    final dur = state.duration;
+    if (dur.inSeconds < 30) return;
+    final pct = pos.inSeconds / dur.inSeconds * 100;
+    final maxSec = s.listenBrainzScrobbleMaxSeconds;
+    if (pct >= s.listenBrainzScrobblePercent ||
+        (maxSec > 0 && pos.inSeconds >= maxSec)) {
+      _scrobbled = true;
+      _api
+          .scrobble(
+            token: s.listenBrainzToken,
+            artistName: track.artist,
+            trackName: track.title,
+          )
+          .catchError((Object e) => dev.log('Scrobble error: $e'));
+    }
+  }
+
+  // ── Remote server control ─────────────────────────────────────────────────
+
+  Future<void> startRemoteServer() async => RemoteServer.start(this);
+  Future<void> stopRemoteServer() async => RemoteServer.stop();
+
   @override
   void dispose() {
+    RemoteServer.stop();
     _player.dispose();
     super.dispose();
   }

@@ -6,6 +6,7 @@ import 'dart:io';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 
+import '../api/fireball_api.dart';
 import '../models/models.dart';
 import '../models/track.dart';
 
@@ -226,6 +227,25 @@ class LocalStoreNotifier extends StateNotifier<LibraryData> {
     list[idx] = updated;
     state = state.copyWith(playlists: list);
     await _save();
+    _autoPushTrackToInvidious(playlistId, track);
+  }
+
+  void _autoPushTrackToInvidious(String playlistId, Track track) {
+    final s = state.settings;
+    if (!s.invidiousAutoPush || s.invidiousInstance.isEmpty) return;
+    final invPlaylistId = s.invidiousPlaylistMappings[playlistId];
+    if (invPlaylistId == null) return;
+    const FireballApi()
+        .pushPlaylistToInvidious(
+          Playlist(id: playlistId, title: '', videos: [track]),
+          instanceUrl: s.invidiousInstance,
+          sid: s.invidiousSid,
+          existingInvidiousId: invPlaylistId,
+        )
+        .catchError((Object e) {
+      dev.log('Auto-push track to Invidious failed: $e');
+      return '';
+    });
   }
 
   Future<void> removeTrackFromPlaylist(String playlistId, String trackId) async {
