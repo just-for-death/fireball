@@ -1,0 +1,134 @@
+# Codemagic CI/CD — Fireball iOS IPA
+# Docs: https://docs.codemagic.io/yaml-quick-start/building-a-flutter-app/
+#       https://docs.codemagic.io/yaml-code-signing/signing-ios/
+#       https://docs.codemagic.io/yaml-publishing/app-store-connect/
+#
+# Setup (Codemagic UI):
+# 1. Team integrations → Developer Portal → add App Store Connect API key (App Manager).
+# 2. Code signing identities → ensure App Store distribution cert + profile for bundle id
+#    com.fireball.fireball (or use automatic fetch after step 1).
+# 3. Replace `app_store_connect` integration name below with YOUR key name from step 1.
+# 4. Optional: set APP_STORE_APPLE_ID (App Store Connect → App → General → Apple ID) for
+#    automatic build-number bump via `app-store-connect get-latest-app-store-build-number`.
+#
+# Monorepo: if this file lives above the Flutter app, add to the workflow:
+#   working_directory: fireball
+#
+# Unsigned IPA: use workflow `fireball-ios-unsigned-ipa` (no Apple signing; artifact is not
+# installable on real devices until you sign it yourself).
+
+workflows:
+  fireball-ios-unsigned-ipa:
+    name: Fireball iOS unsigned IPA
+    max_build_duration: 120
+    instance_type: mac_mini_m2
+    environment:
+      flutter: stable
+      xcode: latest
+      cocoapods: default
+      vars:
+        FLUTTER_BUILD_NAME: "1.0.0"
+    scripts:
+      - name: Install dependencies
+        script: |
+          set -e
+          flutter pub get
+
+      - name: Install CocoaPods
+        script: |
+          set -e
+          cd ios
+          pod install
+
+      - name: Build unsigned iOS app and package IPA
+        script: |
+          set -e
+          VERSION_NAME="${FLUTTER_BUILD_NAME:-1.0.0}"
+          BN="${CM_BUILD_NUMBER:-1}"
+
+          flutter build ios --release --no-codesign \
+            --build-name="$VERSION_NAME" \
+            --build-number="$BN"
+
+          APP="build/ios/iphoneos/Runner.app"
+          if [ ! -d "$APP" ]; then
+            APP="build/ios/Release-iphoneos/Runner.app"
+          fi
+          if [ ! -d "$APP" ]; then
+            echo "Runner.app not found." >&2
+            exit 1
+          fi
+
+          rm -rf Payload
+          mkdir -p Payload
+          cp -R "$APP" Payload/
+
+          mkdir -p build/ios/ipa_unsigned
+          zip -qr build/ios/ipa_unsigned/fireball_unsigned.ipa Payload
+          rm -rf Payload
+
+    artifacts:
+      - build/ios/ipa_unsigned/fireball_unsigned.ipa
+
+  fireball-ios-ipa:
+    name: Fireball iOS IPA
+    max_build_duration: 120
+    instance_type: mac_mini_m2
+    integrations:
+      # Replace with the App Store Connect API key name from Team integrations → Developer Portal
+      app_store_connect: YOUR_APP_STORE_CONNECT_KEY_NAME
+
+    environment:
+      flutter: stable
+      xcode: latest
+      cocoapods: default
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.fireball.fireball
+      vars:
+        # Marketing version (CFBundleShortVersionString), e.g. 1.0.0
+        FLUTTER_BUILD_NAME: "1.0.0"
+        # Numeric Apple ID of the app in App Store Connect (optional). If empty, CM_BUILD_NUMBER is used.
+        APP_STORE_APPLE_ID: ""
+
+    scripts:
+      - name: Set up code signing on Xcode project
+        script: xcode-project use-profiles
+
+      - name: Install dependencies
+        script: |
+          set -e
+          flutter pub get
+
+      - name: Install CocoaPods
+        script: |
+          set -e
+          cd ios
+          pod install
+
+      - name: Flutter build IPA
+        script: |
+          set -e
+          VERSION_NAME="${FLUTTER_BUILD_NAME:-1.0.0}"
+
+          if [ -n "$APP_STORE_APPLE_ID" ]; then
+            LATEST="$(app-store-connect get-latest-app-store-build-number "$APP_STORE_APPLE_ID" 2>/dev/null || echo 0)"
+            BUILD_NUMBER=$((LATEST + 1))
+          else
+            BUILD_NUMBER="${CM_BUILD_NUMBER:-1}"
+          fi
+
+          flutter build ipa --release \
+            --build-name="$VERSION_NAME" \
+            --build-number="$BUILD_NUMBER"
+
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+
+    # Omit this entire `publishing` block if you only want the .ipa as a build artifact (no ASC upload).
+    publishing:
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: false
+        submit_to_app_store: false
