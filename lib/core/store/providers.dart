@@ -586,8 +586,11 @@ class PlayerNotifier extends StateNotifier<PlayerState>
     if (dur.inSeconds < 30) return; // also guards dur == 0
     final pct = pos.inSeconds / dur.inSeconds * 100.0;
     final maxSec = s.listenBrainzScrobbleMaxSeconds;
-    if (pct >= s.listenBrainzScrobblePercent ||
-        (maxSec > 0 && pos.inSeconds >= maxSec)) {
+    // threshold 0 must not mean "100% of the song" (pct >= 0 is always true)
+    final threshold = s.listenBrainzScrobblePercent.clamp(0, 100);
+    final byPercent = threshold > 0 && pct >= threshold;
+    final byMaxSec = maxSec > 0 && pos.inSeconds >= maxSec;
+    if (byPercent || byMaxSec) {
       _scrobbled = true;
       _api
           .scrobble(
