@@ -361,6 +361,8 @@ class PlayerScreen extends HookConsumerWidget {
                 Text(
                   track?.album ?? 'Now Playing',
                   textAlign: TextAlign.center,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                     color: Colors.white60,
                     fontSize: 12,
@@ -372,6 +374,8 @@ class PlayerScreen extends HookConsumerWidget {
                   Text(
                     sleepHint,
                     textAlign: TextAlign.center,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       color: cs.primary.withValues(alpha: 0.85),
                       fontSize: 10,
@@ -986,16 +990,24 @@ class PlayerScreen extends HookConsumerWidget {
         }
         if (lyricError.value.isNotEmpty) {
           return Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(Icons.music_note_rounded,
-                    size: 40, color: Colors.white24),
-                const SizedBox(height: 12),
-                Text(lyricError.value,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 28),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.music_note_rounded,
+                      size: 40, color: Colors.white24),
+                  const SizedBox(height: 12),
+                  Text(
+                    lyricError.value,
+                    textAlign: TextAlign.center,
+                    maxLines: 6,
+                    overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
-                        color: Colors.white38, fontSize: 14)),
-              ],
+                        color: Colors.white38, fontSize: 14),
+                  ),
+                ],
+              ),
             ),
           );
         }
@@ -1181,10 +1193,12 @@ class PlayerScreen extends HookConsumerWidget {
                   fontSize: 14,
                 ),
               ),
-              subtitle: Text(t.artist,
-                  maxLines: 1,
-                  style: const TextStyle(
-                      color: Colors.white54, fontSize: 12)),
+              subtitle: Text(
+                t.artist,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(color: Colors.white54, fontSize: 12),
+              ),
               trailing: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [

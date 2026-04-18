@@ -12,6 +12,7 @@ import '../../core/ui/shell_content_insets.dart';
 import '../../core/utils.dart';
 import '../../core/widgets/empty_state.dart';
 import '../../core/widgets/glass_widgets.dart';
+import '../../core/widgets/overflow_safe_text.dart';
 
 const _genres = [
   'Pop', 'Hip-Hop', 'R&B', 'Rock', 'Electronic',
@@ -189,13 +190,15 @@ class SearchScreen extends HookConsumerWidget {
                 children: [
                   Row(
                     children: [
-                      Text(
-                        'Search',
-                        style: TextStyle(
-                          fontSize: 34,
-                          fontWeight: FontWeight.w900,
-                          color: Colors.white,
-                          letterSpacing: -1,
+                      Flexible(
+                        child: FireballLineText(
+                          'Search',
+                          style: TextStyle(
+                            fontSize: 34,
+                            fontWeight: FontWeight.w900,
+                            color: Colors.white,
+                            letterSpacing: -1,
+                          ),
                         ),
                       ),
                       const Spacer(),

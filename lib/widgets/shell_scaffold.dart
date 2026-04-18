@@ -35,6 +35,29 @@ const _navItems = [
       'Settings'),
 ];
 
+/// Bottom offset for the floating mini-player: clears nav/tab chrome (~72–80)
+/// plus the device home-indicator / gesture inset (iOS + Android).
+double _miniPlayerBottomOffset(BuildContext context) {
+  return 80 + MediaQuery.viewPaddingOf(context).bottom;
+}
+
+/// Fades the mini-player in/out so Remote / overlay toggles don’t pop harshly.
+Widget _shellMiniPlayerOverlay({required bool hideMini, required double bottom}) {
+  return Positioned(
+    left: 0,
+    right: 0,
+    bottom: bottom,
+    child: AnimatedSwitcher(
+      duration: const Duration(milliseconds: 220),
+      switchInCurve: Curves.easeOutCubic,
+      switchOutCurve: Curves.easeInCubic,
+      child: hideMini
+          ? const SizedBox.shrink(key: ValueKey<Object>('mini-hidden'))
+          : const MiniPlayer(key: ValueKey<Object>('mini-visible')),
+    ),
+  );
+}
+
 // ── Shell scaffold — platform-aware, inspired by Catalyst ────────────────────
 class ShellScaffold extends HookConsumerWidget {
   const ShellScaffold({super.key, required this.shell});
@@ -144,22 +167,16 @@ class _AndroidShell extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final cs = Theme.of(context).colorScheme;
-    final bottomPad = !kIsWeb && defaultTargetPlatform == TargetPlatform.android
-        ? MediaQuery.viewPaddingOf(context).bottom
-        : 0.0;
     final hideMini = ref.watch(remoteScreenCoversShellProvider) ||
         shell.currentIndex == kRemoteShellTabIndex;
     return Scaffold(
       body: Stack(
         children: [
           shell,
-          if (!hideMini)
-            Positioned(
-              left: 0,
-              right: 0,
-              bottom: 80 + bottomPad,
-              child: const MiniPlayer(),
-            ),
+          _shellMiniPlayerOverlay(
+            hideMini: hideMini,
+            bottom: _miniPlayerBottomOffset(context),
+          ),
         ],
       ),
       bottomNavigationBar: NavigationBar(
@@ -192,9 +209,6 @@ class _AndroidTabletShell extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final cs = Theme.of(context).colorScheme;
     final extended = width >= 1000;
-    final bottomPad = !kIsWeb && defaultTargetPlatform == TargetPlatform.android
-        ? MediaQuery.viewPaddingOf(context).bottom
-        : 0.0;
     final hideMini = ref.watch(remoteScreenCoversShellProvider) ||
         shell.currentIndex == kRemoteShellTabIndex;
 
@@ -219,7 +233,11 @@ class _AndroidTabletShell extends ConsumerWidget {
                 .map((item) => NavigationRailDestination(
                       icon: Icon(item.icon),
                       selectedIcon: Icon(item.activeIcon),
-                      label: Text(item.label),
+                      label: Text(
+                        item.label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ))
                 .toList(),
           ),
@@ -232,13 +250,11 @@ class _AndroidTabletShell extends ConsumerWidget {
             child: Stack(
               children: [
                 shell,
-                if (!hideMini)
-                  Positioned(
-                    left: 0,
-                    right: 0,
-                    bottom: 16 + bottomPad,
-                    child: const MiniPlayer(),
-                  ),
+                _shellMiniPlayerOverlay(
+                  hideMini: hideMini,
+                  bottom:
+                      16 + MediaQuery.viewPaddingOf(context).bottom,
+                ),
               ],
             ),
           ),
@@ -264,13 +280,10 @@ class _IPhoneShell extends ConsumerWidget {
       body: Stack(
         children: [
           shell,
-          if (!hideMini)
-            const Positioned(
-              left: 0,
-              right: 0,
-              bottom: 80,
-              child: MiniPlayer(),
-            ),
+          _shellMiniPlayerOverlay(
+            hideMini: hideMini,
+            bottom: _miniPlayerBottomOffset(context),
+          ),
         ],
       ),
       bottomNavigationBar: _GlassTabBar(
@@ -424,11 +437,19 @@ class _IPadShell extends ConsumerWidget {
                           sidebarCollapsed ? 6 : 12,
                           16,
                         ),
-                        child: hideMini
-                            ? const SizedBox.shrink()
-                            : _SidebarMiniPlayer(
-                                sidebarCollapsed: sidebarCollapsed,
-                              ),
+                        child: AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 220),
+                          switchInCurve: Curves.easeOutCubic,
+                          switchOutCurve: Curves.easeInCubic,
+                          child: hideMini
+                              ? const SizedBox.shrink(
+                                  key: ValueKey<Object>('ipad-mini-off'),
+                                )
+                              : _SidebarMiniPlayer(
+                                  key: const ValueKey<Object>('ipad-mini-on'),
+                                  sidebarCollapsed: sidebarCollapsed,
+                                ),
+                        ),
                       ),
                     ],
                   ),
@@ -518,21 +539,27 @@ class _SidebarItem extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(width: 14),
-                      AnimatedDefaultTextStyle(
-                        duration: const Duration(milliseconds: 200),
-                        curve: Curves.easeOutCubic,
-                        style: TextStyle(
-                          fontSize: 15,
-                          fontWeight: selected
-                              ? FontWeight.w700
-                              : FontWeight.w500,
-                          color: selected
-                              ? cs.primary
-                              : (isDark
-                                  ? Colors.white.withValues(alpha: 0.75)
-                                  : Colors.black.withValues(alpha: 0.65)),
+                      Expanded(
+                        child: AnimatedDefaultTextStyle(
+                          duration: const Duration(milliseconds: 200),
+                          curve: Curves.easeOutCubic,
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: selected
+                                ? FontWeight.w700
+                                : FontWeight.w500,
+                            color: selected
+                                ? cs.primary
+                                : (isDark
+                                    ? Colors.white.withValues(alpha: 0.75)
+                                    : Colors.black.withValues(alpha: 0.65)),
+                          ),
+                          child: Text(
+                            item.label,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ),
-                        child: Text(item.label),
                       ),
                     ],
                   ),
@@ -545,7 +572,7 @@ class _SidebarItem extends StatelessWidget {
 
 // Compact now-playing strip at the bottom of the iPad sidebar
 class _SidebarMiniPlayer extends StatelessWidget {
-  const _SidebarMiniPlayer({required this.sidebarCollapsed});
+  const _SidebarMiniPlayer({super.key, required this.sidebarCollapsed});
 
   final bool sidebarCollapsed;
 
@@ -629,7 +656,12 @@ class _GlassTabBar extends StatelessWidget {
                                       ? Colors.white.withValues(alpha: 0.5)
                                       : Colors.black.withValues(alpha: 0.4)),
                             ),
-                            child: Text(item.label),
+                            child: Text(
+                              item.label,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              textAlign: TextAlign.center,
+                            ),
                           ),
                         ],
                       ),

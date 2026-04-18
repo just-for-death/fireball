@@ -248,6 +248,8 @@ class _ControlMode extends HookWidget {
           remotePort == RemoteServer.port
               ? 'Controlling $remoteIp'
               : 'Controlling $remoteIp:$remotePort',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
         ),
         backgroundColor: cs.surface,
       ),
@@ -270,10 +272,14 @@ class _ControlMode extends HookWidget {
                         Icon(Icons.wifi_off_rounded,
                             size: 16, color: cs.error),
                         const SizedBox(width: 6),
-                        Text(
-                          error.value!,
-                          style: TextStyle(color: cs.error),
-                          textAlign: TextAlign.center,
+                        Expanded(
+                          child: Text(
+                            error.value!,
+                            style: TextStyle(color: cs.error),
+                            textAlign: TextAlign.center,
+                            maxLines: 4,
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ),
                       ],
                     ),
