@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 import '../../core/api/fireball_api.dart';
+import '../../core/models/models.dart';
 import '../../core/models/track.dart';
 import '../../core/store/providers.dart';
 
@@ -184,7 +185,7 @@ class ArtistScreen extends HookConsumerWidget {
 }
 
 // ── Hero ──────────────────────────────────────────────────────────────────────
-class _ArtistHero extends StatelessWidget {
+class _ArtistHero extends ConsumerWidget {
   const _ArtistHero({
     required this.artworkUrl,
     required this.artistName,
@@ -200,7 +201,10 @@ class _ArtistHero extends StatelessWidget {
   final bool isDark;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final library = ref.watch(localStoreProvider);
+    final isFollowing = library.artists.any((a) => a.name.toLowerCase() == artistName.toLowerCase());
+
     return Stack(
       fit: StackFit.expand,
       children: [
@@ -272,14 +276,68 @@ class _ArtistHero extends StatelessWidget {
                   ),
                 ),
               const SizedBox(height: 12),
-              Text(
-                artistName,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 28,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: -0.5,
-                ),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Expanded(
+                    child: Text(
+                      artistName,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 28,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: -0.5,
+                      ),
+                    ),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: () async {
+                      if (isFollowing) {
+                        final a = library.artists.firstWhere((a) => a.name.toLowerCase() == artistName.toLowerCase());
+                        await ref.read(localStoreProvider.notifier).deleteArtist(a.artistId);
+                      } else {
+                        // Optimistic follow with basic id
+                        await ref.read(localStoreProvider.notifier).addArtist(Artist(artistId: artistName, name: artistName));
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('Following $artistName...'), duration: const Duration(seconds: 1)),
+                          );
+                        }
+                        // Try to get real artist id in background
+                        final data = await const FireballApi().itunesFindArtist(artistName);
+                        if (data != null && context.mounted) {
+                          // Replace with real id
+                          await ref.read(localStoreProvider.notifier).deleteArtist(artistName);
+                          await ref.read(localStoreProvider.notifier).addArtist(Artist(
+                            artistId: data['artistId']?.toString() ?? artistName,
+                            name: data['artistName']?.toString() ?? artistName,
+                            artwork: artworkUrl,
+                          ));
+                        }
+                      }
+                    },
+                    icon: Icon(
+                      isFollowing ? Icons.check_rounded : Icons.person_add_rounded,
+                      size: 16,
+                      color: isFollowing ? cs.primary : Colors.white,
+                    ),
+                    label: Text(
+                      isFollowing ? 'Following' : 'Follow',
+                      style: TextStyle(
+                        color: isFollowing ? cs.primary : Colors.white,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      side: BorderSide(
+                        color: isFollowing ? cs.primary : Colors.white.withValues(alpha: 0.5),
+                        width: 1.5,
+                      ),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
+                    ),
+                  ),
+                ],
               ),
               if (genre != null) ...[
                 const SizedBox(height: 4),

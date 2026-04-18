@@ -2,14 +2,12 @@ import 'dart:async';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import 'package:qr_flutter/qr_flutter.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../core/store/providers.dart';
 import '../../remote/remote_client.dart';
-import '../../remote/remote_pairing.dart';
 import '../../remote/remote_server.dart';
 
 /// Two-mode remote control screen.
@@ -23,178 +21,60 @@ import '../../remote/remote_server.dart';
 class RemoteScreen extends HookConsumerWidget {
   const RemoteScreen({super.key, this.remoteIp, this.remotePort});
 
-  /// When set, the screen operates in control mode pointing at this host.
   final String? remoteIp;
-
-  /// Port for control mode (defaults to [RemoteServer.port]).
   final int? remotePort;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    useEffect(() {
-      ref.read(remoteScreenCoversShellProvider.notifier).state = true;
-      return () {
-        ref.read(remoteScreenCoversShellProvider.notifier).state = false;
-      };
-    }, const []);
-    final isControlMode = remoteIp != null && remoteIp!.isNotEmpty;
-    return isControlMode
-        ? _ControlMode(
-            remoteIp: remoteIp!,
-            remotePort: remotePort ?? RemoteServer.port,
-          )
-        : const _HostMode();
-  }
-}
+    final settings = ref.watch(settingsProvider);
+    
+    // Use provided parameters or fallback to settings
+    final ip = remoteIp ?? settings.remoteHostIp;
+    final port = remotePort ?? settings.remotePeerPort;
 
-// ── Host mode ─────────────────────────────────────────────────────────────────
+    // We no longer need to manually set remoteScreenCoversShellProvider
+    // because ShellScaffold automatically hides the mini player when
+    // shell.currentIndex == kRemoteShellTabIndex.
 
-class _HostMode extends HookWidget {
-  const _HostMode();
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-
-    // Poll until the remote server has resolved a local IP address.
-    // This handles the race where the user opens this screen immediately
-    // after toggling "Enable Remote Server" (HttpServer.bind is async).
-    final localIp = useState(RemoteServer.localIp);
-    // True for ~1.5 s after mount while waiting for the server to bind.
-    final waitingForStart = useState(true);
-
-    useEffect(() {
-      // After 1.5 s we stop showing "Starting…" regardless.
-      final timeout = Timer(const Duration(milliseconds: 1500), () {
-        waitingForStart.value = false;
-      });
-
-      final poll = Timer.periodic(const Duration(milliseconds: 300), (_) {
-        final ip = RemoteServer.localIp;
-        if (ip != null) {
-          localIp.value = ip;
-          waitingForStart.value = false;
-        }
-      });
-      return () {
-        timeout.cancel();
-        poll.cancel();
-      };
-    }, const []);
-
-    final serverUrl = localIp.value != null
-        ? 'http://${localIp.value}:${RemoteServer.port}'
-        : null;
-    final pairingCode = localIp.value != null
-        ? encodeRemotePairing(localIp.value!, RemoteServer.port)
-        : null;
-
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Remote Control — Host'),
-        backgroundColor: cs.surface,
-      ),
-      body: LayoutBuilder(
-        builder: (context, constraints) => SingleChildScrollView(
-          child: ConstrainedBox(
-            constraints: BoxConstraints(minHeight: constraints.maxHeight),
-            child: Center(
-              child: Padding(
-                padding: const EdgeInsets.all(32),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    if (serverUrl != null && pairingCode != null) ...[
-                      Text(
-                        'Scan this code',
-                        style: Theme.of(context).textTheme.titleSmall,
-                      ),
-                      const SizedBox(height: 8),
-                      QrImageView(
-                        data: serverUrl,
-                        version: QrVersions.auto,
-                        size: 220,
-                        backgroundColor: Colors.white,
-                        padding: const EdgeInsets.all(12),
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        'Pairing code',
-                        style: Theme.of(context).textTheme.titleSmall,
-                      ),
-                      const SizedBox(height: 6),
-                      SelectableText(
-                        formatPairingCodeDisplay(pairingCode),
-                        style:
-                            Theme.of(context).textTheme.headlineSmall?.copyWith(
-                                  fontFamily: 'monospace',
-                                  letterSpacing: 2,
-                                ),
-                      ),
-                      const SizedBox(height: 8),
-                      OutlinedButton.icon(
-                        onPressed: () {
-                          Clipboard.setData(ClipboardData(text: pairingCode));
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                                content: Text('Pairing code copied')),
-                          );
-                        },
-                        icon: const Icon(Icons.copy_rounded, size: 16),
-                        label: const Text('Copy code'),
-                      ),
-                      const SizedBox(height: 20),
-                      Text(
-                        serverUrl,
-                        style: Theme.of(context)
-                            .textTheme
-                            .bodyMedium
-                            ?.copyWith(fontFamily: 'monospace'),
-                      ),
-                      const SizedBox(height: 8),
-                      OutlinedButton.icon(
-                        onPressed: () {
-                          Clipboard.setData(ClipboardData(text: serverUrl));
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('URL copied')),
-                          );
-                        },
-                        icon: const Icon(Icons.link_rounded, size: 16),
-                        label: const Text('Copy URL'),
-                      ),
-                    ] else if (waitingForStart.value) ...[
-                      const CircularProgressIndicator(),
-                      const SizedBox(height: 16),
-                      Text(
-                        'Starting server…',
-                        style: TextStyle(color: cs.onSurfaceVariant),
-                      ),
-                    ] else ...[
-                      Icon(Icons.wifi_off_rounded, size: 64, color: cs.outline),
-                      const SizedBox(height: 16),
-                      Text(
-                        'Remote server is not running.\nEnable it in the Remote tab or Settings.',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(color: cs.onSurfaceVariant),
-                      ),
-                    ],
-                    const SizedBox(height: 24),
-                    Text(
-                      'On the other device: open the Remote tab, scan this QR or enter the pairing code. Both devices should enable the remote server.',
-                      textAlign: TextAlign.center,
-                      style:
-                          TextStyle(color: cs.onSurfaceVariant, fontSize: 13),
-                    ),
-                  ],
-                ),
+    final isControlMode = ip.isNotEmpty;
+    if (!isControlMode) {
+      final cs = Theme.of(context).colorScheme;
+      return Scaffold(
+        appBar: AppBar(
+          title: const Text('Remote'),
+          backgroundColor: cs.surface,
+        ),
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.cast_connected_rounded, size: 64, color: cs.outline),
+              const SizedBox(height: 16),
+              Text(
+                'No device paired.\nGo to Settings to pair a remote device.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: cs.onSurfaceVariant),
               ),
-            ),
+              const SizedBox(height: 24),
+              FilledButton.icon(
+                onPressed: () => context.go('/settings'),
+                icon: const Icon(Icons.settings_rounded, size: 18),
+                label: const Text('Open Settings'),
+              ),
+            ],
           ),
         ),
-      ),
+      );
+    }
+
+    return _ControlMode(
+      remoteIp: ip,
+      remotePort: port,
     );
   }
 }
+
+
 
 // ── Control mode ──────────────────────────────────────────────────────────────
 

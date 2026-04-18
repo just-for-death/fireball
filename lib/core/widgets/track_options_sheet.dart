@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:share_plus/share_plus.dart';
 
+import '../api/fireball_api.dart';
 import '../models/models.dart';
 import '../models/track.dart';
 import '../store/providers.dart';
@@ -35,6 +36,7 @@ class _TrackOptionsSheet extends ConsumerWidget {
     final player = watchRef.watch(playerProvider);
     final library = watchRef.watch(localStoreProvider);
     final isFav = player.isFavorite(track.effectiveId);
+    final isFollowingArtist = library.artists.any((a) => a.name.toLowerCase() == track.artist.toLowerCase());
 
     return SafeArea(
       child: Container(
@@ -169,6 +171,41 @@ class _TrackOptionsSheet extends ConsumerWidget {
                       .read(localStoreProvider.notifier)
                       .addFavorite(track);
                   watchRef.read(playerProvider.notifier).addFavorite(track);
+                }
+              },
+            ),
+            _ActionTile(
+              icon: isFollowingArtist
+                  ? Icons.person_remove_rounded
+                  : Icons.person_add_rounded,
+              label: isFollowingArtist ? 'Unfollow Artist' : 'Follow Artist',
+              cs: cs,
+              onTap: () async {
+                Navigator.pop(context);
+                if (isFollowingArtist) {
+                  final a = library.artists.firstWhere((a) => a.name.toLowerCase() == track.artist.toLowerCase());
+                  await watchRef.read(localStoreProvider.notifier).deleteArtist(a.artistId);
+                } else {
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Following ${track.artist}...'), duration: const Duration(seconds: 1)),
+                    );
+                  }
+                  final data = await const FireballApi().itunesFindArtist(track.artist);
+                  if (data != null) {
+                    final newArtist = Artist(
+                      artistId: data['artistId']?.toString() ?? track.artist,
+                      name: data['artistName']?.toString() ?? track.artist,
+                      artwork: track.artwork,
+                    );
+                    await watchRef.read(localStoreProvider.notifier).addArtist(newArtist);
+                  } else {
+                    await watchRef.read(localStoreProvider.notifier).addArtist(Artist(
+                      artistId: track.artist,
+                      name: track.artist,
+                      artwork: track.artwork,
+                    ));
+                  }
                 }
               },
             ),

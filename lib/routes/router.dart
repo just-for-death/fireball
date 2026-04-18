@@ -5,7 +5,7 @@ import '../features/artist/artist_screen.dart';
 import '../features/home/home_screen.dart';
 import '../features/library/library_screen.dart';
 import '../features/player/player_screen.dart';
-import '../features/remote/remote_hub_screen.dart';
+import '../features/remote/remote_screen.dart';
 import '../features/search/search_screen.dart';
 import '../features/settings/settings_screen.dart';
 import '../widgets/shell_scaffold.dart';
@@ -29,7 +29,7 @@ final routerProvider = Provider<GoRouter>((ref) {
           ]),
           StatefulShellBranch(routes: [
             GoRoute(
-                path: '/remote', builder: (_, __) => const RemoteHubScreen()),
+                path: '/remote', builder: (_, __) => const RemoteScreen()),
           ]),
           StatefulShellBranch(routes: [
             GoRoute(

@@ -1,6 +1,7 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
+import 'package:go_router/go_router.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 import '../../core/models/models.dart';
@@ -345,16 +346,7 @@ class LibraryScreen extends HookConsumerWidget {
                     padding: const EdgeInsets.symmetric(
                         horizontal: 4, vertical: 2),
                     child: ListTile(
-                      leading: Container(
-                        width: 50,
-                        height: 50,
-                        decoration: BoxDecoration(
-                          color: cs.primary.withValues(alpha: 0.15),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child:
-                            Icon(Icons.queue_music_rounded, color: cs.primary),
-                      ),
+                      leading: _PlaylistArt(playlist: pl, size: 50, cs: cs),
                       title: Text(
                         pl.title,
                         maxLines: 1,
@@ -408,30 +400,35 @@ class LibraryScreen extends HookConsumerWidget {
           itemCount: library.artists.length,
           itemBuilder: (context, i) {
             final artist = library.artists[i];
-            return Column(
-              children: [
-                ClipOval(
-                  child: artist.artwork != null
-                      ? CachedNetworkImage(
-                          imageUrl: artist.artwork!,
-                          width: 110,
-                          height: 110,
-                          fit: BoxFit.cover,
-                          errorWidget: (_, __, ___) => _circularPlaceholder(cs),
-                        )
-                      : _circularPlaceholder(cs),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  artist.name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontWeight: FontWeight.w700,
-                    color: isDark ? Colors.white : cs.onSurface,
+            return GestureDetector(
+              onTap: () {
+                context.push('/artist?name=${Uri.encodeComponent(artist.name)}');
+              },
+              child: Column(
+                children: [
+                  ClipOval(
+                    child: artist.artwork != null
+                        ? CachedNetworkImage(
+                            imageUrl: artist.artwork!,
+                            width: 110,
+                            height: 110,
+                            fit: BoxFit.cover,
+                            errorWidget: (_, __, ___) => _circularPlaceholder(cs),
+                          )
+                        : _circularPlaceholder(cs),
                   ),
-                ),
-              ],
+                  const SizedBox(height: 8),
+                  Text(
+                    artist.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      color: isDark ? Colors.white : cs.onSurface,
+                    ),
+                  ),
+                ],
+              ),
             );
           },
         );
@@ -795,6 +792,96 @@ class _TrackList extends StatelessWidget {
         color: cs.surfaceContainerHighest,
         child: Icon(Icons.music_note_rounded,
             color: cs.primary.withValues(alpha: 0.4), size: 22),
+      );
+}
+
+// ── Playlist Artwork ──────────────────────────────────────────────────────────
+class _PlaylistArt extends StatelessWidget {
+  const _PlaylistArt({
+    required this.playlist,
+    required this.size,
+    required this.cs,
+  });
+  final Playlist playlist;
+  final double size;
+  final ColorScheme cs;
+
+  @override
+  Widget build(BuildContext context) {
+    // Extract unique artworks from tracks
+    final uniqueArts = <String>[];
+    for (final track in playlist.videos) {
+      if (track.artwork != null && track.artwork!.isNotEmpty && !uniqueArts.contains(track.artwork)) {
+        uniqueArts.add(track.artwork!);
+        if (uniqueArts.length >= 4) break;
+      }
+    }
+
+    if (uniqueArts.isEmpty) {
+      return Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          color: cs.primary.withValues(alpha: 0.15),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Icon(Icons.queue_music_rounded, color: cs.primary, size: size * 0.5),
+      );
+    }
+
+    if (uniqueArts.length < 4) {
+      // Just show the first one
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: CachedNetworkImage(
+          imageUrl: uniqueArts.first,
+          width: size,
+          height: size,
+          fit: BoxFit.cover,
+          errorWidget: (_, __, ___) => _fallback(),
+        ),
+      );
+    }
+
+    // 2x2 grid
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(12),
+      child: SizedBox(
+        width: size,
+        height: size,
+        child: Column(
+          children: [
+            Expanded(
+              child: Row(
+                children: [
+                  Expanded(child: _img(uniqueArts[0])),
+                  Expanded(child: _img(uniqueArts[1])),
+                ],
+              ),
+            ),
+            Expanded(
+              child: Row(
+                children: [
+                  Expanded(child: _img(uniqueArts[2])),
+                  Expanded(child: _img(uniqueArts[3])),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _img(String url) => CachedNetworkImage(
+        imageUrl: url,
+        fit: BoxFit.cover,
+        errorWidget: (_, __, ___) => _fallback(),
+      );
+
+  Widget _fallback() => Container(
+        color: cs.primary.withValues(alpha: 0.15),
+        child: Icon(Icons.music_note_rounded, color: cs.primary, size: size * 0.4),
       );
 }
 
