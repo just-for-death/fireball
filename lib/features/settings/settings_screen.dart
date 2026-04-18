@@ -13,7 +13,9 @@ import '../../core/store/providers.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/fireball_logo.dart';
 import '../../core/widgets/glass_widgets.dart';
+import '../../features/remote/remote_scan_screen.dart';
 import '../../features/remote/remote_screen.dart';
+import '../../remote/remote_pairing.dart';
 import '../../sync/gdrive_sync.dart';
 import '../../sync/webdav_sync.dart';
 
@@ -1599,7 +1601,7 @@ class SettingsScreen extends HookConsumerWidget {
                       _SettingsLabel('CONNECT TO REMOTE'),
                       _StyledTextField(
                         controller: remoteHostCtrl,
-                        hint: '192.168.1.x',
+                        hint: 'IP, URL, or pairing code',
                         onChanged: (_) {},
                       ),
                       const SizedBox(height: 8),
@@ -1620,27 +1622,70 @@ class SettingsScreen extends HookConsumerWidget {
                             ),
                           ),
                           const SizedBox(width: 8),
+                          if (remoteQrScanSupported)
+                            Material(
+                              color: cs.surfaceContainerHighest,
+                              borderRadius: BorderRadius.circular(12),
+                              child: IconButton(
+                                tooltip: 'Scan QR code',
+                                icon: const Icon(Icons.qr_code_scanner_rounded),
+                                onPressed: () async {
+                                  final ep =
+                                      await Navigator.of(context).push<RemoteEndpoint>(
+                                    MaterialPageRoute(
+                                      fullscreenDialog: true,
+                                      builder: (_) => const RemoteScanScreen(),
+                                    ),
+                                  );
+                                  if (ep == null || !context.mounted) return;
+                                  remoteHostCtrl.text =
+                                      '${ep.host}:${ep.port}';
+                                  await saveSettings({'remoteHostIp': ep.host});
+                                  if (!context.mounted) return;
+                                  Navigator.of(context).push(
+                                    MaterialPageRoute(
+                                      builder: (_) =>
+                                          _RemoteControlSheet(endpoint: ep),
+                                    ),
+                                  );
+                                },
+                              ),
+                            ),
+                          if (remoteQrScanSupported) const SizedBox(width: 8),
                           Expanded(
                             child: _SyncButton(
                               label: 'Control Remote',
                               icon: Icons.play_circle_outline_rounded,
                               color: cs.primary,
                               onTap: () async {
-                                final ip = remoteHostCtrl.text.trim();
-                                if (ip.isEmpty) {
+                                final raw = remoteHostCtrl.text.trim();
+                                if (raw.isEmpty) {
                                   ScaffoldMessenger.of(context).showSnackBar(
                                     const SnackBar(
-                                        content: Text(
-                                            'Enter the remote device IP first')),
+                                      content: Text(
+                                        'Enter IP, URL, or pairing code — or scan a QR',
+                                      ),
+                                    ),
                                   );
                                   return;
                                 }
-                                await saveSettings({'remoteHostIp': ip});
+                                final ep = parseRemoteConnectionString(raw);
+                                if (ep == null) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text(
+                                        'Could not parse. Use 192.168.x.x, http://…, or the pairing code.',
+                                      ),
+                                    ),
+                                  );
+                                  return;
+                                }
+                                await saveSettings({'remoteHostIp': ep.host});
                                 if (context.mounted) {
                                   Navigator.of(context).push(
                                     MaterialPageRoute(
-                                      builder: (_) => _RemoteControlSheet(
-                                          hostIp: ip),
+                                      builder: (_) =>
+                                          _RemoteControlSheet(endpoint: ep),
                                     ),
                                   );
                                 }
@@ -2203,9 +2248,12 @@ class _RemoteHostSheet extends StatelessWidget {
 // ── Remote control sheet ──────────────────────────────────────────────────────
 
 class _RemoteControlSheet extends StatelessWidget {
-  const _RemoteControlSheet({required this.hostIp});
-  final String hostIp;
+  const _RemoteControlSheet({required this.endpoint});
+  final RemoteEndpoint endpoint;
 
   @override
-  Widget build(BuildContext context) => RemoteScreen(remoteIp: hostIp);
+  Widget build(BuildContext context) => RemoteScreen(
+        remoteIp: endpoint.host,
+        remotePort: endpoint.port,
+      );
 }

@@ -9,10 +9,10 @@ import 'remote_server.dart' show RemoteServer;
 /// Point [hostIp] at the IP shown in the host device's Remote Control screen.
 /// All calls complete quickly — if the host is unreachable they throw.
 class RemoteClient {
-  RemoteClient(this.hostIp);
+  RemoteClient(this.hostIp, {this.port = RemoteServer.port});
 
   final String hostIp;
-  int port = RemoteServer.port;
+  final int port;
 
   String get _base => 'http://$hostIp:$port';
 

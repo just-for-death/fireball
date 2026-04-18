@@ -7,29 +7,34 @@ import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 import '../../remote/remote_client.dart';
+import '../../remote/remote_pairing.dart';
 import '../../remote/remote_server.dart';
 
 /// Two-mode remote control screen.
 ///
 /// **Host mode** (default when no [remoteIp] is given):
-///   Shows a QR code + text URL that the controller device can scan/enter.
-///   Polls every 500 ms until the server IP is available (handles the race
-///   where the user navigates here before HttpServer.bind completes).
+///   Shows QR code(s), a pairing code, and the LAN URL.
 ///
 /// **Control mode** (when [remoteIp] is provided):
-///   Polls the remote /state endpoint every 2 s and shows a mini player UI
-///   with play/pause, next/prev, and a seek bar.
+///   Polls the remote `/state` endpoint about once per second; shows play/pause,
+///   next/prev, and seek.
 class RemoteScreen extends StatelessWidget {
-  const RemoteScreen({super.key, this.remoteIp});
+  const RemoteScreen({super.key, this.remoteIp, this.remotePort});
 
-  /// When set, the screen operates in control mode pointing at this IP.
+  /// When set, the screen operates in control mode pointing at this host.
   final String? remoteIp;
+
+  /// Port for control mode (defaults to [RemoteServer.port]).
+  final int? remotePort;
 
   @override
   Widget build(BuildContext context) {
     final isControlMode = remoteIp != null && remoteIp!.isNotEmpty;
     return isControlMode
-        ? _ControlMode(remoteIp: remoteIp!)
+        ? _ControlMode(
+            remoteIp: remoteIp!,
+            remotePort: remotePort ?? RemoteServer.port,
+          )
         : const _HostMode();
   }
 }
@@ -72,6 +77,12 @@ class _HostMode extends HookWidget {
     final serverUrl = localIp.value != null
         ? 'http://${localIp.value}:${RemoteServer.port}'
         : null;
+    final pairingCode = localIp.value != null
+        ? encodeRemotePairing(localIp.value!, RemoteServer.port)
+        : null;
+    final deepLink = pairingCode != null
+        ? 'fbremote://pair?c=${Uri.encodeComponent(pairingCode)}'
+        : null;
 
     return Scaffold(
       appBar: AppBar(
@@ -88,31 +99,76 @@ class _HostMode extends HookWidget {
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-              if (serverUrl != null) ...[
+              if (serverUrl != null && pairingCode != null && deepLink != null) ...[
+                Text(
+                  'Scan with Fireball',
+                  style: Theme.of(context).textTheme.titleSmall,
+                ),
+                const SizedBox(height: 8),
                 QrImageView(
-                  data: serverUrl,
+                  data: deepLink,
                   version: QrVersions.auto,
-                  size: 220,
+                  size: 200,
                   backgroundColor: Colors.white,
                   padding: const EdgeInsets.all(12),
                 ),
-                const SizedBox(height: 24),
+                const SizedBox(height: 20),
+                Text(
+                  'Or scan with any app',
+                  style: Theme.of(context).textTheme.titleSmall,
+                ),
+                const SizedBox(height: 8),
+                QrImageView(
+                  data: serverUrl,
+                  version: QrVersions.auto,
+                  size: 200,
+                  backgroundColor: Colors.white,
+                  padding: const EdgeInsets.all(12),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'Pairing code',
+                  style: Theme.of(context).textTheme.titleSmall,
+                ),
+                const SizedBox(height: 6),
+                SelectableText(
+                  formatPairingCodeDisplay(pairingCode),
+                  style: Theme.of(context)
+                      .textTheme
+                      .headlineSmall
+                      ?.copyWith(
+                        fontFamily: 'monospace',
+                        letterSpacing: 2,
+                      ),
+                ),
+                const SizedBox(height: 8),
+                OutlinedButton.icon(
+                  onPressed: () {
+                    Clipboard.setData(ClipboardData(text: pairingCode));
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Pairing code copied')),
+                    );
+                  },
+                  icon: const Icon(Icons.copy_rounded, size: 16),
+                  label: const Text('Copy code'),
+                ),
+                const SizedBox(height: 20),
                 Text(
                   serverUrl,
                   style: Theme.of(context)
                       .textTheme
-                      .titleMedium
+                      .bodyMedium
                       ?.copyWith(fontFamily: 'monospace'),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 8),
                 OutlinedButton.icon(
                   onPressed: () {
                     Clipboard.setData(ClipboardData(text: serverUrl));
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Copied to clipboard')),
+                      const SnackBar(content: Text('URL copied')),
                     );
                   },
-                  icon: const Icon(Icons.copy_rounded, size: 16),
+                  icon: const Icon(Icons.link_rounded, size: 16),
                   label: const Text('Copy URL'),
                 ),
               ] else if (waitingForStart.value) ...[
@@ -131,9 +187,9 @@ class _HostMode extends HookWidget {
                   style: TextStyle(color: cs.onSurfaceVariant),
                 ),
               ],
-              const SizedBox(height: 32),
+              const SizedBox(height: 24),
               Text(
-                'Scan the QR code or enter the URL on the controller device.',
+                'On the other device: open Remote Control, scan a QR, or type the pairing code.',
                 textAlign: TextAlign.center,
                 style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13),
               ),
@@ -151,13 +207,20 @@ class _HostMode extends HookWidget {
 // ── Control mode ──────────────────────────────────────────────────────────────
 
 class _ControlMode extends HookWidget {
-  const _ControlMode({required this.remoteIp});
+  const _ControlMode({
+    required this.remoteIp,
+    required this.remotePort,
+  });
   final String remoteIp;
+  final int remotePort;
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final client = useMemoized(() => RemoteClient(remoteIp), [remoteIp]);
+    final client = useMemoized(
+      () => RemoteClient(remoteIp, port: remotePort),
+      [remoteIp, remotePort],
+    );
 
     final remoteState = useState<RemoteState?>(null);
     final error = useState<String?>(null);
@@ -181,7 +244,7 @@ class _ControlMode extends HookWidget {
       }
 
       poll();
-      timer = Timer.periodic(const Duration(seconds: 2), (_) => poll());
+      timer = Timer.periodic(const Duration(seconds: 1), (_) => poll());
       return timer.cancel;
     }, [remoteIp]);
 
@@ -189,7 +252,11 @@ class _ControlMode extends HookWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text('Controlling $remoteIp'),
+        title: Text(
+          remotePort == RemoteServer.port
+              ? 'Controlling $remoteIp'
+              : 'Controlling $remoteIp:$remotePort',
+        ),
         backgroundColor: cs.surface,
       ),
       // LayoutBuilder + SingleChildScrollView + ConstrainedBox combination

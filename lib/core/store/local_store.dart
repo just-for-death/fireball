@@ -9,6 +9,10 @@ import 'package:path_provider/path_provider.dart';
 import '../api/fireball_api.dart';
 import '../models/models.dart';
 import '../models/track.dart';
+import 'library_data.dart';
+import 'library_merge.dart';
+
+export 'library_data.dart' show LibraryData;
 
 // ── Schema version ─────────────────────────────────────────────────────────────
 const _kDbVersion = 2;
@@ -18,42 +22,6 @@ final localStoreProvider =
     StateNotifierProvider<LocalStoreNotifier, LibraryData>((ref) {
   return LocalStoreNotifier();
 });
-
-// ── Library data model ──────────────────────────────────────────────────────────
-class LibraryData {
-  final FireballSettings settings;
-  final List<Track> history;
-  final List<Track> favorites;
-  final List<Playlist> playlists;
-  final List<Artist> artists;
-  final List<Album> albums;
-
-  const LibraryData({
-    this.settings = const FireballSettings(),
-    this.history = const [],
-    this.favorites = const [],
-    this.playlists = const [],
-    this.artists = const [],
-    this.albums = const [],
-  });
-
-  LibraryData copyWith({
-    FireballSettings? settings,
-    List<Track>? history,
-    List<Track>? favorites,
-    List<Playlist>? playlists,
-    List<Artist>? artists,
-    List<Album>? albums,
-  }) =>
-      LibraryData(
-        settings: settings ?? this.settings,
-        history: history ?? this.history,
-        favorites: favorites ?? this.favorites,
-        playlists: playlists ?? this.playlists,
-        artists: artists ?? this.artists,
-        albums: albums ?? this.albums,
-      );
-}
 
 // ── Notifier ────────────────────────────────────────────────────────────────────
 class LocalStoreNotifier extends StateNotifier<LibraryData> {
@@ -316,6 +284,19 @@ class LocalStoreNotifier extends StateNotifier<LibraryData> {
       await _save();
     } catch (e) {
       throw Exception('Failed to restore library: $e');
+    }
+  }
+
+  /// Merges remote [library.json] with the current library (WebDAV two-device sync).
+  Future<void> mergeFromLibraryJson(String libraryJson) async {
+    await _ready.future;
+    try {
+      final j = jsonDecode(libraryJson) as Map<String, dynamic>;
+      final remote = _fromJson(j);
+      state = mergeLibraryData(state, remote);
+      await _save();
+    } catch (e) {
+      throw Exception('Failed to merge library: $e');
     }
   }
 

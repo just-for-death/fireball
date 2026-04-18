@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ui';
 
 import 'package:flutter/foundation.dart'
@@ -87,6 +88,18 @@ class ShellScaffold extends HookConsumerWidget {
       return listener.dispose;
     }, [settings.webDavLiveSync, settings.webDavUrl]);
 
+    // Periodic WebDAV sync while the app runs (two-device library convergence).
+    useEffect(() {
+      if (!settings.webDavLiveSync || settings.webDavUrl.isEmpty) return null;
+      final t = Timer.periodic(const Duration(minutes: 4), (_) {
+        WebDavLiveSync.syncIfNeeded(
+          ref.read(localStoreProvider).settings,
+          store,
+        );
+      });
+      return t.cancel;
+    }, [settings.webDavLiveSync, settings.webDavUrl]);
+
     // Remote server: start/stop based on settings toggle
     useEffect(() {
       if (settings.remoteServerEnabled) {
@@ -127,15 +140,18 @@ class _AndroidShell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final bottomPad = !kIsWeb && defaultTargetPlatform == TargetPlatform.android
+        ? MediaQuery.viewPaddingOf(context).bottom
+        : 0.0;
     return Scaffold(
       body: Stack(
         children: [
           shell,
-          const Positioned(
+          Positioned(
             left: 0,
             right: 0,
-            bottom: 80,
-            child: MiniPlayer(),
+            bottom: 80 + bottomPad,
+            child: const MiniPlayer(),
           ),
         ],
       ),
@@ -169,6 +185,9 @@ class _AndroidTabletShell extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final extended = width >= 1000;
+    final bottomPad = !kIsWeb && defaultTargetPlatform == TargetPlatform.android
+        ? MediaQuery.viewPaddingOf(context).bottom
+        : 0.0;
 
     return Scaffold(
       body: Row(
@@ -204,11 +223,11 @@ class _AndroidTabletShell extends StatelessWidget {
             child: Stack(
               children: [
                 shell,
-                const Positioned(
+                Positioned(
                   left: 0,
                   right: 0,
-                  bottom: 16,
-                  child: MiniPlayer(),
+                  bottom: 16 + bottomPad,
+                  child: const MiniPlayer(),
                 ),
               ],
             ),

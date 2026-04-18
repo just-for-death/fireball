@@ -1,3 +1,5 @@
+import '../url_utils.dart';
+
 class Track {
   final String id;
   final String? videoId;
@@ -24,7 +26,7 @@ class Track {
         videoId: j['videoId']?.toString(),
         title: j['title']?.toString() ?? '—',
         artist: j['artist']?.toString() ?? '—',
-        artwork: j['artwork']?.toString(),
+        artwork: normalizeHttpUrl(j['artwork']?.toString()),
         url: j['url']?.toString(),
         duration: j['duration'] is int ? j['duration'] : int.tryParse(j['duration']?.toString() ?? ''),
         album: j['album']?.toString(),
