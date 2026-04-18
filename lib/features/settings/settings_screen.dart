@@ -1,7 +1,7 @@
-import 'dart:io' show Platform;
 import 'dart:math' show min;
 
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart'
+    show defaultTargetPlatform, kIsWeb, TargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:google_sign_in/google_sign_in.dart';
@@ -573,12 +573,24 @@ class SettingsScreen extends HookConsumerWidget {
                         final mq = MediaQuery.sizeOf(context);
                         final shortest = min(mq.width, mq.height);
                         final showIpadLayout = !kIsWeb &&
-                            Platform.isIOS &&
+                            defaultTargetPlatform == TargetPlatform.iOS &&
                             shortest >= 600;
-                        final schemeValue = kFireballSchemeChoices
-                                .any((e) => e.$1 == settings.flexScheme)
-                            ? settings.flexScheme
-                            : 'deepPurple';
+                        final curatedIds = kFireballSchemeChoices
+                            .map((e) => e.$1)
+                            .toSet();
+                        final schemeDropdownItems = <DropdownMenuItem<String>>[
+                          if (!curatedIds.contains(settings.flexScheme))
+                            DropdownMenuItem(
+                              value: settings.flexScheme,
+                              child: Text(settings.flexScheme),
+                            ),
+                          ...kFireballSchemeChoices.map(
+                            (e) => DropdownMenuItem(
+                              value: e.$1,
+                              child: Text(e.$2),
+                            ),
+                          ),
+                        ];
 
                         return Padding(
                           padding: const EdgeInsets.only(bottom: 16),
@@ -627,7 +639,7 @@ class SettingsScreen extends HookConsumerWidget {
                               const SizedBox(height: 16),
                               _SettingsLabel('COLOR SCHEME'),
                               DropdownButton<String>(
-                                value: schemeValue,
+                                value: settings.flexScheme,
                                 isExpanded: true,
                                 dropdownColor: const Color(0xFF1A1A1A),
                                 style: const TextStyle(color: Colors.white),
@@ -635,14 +647,7 @@ class SettingsScreen extends HookConsumerWidget {
                                   height: 1,
                                   color: Colors.white.withValues(alpha: 0.2),
                                 ),
-                                items: kFireballSchemeChoices
-                                    .map(
-                                      (e) => DropdownMenuItem(
-                                        value: e.$1,
-                                        child: Text(e.$2),
-                                      ),
-                                    )
-                                    .toList(),
+                                items: schemeDropdownItems,
                                 onChanged: (v) {
                                   if (v == null) return;
                                   saveSettings({'flexScheme': v});
