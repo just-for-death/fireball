@@ -67,7 +67,7 @@ class HomeScreen extends HookConsumerWidget {
             api.itunesTopSongs(country.value, limit: 20).catchError((_) => null);
 
         final rss = await trendingFuture;
-        final entries = (rss?['feed']?['entry'] as List<dynamic>? ?? []);
+        final entries = FireballApi.appleRssFeedEntries(rss);
         trending.value = entries
             .map((e) => {
                   'id': (e['id']?['attributes']?['im:id'] ?? '').toString(),

@@ -1,3 +1,7 @@
+import 'dart:io' show Platform;
+import 'dart:math' show min;
+
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:google_sign_in/google_sign_in.dart';
@@ -6,6 +10,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import '../../core/api/fireball_api.dart';
 import '../../core/countries.dart';
 import '../../core/store/providers.dart';
+import '../../core/theme/app_theme.dart';
 import '../../core/widgets/fireball_logo.dart';
 import '../../core/widgets/glass_widgets.dart';
 import '../../features/remote/remote_screen.dart';
@@ -559,6 +564,263 @@ class SettingsScreen extends HookConsumerWidget {
                       ),
                     ),
                   ),
+
+                  // ── APPEARANCE & LAYOUT ───────────────────────────────────
+                  if (showSection(
+                      'appearance theme dark light system color accent scheme dynamic material ipad sidebar layout'))
+                    Builder(
+                      builder: (context) {
+                        final mq = MediaQuery.sizeOf(context);
+                        final shortest = min(mq.width, mq.height);
+                        final showIpadLayout = !kIsWeb &&
+                            Platform.isIOS &&
+                            shortest >= 600;
+                        final schemeValue = kFireballSchemeChoices
+                                .any((e) => e.$1 == settings.flexScheme)
+                            ? settings.flexScheme
+                            : 'deepPurple';
+
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 16),
+                          child: _SectionCard(
+                            title: 'APPEARANCE',
+                            icon: Icons.palette_outlined,
+                            isDark: isDark,
+                            cs: cs,
+                            children: [
+                              const Text(
+                                'Theme',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              SegmentedButton<String>(
+                                segments: const [
+                                  ButtonSegment(
+                                    value: 'system',
+                                    label: Text('System'),
+                                    icon: Icon(Icons.brightness_auto_rounded,
+                                        size: 18),
+                                  ),
+                                  ButtonSegment(
+                                    value: 'light',
+                                    label: Text('Light'),
+                                    icon: Icon(Icons.light_mode_rounded,
+                                        size: 18),
+                                  ),
+                                  ButtonSegment(
+                                    value: 'dark',
+                                    label: Text('Dark'),
+                                    icon: Icon(Icons.dark_mode_rounded,
+                                        size: 18),
+                                  ),
+                                ],
+                                selected: {settings.themeMode},
+                                onSelectionChanged: (next) {
+                                  if (next.isEmpty) return;
+                                  saveSettings({'themeMode': next.first});
+                                },
+                              ),
+                              const SizedBox(height: 16),
+                              _SettingsLabel('COLOR SCHEME'),
+                              DropdownButton<String>(
+                                value: schemeValue,
+                                isExpanded: true,
+                                dropdownColor: const Color(0xFF1A1A1A),
+                                style: const TextStyle(color: Colors.white),
+                                underline: Container(
+                                  height: 1,
+                                  color: Colors.white.withValues(alpha: 0.2),
+                                ),
+                                items: kFireballSchemeChoices
+                                    .map(
+                                      (e) => DropdownMenuItem(
+                                        value: e.$1,
+                                        child: Text(e.$2),
+                                      ),
+                                    )
+                                    .toList(),
+                                onChanged: (v) {
+                                  if (v == null) return;
+                                  saveSettings({'flexScheme': v});
+                                },
+                              ),
+                              const SizedBox(height: 12),
+                              Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        const Text(
+                                          'Use dynamic colors',
+                                          style: TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 14,
+                                          ),
+                                        ),
+                                        Text(
+                                          settings.accentSeedColor != null
+                                              ? 'Disabled while a custom accent is set'
+                                              : 'Android 12+ wallpaper colors when available',
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            color: Colors.white
+                                                .withValues(alpha: 0.4),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  Switch(
+                                    value:
+                                        settings.useDynamicColorWhenAvailable,
+                                    onChanged: settings.accentSeedColor != null
+                                        ? null
+                                        : (v) => saveSettings({
+                                              'useDynamicColorWhenAvailable':
+                                                  v,
+                                            }),
+                                    activeThumbColor: cs.primary,
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              _SettingsLabel('ACCENT (OPTIONAL)'),
+                              Text(
+                                'Tap a swatch or use scheme default',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: Colors.white.withValues(alpha: 0.45),
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Wrap(
+                                spacing: 10,
+                                runSpacing: 10,
+                                children: [
+                                  for (final preset in kFireballAccentPresets)
+                                    Tooltip(
+                                      message: preset == null
+                                          ? 'Scheme default'
+                                          : 'Accent #${preset.toRadixString(16)}',
+                                      child: Material(
+                                        color: Colors.transparent,
+                                        child: InkWell(
+                                          onTap: () => saveSettings(
+                                            preset == null
+                                                ? {
+                                                    'accentSeedColor': null,
+                                                  }
+                                                : {'accentSeedColor': preset},
+                                          ),
+                                          customBorder:
+                                              const CircleBorder(),
+                                          child: Container(
+                                            width: 36,
+                                            height: 36,
+                                            decoration: BoxDecoration(
+                                              shape: BoxShape.circle,
+                                              border: Border.all(
+                                                color: settings
+                                                            .accentSeedColor ==
+                                                        preset
+                                                    ? cs.primary
+                                                    : Colors.white
+                                                        .withValues(
+                                                            alpha: 0.2,
+                                                          ),
+                                                width: settings
+                                                            .accentSeedColor ==
+                                                        preset
+                                                    ? 2.5
+                                                    : 1,
+                                              ),
+                                              color: preset == null
+                                                  ? Colors.white
+                                                      .withValues(alpha: 0.15)
+                                                  : Color(preset),
+                                            ),
+                                            child: preset == null
+                                                ? Icon(
+                                                    Icons.palette_outlined,
+                                                    size: 18,
+                                                    color: Colors.white
+                                                        .withValues(
+                                                          alpha: 0.8,
+                                                        ),
+                                                  )
+                                                : null,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                ],
+                              ),
+                              if (settings.accentSeedColor != null) ...[
+                                const SizedBox(height: 8),
+                                Align(
+                                  alignment: Alignment.centerLeft,
+                                  child: TextButton.icon(
+                                    onPressed: () => saveSettings({
+                                      'accentSeedColor': null,
+                                    }),
+                                    icon: const Icon(Icons.restart_alt_rounded,
+                                        size: 18),
+                                    label: const Text('Clear custom accent'),
+                                  ),
+                                ),
+                              ],
+                              if (showIpadLayout) ...[
+                                const SizedBox(height: 16),
+                                Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          const Text(
+                                            'Compact iPad sidebar',
+                                            style: TextStyle(
+                                              color: Colors.white,
+                                              fontSize: 14,
+                                            ),
+                                          ),
+                                          Text(
+                                            'Icon-only rail to maximize content width',
+                                            style: TextStyle(
+                                              fontSize: 11,
+                                              color: Colors.white
+                                                  .withValues(alpha: 0.4),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    Switch(
+                                      value: settings.ipadSidebarCollapsed,
+                                      onChanged: (v) => saveSettings({
+                                        'ipadSidebarCollapsed': v,
+                                      }),
+                                      activeThumbColor: cs.primary,
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ],
+                          ),
+                        );
+                      },
+                    ),
 
                   // ── YOUTUBE / INVIDIOUS ─────────────────────────────────
                   if (showSection(

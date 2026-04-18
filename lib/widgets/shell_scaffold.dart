@@ -103,7 +103,11 @@ class ShellScaffold extends HookConsumerWidget {
 
     if (isIOS) {
       return isTablet
-          ? _IPadShell(shell: shell, onTap: _go)
+          ? _IPadShell(
+              shell: shell,
+              onTap: _go,
+              sidebarCollapsed: settings.ipadSidebarCollapsed,
+            )
           : _IPhoneShell(shell: shell, onTap: _go);
     }
 
@@ -245,25 +249,43 @@ class _IPhoneShell extends StatelessWidget {
 }
 
 // ── iPadOS — glass sidebar ────────────────────────────────────────────────────
-class _IPadShell extends StatelessWidget {
-  const _IPadShell({required this.shell, required this.onTap});
+class _IPadShell extends ConsumerWidget {
+  const _IPadShell({
+    required this.shell,
+    required this.onTap,
+    required this.sidebarCollapsed,
+  });
   final StatefulNavigationShell shell;
   final void Function(int) onTap;
+  final bool sidebarCollapsed;
+
+  static const double _widthExpanded = 220;
+  static const double _widthCollapsed = 72;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final cs = Theme.of(context).colorScheme;
+    final sidebarWidth =
+        sidebarCollapsed ? _widthCollapsed : _widthExpanded;
+
+    Future<void> toggleCollapsed() async {
+      await ref.read(localStoreProvider.notifier).updateSettings({
+        'ipadSidebarCollapsed': !sidebarCollapsed,
+      });
+    }
 
     return Scaffold(
       backgroundColor: Colors.transparent,
       body: Row(
         children: [
-          // Glass sidebar
           ClipRect(
             child: BackdropFilter(
               filter: ImageFilter.blur(sigmaX: 32, sigmaY: 32),
-              child: Container(
-                width: 220,
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 280),
+                curve: Curves.easeOutCubic,
+                width: sidebarWidth,
                 decoration: BoxDecoration(
                   color: isDark
                       ? Colors.black.withValues(alpha: 0.55)
@@ -279,33 +301,73 @@ class _IPadShell extends StatelessWidget {
                 ),
                 child: SafeArea(
                   child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                    crossAxisAlignment: sidebarCollapsed
+                        ? CrossAxisAlignment.center
+                        : CrossAxisAlignment.start,
                     children: [
-                      const SizedBox(height: 24),
+                      SizedBox(height: sidebarCollapsed ? 8 : 24),
                       Padding(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 20, vertical: 8),
-                        child: Row(
-                          children: [
-                            const FireballLogo(size: 40),
-                            const SizedBox(width: 12),
-                            Text(
-                              'Fireball',
-                              style: TextStyle(
-                                fontSize: 22,
-                                fontWeight: FontWeight.w800,
-                                letterSpacing: -0.5,
-                                color: isDark ? Colors.white : Colors.black,
-                              ),
-                            ),
-                          ],
+                        padding: EdgeInsets.symmetric(
+                          horizontal: sidebarCollapsed ? 4 : 20,
+                          vertical: 8,
                         ),
+                        child: sidebarCollapsed
+                            ? Column(
+                                children: [
+                                  IconButton(
+                                    tooltip: 'Expand sidebar',
+                                    onPressed: toggleCollapsed,
+                                    icon: Icon(
+                                      Icons.menu_open_rounded,
+                                      color: cs.primary,
+                                    ),
+                                  ),
+                                  const FireballLogo(size: 36),
+                                ],
+                              )
+                            : Row(
+                                children: [
+                                  IconButton(
+                                    tooltip: 'Collapse sidebar',
+                                    padding: EdgeInsets.zero,
+                                    constraints: const BoxConstraints(
+                                      minWidth: 40,
+                                      minHeight: 40,
+                                    ),
+                                    onPressed: toggleCollapsed,
+                                    icon: Icon(
+                                      Icons.menu_rounded,
+                                      color: cs.primary,
+                                    ),
+                                  ),
+                                  const FireballLogo(size: 40),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      'Fireball',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.fade,
+                                      softWrap: false,
+                                      style: TextStyle(
+                                        fontSize: 22,
+                                        fontWeight: FontWeight.w800,
+                                        letterSpacing: -0.5,
+                                        color: isDark
+                                            ? Colors.white
+                                            : Colors.black,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
                       ),
-                      const SizedBox(height: 16),
+                      const SizedBox(height: 8),
                       Expanded(
                         child: ListView.builder(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 12, vertical: 4),
+                          padding: EdgeInsets.symmetric(
+                            horizontal: sidebarCollapsed ? 6 : 12,
+                            vertical: 4,
+                          ),
                           itemCount: _navItems.length,
                           itemBuilder: (context, i) {
                             final item = _navItems[i];
@@ -314,15 +376,22 @@ class _IPadShell extends StatelessWidget {
                               item: item,
                               selected: selected,
                               isDark: isDark,
+                              collapsed: sidebarCollapsed,
                               onTap: () => onTap(i),
                             );
                           },
                         ),
                       ),
-                      // Mini player inside the sidebar area bottom
                       Padding(
-                        padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
-                        child: const _SidebarMiniPlayer(),
+                        padding: EdgeInsets.fromLTRB(
+                          sidebarCollapsed ? 6 : 12,
+                          8,
+                          sidebarCollapsed ? 6 : 12,
+                          16,
+                        ),
+                        child: _SidebarMiniPlayer(
+                          sidebarCollapsed: sidebarCollapsed,
+                        ),
                       ),
                     ],
                   ),
@@ -330,7 +399,6 @@ class _IPadShell extends StatelessWidget {
               ),
             ),
           ),
-          // Content
           Expanded(child: shell),
         ],
       ),
@@ -343,61 +411,95 @@ class _SidebarItem extends StatelessWidget {
     required this.item,
     required this.selected,
     required this.isDark,
+    required this.collapsed,
     required this.onTap,
   });
   final _NavItem item;
   final bool selected;
   final bool isDark;
+  final bool collapsed;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        curve: Curves.easeOutCubic,
-        margin: const EdgeInsets.symmetric(vertical: 3),
-        padding:
-            const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
-        decoration: BoxDecoration(
-          color: selected
-              ? cs.primary.withValues(alpha: 0.15)
-              : Colors.transparent,
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Row(
-          children: [
-            AnimatedScale(
-              scale: selected ? 1.1 : 1.0,
-              duration: const Duration(milliseconds: 200),
-              child: Icon(
-                selected ? item.activeIcon : item.icon,
-                size: 22,
-                color: selected
-                    ? cs.primary
-                    : (isDark
-                        ? Colors.white.withValues(alpha: 0.55)
-                        : Colors.black.withValues(alpha: 0.45)),
-              ),
+    final pad = collapsed
+        ? const EdgeInsets.symmetric(horizontal: 6, vertical: 10)
+        : const EdgeInsets.symmetric(horizontal: 14, vertical: 11);
+
+    return Tooltip(
+      message: item.label,
+      child: Semantics(
+        button: true,
+        label: item.label,
+        selected: selected,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: onTap,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 220),
+            curve: Curves.easeOutCubic,
+            margin: const EdgeInsets.symmetric(vertical: 3),
+            padding: pad,
+            decoration: BoxDecoration(
+              color: selected
+                  ? cs.primary.withValues(alpha: 0.15)
+                  : Colors.transparent,
+              borderRadius: BorderRadius.circular(12),
             ),
-            const SizedBox(width: 14),
-            Text(
-              item.label,
-              style: TextStyle(
-                fontSize: 15,
-                fontWeight:
-                    selected ? FontWeight.w700 : FontWeight.w500,
-                color: selected
-                    ? cs.primary
-                    : (isDark
-                        ? Colors.white.withValues(alpha: 0.75)
-                        : Colors.black.withValues(alpha: 0.65)),
-              ),
-            ),
-          ],
+            child: collapsed
+                ? Center(
+                    child: AnimatedScale(
+                      scale: selected ? 1.1 : 1.0,
+                      duration: const Duration(milliseconds: 200),
+                      curve: Curves.easeOutCubic,
+                      child: Icon(
+                        selected ? item.activeIcon : item.icon,
+                        size: 22,
+                        color: selected
+                            ? cs.primary
+                            : (isDark
+                                ? Colors.white.withValues(alpha: 0.55)
+                                : Colors.black.withValues(alpha: 0.45)),
+                      ),
+                    ),
+                  )
+                : Row(
+                    children: [
+                      AnimatedScale(
+                        scale: selected ? 1.1 : 1.0,
+                        duration: const Duration(milliseconds: 200),
+                        curve: Curves.easeOutCubic,
+                        child: Icon(
+                          selected ? item.activeIcon : item.icon,
+                          size: 22,
+                          color: selected
+                              ? cs.primary
+                              : (isDark
+                                  ? Colors.white.withValues(alpha: 0.55)
+                                  : Colors.black.withValues(alpha: 0.45)),
+                        ),
+                      ),
+                      const SizedBox(width: 14),
+                      AnimatedDefaultTextStyle(
+                        duration: const Duration(milliseconds: 200),
+                        curve: Curves.easeOutCubic,
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: selected
+                              ? FontWeight.w700
+                              : FontWeight.w500,
+                          color: selected
+                              ? cs.primary
+                              : (isDark
+                                  ? Colors.white.withValues(alpha: 0.75)
+                                  : Colors.black.withValues(alpha: 0.65)),
+                        ),
+                        child: Text(item.label),
+                      ),
+                    ],
+                  ),
+          ),
         ),
       ),
     );
@@ -406,11 +508,16 @@ class _SidebarItem extends StatelessWidget {
 
 // Compact now-playing strip at the bottom of the iPad sidebar
 class _SidebarMiniPlayer extends StatelessWidget {
-  const _SidebarMiniPlayer();
+  const _SidebarMiniPlayer({required this.sidebarCollapsed});
+
+  final bool sidebarCollapsed;
 
   @override
   Widget build(BuildContext context) {
-    return const MiniPlayer(compact: true);
+    return MiniPlayer(
+      compact: true,
+      sidebarIconOnly: sidebarCollapsed,
+    );
   }
 }
 

@@ -38,7 +38,7 @@ class SearchScreen extends HookConsumerWidget {
     // Load trending on mount
     useEffect(() {
       api.itunesTopSongs('us', limit: 20).then((data) {
-        final entries = (data?['feed']?['entry'] as List<dynamic>? ?? []);
+        final entries = FireballApi.appleRssFeedEntries(data);
         trending.value = entries
             .map((e) => {
                   'id': (e['id']?['attributes']?['im:id'] ?? '').toString(),
