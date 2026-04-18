@@ -808,9 +808,11 @@ class _PlaylistArt extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Extract unique artworks from tracks
+    // Extract unique artworks from tracks (limit search to first 50 to avoid perf hits on massive playlists)
     final uniqueArts = <String>[];
-    for (final track in playlist.videos) {
+    final searchLimit = playlist.videos.length > 50 ? 50 : playlist.videos.length;
+    for (int i = 0; i < searchLimit; i++) {
+      final track = playlist.videos[i];
       if (track.artwork != null && track.artwork!.isNotEmpty && !uniqueArts.contains(track.artwork)) {
         uniqueArts.add(track.artwork!);
         if (uniqueArts.length >= 4) break;
