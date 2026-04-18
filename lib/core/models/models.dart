@@ -134,19 +134,27 @@ class Artist {
   final String artistId;
   final String name;
   final String? artwork;
+  final String? latestReleaseId;
 
-  const Artist({required this.artistId, required this.name, this.artwork});
+  const Artist({
+    required this.artistId,
+    required this.name,
+    this.artwork,
+    this.latestReleaseId,
+  });
 
   factory Artist.fromJson(Map<String, dynamic> j) => Artist(
         artistId: j['artistId']?.toString() ?? '',
         name: j['name'] ?? '—',
         artwork: j['artwork'],
+        latestReleaseId: j['latestReleaseId'],
       );
 
   Map<String, dynamic> toJson() => {
         'artistId': artistId,
         'name': name,
         if (artwork != null) 'artwork': artwork,
+        if (latestReleaseId != null) 'latestReleaseId': latestReleaseId,
       };
 }
 
@@ -257,6 +265,11 @@ class FireballSettings {
   /// iPad glass sidebar: narrow icon-only rail vs expanded.
   final bool ipadSidebarCollapsed;
 
+  // Gotify Push Notifications
+  final bool gotifyEnabled;
+  final String gotifyUrl;
+  final String gotifyToken;
+
   const FireballSettings({
     this.ollamaEnabled = false,
     this.ollamaUrl = '',
@@ -298,6 +311,9 @@ class FireballSettings {
     this.useDynamicColorWhenAvailable = true,
     this.accentSeedColor,
     this.ipadSidebarCollapsed = false,
+    this.gotifyEnabled = false,
+    this.gotifyUrl = '',
+    this.gotifyToken = '',
   });
 
   factory FireballSettings.fromJson(Map<String, dynamic> j) {
@@ -376,6 +392,9 @@ class FireballSettings {
               ? (j['accentSeedColor'] as num).toInt()
               : int.tryParse(j['accentSeedColor']?.toString() ?? '')),
       ipadSidebarCollapsed: toBool(j['ipadSidebarCollapsed'], false),
+      gotifyEnabled: toBool(j['gotifyEnabled'], false),
+      gotifyUrl: j['gotifyUrl']?.toString() ?? '',
+      gotifyToken: j['gotifyToken']?.toString() ?? '',
     );
   }
 
@@ -420,6 +439,9 @@ class FireballSettings {
         'useDynamicColorWhenAvailable': useDynamicColorWhenAvailable,
         if (accentSeedColor != null) 'accentSeedColor': accentSeedColor,
         'ipadSidebarCollapsed': ipadSidebarCollapsed,
+        'gotifyEnabled': gotifyEnabled,
+        'gotifyUrl': gotifyUrl,
+        'gotifyToken': gotifyToken,
       };
 
   FireballSettings copyWith({
@@ -467,6 +489,9 @@ class FireballSettings {
     int? accentSeedColor,
     bool clearAccentSeedColor = false,
     bool? ipadSidebarCollapsed,
+    bool? gotifyEnabled,
+    String? gotifyUrl,
+    String? gotifyToken,
   }) =>
       FireballSettings(
         ollamaEnabled: ollamaEnabled ?? this.ollamaEnabled,
@@ -522,6 +547,9 @@ class FireballSettings {
             ? null
             : (accentSeedColor ?? this.accentSeedColor),
         ipadSidebarCollapsed: ipadSidebarCollapsed ?? this.ipadSidebarCollapsed,
+        gotifyEnabled: gotifyEnabled ?? this.gotifyEnabled,
+        gotifyUrl: gotifyUrl ?? this.gotifyUrl,
+        gotifyToken: gotifyToken ?? this.gotifyToken,
       );
 
   // ── Convenience grouped getters (Option A: same flat JSON, typed Dart access)

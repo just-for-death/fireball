@@ -737,4 +737,30 @@ class FireballApi {
       return null;
     }
   }
+
+  // ── Gotify ────────────────────────────────────────────────────────────────
+  Future<void> sendGotifyMessage({
+    required String url,
+    required String token,
+    required String title,
+    required String message,
+  }) async {
+    if (url.isEmpty || token.isEmpty) return;
+    final base = url.replaceAll(RegExp(r'/+$'), '');
+    try {
+      await _post(
+        '$base/message',
+        {
+          'title': title,
+          'message': message,
+          'priority': 5,
+        },
+        headers: {
+          'X-Gotify-Key': token,
+        },
+      );
+    } catch (_) {
+      // Best-effort push notification
+    }
+  }
 }

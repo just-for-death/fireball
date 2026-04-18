@@ -383,6 +383,9 @@ class PlayerScreen extends HookConsumerWidget {
       sleepHint = 'Sleep after track';
     }
 
+    final library = ref.watch(localStoreProvider);
+    final isFollowingArtist = track != null && library.artists.any((a) => a.name.toLowerCase() == track.artist.toLowerCase());
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       child: Row(
@@ -444,6 +447,29 @@ class PlayerScreen extends HookConsumerWidget {
                   n.setSleepAfterCurrentTrack(true);
                 case 'sclear':
                   n.clearSleepTimer();
+                case 'follow':
+                  if (track != null) {
+                    if (isFollowingArtist) {
+                      final a = library.artists.firstWhere((a) => a.name.toLowerCase() == track.artist.toLowerCase());
+                      await ref.read(localStoreProvider.notifier).deleteArtist(a.artistId);
+                    } else {
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('Following ${track.artist}...'), duration: const Duration(seconds: 1)),
+                        );
+                      }
+                      final data = await api.itunesFindArtist(track.artist);
+                      if (data != null) {
+                        final newArtist = Artist(
+                          artistId: data['artistId']?.toString() ?? track.artist,
+                          name: data['artistName']?.toString() ?? track.artist,
+                        );
+                        await ref.read(localStoreProvider.notifier).addArtist(newArtist);
+                      } else {
+                        await ref.read(localStoreProvider.notifier).addArtist(Artist(artistId: track.artist, name: track.artist));
+                      }
+                    }
+                  }
                 case 'share':
                   if (track != null) {
                     await Share.share('${track.title} — ${track.artist}',
@@ -483,6 +509,23 @@ class PlayerScreen extends HookConsumerWidget {
                   value: 'send', child: Text('End of current track')),
               const PopupMenuItem(value: 'sclear', child: Text('Clear timer')),
               const PopupMenuDivider(),
+              if (track != null)
+                PopupMenuItem(
+                  value: 'follow',
+                  child: Row(
+                    children: [
+                      Icon(
+                        isFollowingArtist
+                            ? Icons.person_remove_rounded
+                            : Icons.person_add_rounded,
+                        size: 20,
+                        color: Colors.white70,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(isFollowingArtist ? 'Unfollow Artist' : 'Follow Artist'),
+                    ],
+                  ),
+                ),
               const PopupMenuItem(value: 'share', child: Text('Share track')),
               if (_invidiousWatchUrl(settings, track) != null)
                 const PopupMenuItem(

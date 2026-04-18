@@ -308,6 +308,57 @@ class LocalStoreNotifier extends StateNotifier<LibraryData> {
     }
   }
 
+  Future<void> checkGotifyNewReleases() async {
+    await _ready.future;
+    if (!state.settings.gotifyEnabled || state.settings.gotifyUrl.isEmpty || state.settings.gotifyToken.isEmpty) return;
+
+    final api = const FireballApi();
+    var artistsChanged = false;
+    final newArtists = List<Artist>.from(state.artists);
+
+    for (int i = 0; i < newArtists.length; i++) {
+      final artist = newArtists[i];
+      final artistIdNum = int.tryParse(artist.artistId);
+      if (artistIdNum == null) continue; // Not a valid iTunes numeric ID
+
+      try {
+        final albums = await api.itunesArtistAlbums(artistIdNum, limit: 1);
+        if (albums.isEmpty) continue;
+        
+        final latestAlbum = albums.first;
+        final releaseId = latestAlbum['collectionId']?.toString();
+        final releaseName = latestAlbum['collectionName']?.toString() ?? 'New Release';
+        
+        if (releaseId != null && releaseId != artist.latestReleaseId) {
+          if (artist.latestReleaseId != null) {
+            // Genuine new release (not first run)
+            await api.sendGotifyMessage(
+              url: state.settings.gotifyUrl,
+              token: state.settings.gotifyToken,
+              title: 'New Release from ${artist.name}',
+              message: '$releaseName is out now!',
+            );
+          }
+          
+          newArtists[i] = Artist(
+            artistId: artist.artistId,
+            name: artist.name,
+            artwork: artist.artwork,
+            latestReleaseId: releaseId,
+          );
+          artistsChanged = true;
+        }
+      } catch (e) {
+        dev.log('Gotify check error for ${artist.name}: $e');
+      }
+    }
+
+    if (artistsChanged) {
+      state = state.copyWith(artists: newArtists);
+      await _save();
+    }
+  }
+
   String exportJson() => jsonEncode(_toJson(state));
 
   // ── Parsers ───────────────────────────────────────────────────────────────────

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' show min;
 
 import 'package:flutter/foundation.dart'
@@ -19,6 +20,12 @@ import '../../core/widgets/fireball_logo.dart';
 import '../../core/widgets/glass_widgets.dart';
 import '../../sync/gdrive_sync.dart';
 import '../../sync/webdav_sync.dart';
+import '../../remote/remote_pairing.dart';
+import '../../remote/remote_server.dart';
+import '../remote/remote_lan_pairing.dart';
+import '../remote/remote_scan_screen.dart';
+import 'package:flutter/services.dart';
+import 'package:qr_flutter/qr_flutter.dart';
 
 class SettingsScreen extends HookConsumerWidget {
   const SettingsScreen({super.key});
@@ -58,11 +65,16 @@ class SettingsScreen extends HookConsumerWidget {
     final webDavUrlCtrl = useTextEditingController();
     final webDavUserCtrl = useTextEditingController();
     final webDavPassCtrl = useTextEditingController();
-    // Testing states
+    final gotifyUrlCtrl = useTextEditingController();
+    final gotifyTokenCtrl = useTextEditingController();
+    final remotePairingCtrl = useTextEditingController();
+    
+    // Testing and busy states
     final testingLB = useState(false);
     final testingLastFm = useState(false);
     final testingOllama = useState(false);
     final testingInvidious = useState(false);
+    final remotePairingBusy = useState(false);
 
     // Invidious playlists
     final invPlaylists = useState<List<dynamic>>([]);
@@ -88,6 +100,8 @@ class SettingsScreen extends HookConsumerWidget {
       webDavUrlCtrl.text = settings.webDavUrl;
       webDavUserCtrl.text = settings.webDavUsername;
       webDavPassCtrl.text = settings.webDavPassword;
+      gotifyUrlCtrl.text = settings.gotifyUrl;
+      gotifyTokenCtrl.text = settings.gotifyToken;
       return null;
     }, [settings]);
 
@@ -103,6 +117,27 @@ class SettingsScreen extends HookConsumerWidget {
         await ref.read(localStoreProvider.notifier).updateSettings(patch);
       } finally {
         saving.value = false;
+      }
+    }
+
+    Future<void> runPairing(Future<void> Function() fn) async {
+      remotePairingBusy.value = true;
+      try {
+        await fn();
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+                content: Text('Paired — both devices can control each other')),
+          );
+        }
+      } catch (e) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('$e'), backgroundColor: cs.error),
+          );
+        }
+      } finally {
+        remotePairingBusy.value = false;
       }
     }
 
@@ -542,35 +577,196 @@ class SettingsScreen extends HookConsumerWidget {
                   shellScrollBottomPadding(context),
                 ),
                 children: [
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: Material(
-                      color: Colors.white.withValues(alpha: 0.06),
-                      borderRadius: BorderRadius.circular(14),
-                      child: ListTile(
-                        leading: Icon(Icons.cast_rounded,
-                            color: cs.primary, size: 26),
-                        title: const Text(
-                          'Remote control',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w700,
-                            fontSize: 15,
-                          ),
-                        ),
-                        subtitle: Text(
-                          'Pairing, QR, and control — same Wi‑Fi',
-                          style: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.45),
-                            fontSize: 12,
-                          ),
-                        ),
-                        trailing: Icon(Icons.chevron_right_rounded,
-                            color: Colors.white.withValues(alpha: 0.35)),
-                        onTap: () => context.go('/remote'),
-                      ),
+                  // ── REMOTE CONTROL ─────────────────────────────────────────
+                  if (showSection('remote control server pairing qr code device connect'))
+                    HookBuilder(
+                      builder: (context) {
+                        final localIp = useState<String?>(RemoteServer.localIp);
+                        final waitingForStart = useState(true);
+
+                        useEffect(() {
+                          final timeout = Timer(const Duration(milliseconds: 1500), () {
+                            waitingForStart.value = false;
+                          });
+                          final poll = Timer.periodic(const Duration(milliseconds: 300), (_) {
+                            final ip = RemoteServer.localIp;
+                            if (ip != null) {
+                              localIp.value = ip;
+                              waitingForStart.value = false;
+                            }
+                          });
+                          return () {
+                            timeout.cancel();
+                            poll.cancel();
+                          };
+                        }, [settings.remoteServerEnabled]);
+
+                        final serverUrl = localIp.value != null ? 'http://${localIp.value}:${RemoteServer.port}' : null;
+                        final pairingCode = localIp.value != null ? encodeRemotePairing(localIp.value!, RemoteServer.port) : null;
+
+                        return _SectionCard(
+                          title: 'REMOTE CONTROL',
+                          icon: Icons.cast_rounded,
+                          isDark: isDark,
+                          cs: cs,
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                const Text('Enable Remote Server', style: TextStyle(color: Colors.white, fontSize: 14)),
+                                Switch(
+                                  value: settings.remoteServerEnabled,
+                                  onChanged: remotePairingBusy.value
+                                      ? null
+                                      : (v) => saveSettings({'remoteServerEnabled': v}),
+                                  activeThumbColor: cs.primary,
+                                ),
+                              ],
+                            ),
+                            Text(
+                              'Let other devices on Wi‑Fi control playback on this device.',
+                              style: TextStyle(fontSize: 11, color: Colors.white.withValues(alpha: 0.45)),
+                            ),
+                            const SizedBox(height: 16),
+                            if (serverUrl != null && pairingCode != null) ...[
+                              _SettingsLabel('HOST THIS DEVICE'),
+                              const SizedBox(height: 8),
+                              Center(
+                                child: QrImageView(
+                                  data: serverUrl,
+                                  version: QrVersions.auto,
+                                  size: 160,
+                                  backgroundColor: Colors.white,
+                                  padding: const EdgeInsets.all(8),
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              Center(
+                                child: SelectableText(
+                                  formatPairingCodeDisplay(pairingCode),
+                                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                                        fontFamily: 'monospace',
+                                        letterSpacing: 2,
+                                        color: Colors.white,
+                                      ),
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  OutlinedButton.icon(
+                                    onPressed: () {
+                                      Clipboard.setData(ClipboardData(text: pairingCode));
+                                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Code copied')));
+                                    },
+                                    icon: const Icon(Icons.copy_rounded, size: 16),
+                                    label: const Text('Copy code'),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  OutlinedButton.icon(
+                                    onPressed: () {
+                                      Clipboard.setData(ClipboardData(text: serverUrl));
+                                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('URL copied')));
+                                    },
+                                    icon: const Icon(Icons.link_rounded, size: 16),
+                                    label: const Text('Copy URL'),
+                                  ),
+                                ],
+                              ),
+                            ] else if (!settings.remoteServerEnabled)
+                              Text('Enable the remote server above to host this device.', style: TextStyle(color: Colors.white.withValues(alpha: 0.5))),
+                            
+                            const SizedBox(height: 24),
+                            _SettingsLabel('CONNECT TO ANOTHER DEVICE'),
+                            const SizedBox(height: 8),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: FilledButton.tonalIcon(
+                                    onPressed: remotePairingBusy.value ? null : () async {
+                                      final ep = await Navigator.of(context, rootNavigator: true)
+                                          .push<RemoteEndpoint>(MaterialPageRoute(fullscreenDialog: true, builder: (_) => const RemoteScanScreen()));
+                                      if (ep == null || !context.mounted) return;
+                                      await runPairing(() => completeBidirectionalPairing(ref, ep));
+                                    },
+                                    icon: const Icon(Icons.qr_code_scanner_rounded, size: 18),
+                                    label: const Text('Scan QR', maxLines: 1, overflow: TextOverflow.ellipsis),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            _StyledTextField(
+                              controller: remotePairingCtrl,
+                              hint: 'Or paste pairing code/URL',
+                              onSubmitted: (val) async {
+                                final raw = val.trim();
+                                if (raw.isEmpty) return;
+                                final ep = parseRemoteConnectionString(raw);
+                                if (ep == null) {
+                                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not parse code/URL')));
+                                  return;
+                                }
+                                await runPairing(() => completeBidirectionalPairing(ref, ep));
+                              },
+                            ),
+                            const SizedBox(height: 8),
+                            _SyncButton(
+                              label: remotePairingBusy.value ? 'Pairing...' : 'Pair from Text',
+                              icon: Icons.link_rounded,
+                              color: cs.primary,
+                              loading: remotePairingBusy.value,
+                              onTap: remotePairingBusy.value ? () {} : () async {
+                                final raw = remotePairingCtrl.text.trim();
+                                if (raw.isEmpty) return;
+                                final ep = parseRemoteConnectionString(raw);
+                                if (ep == null) {
+                                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not parse code/URL')));
+                                  return;
+                                }
+                                await runPairing(() => completeBidirectionalPairing(ref, ep));
+                              },
+                            ),
+                            const SizedBox(height: 24),
+                            _SettingsLabel('PAIRED DEVICE'),
+                            const SizedBox(height: 4),
+                            if (settings.remoteHostIp.isEmpty)
+                              Text('No device paired.', style: TextStyle(color: Colors.white.withValues(alpha: 0.5)))
+                            else ...[
+                              Text('${settings.remoteHostIp}:${settings.remotePeerPort}', style: const TextStyle(fontFamily: 'monospace', color: Colors.white)),
+                              const SizedBox(height: 12),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: FilledButton.icon(
+                                      onPressed: () {
+                                        context.go('/remote');
+                                      },
+                                      icon: const Icon(Icons.play_circle_outline_rounded, size: 18),
+                                      label: const Text('Control Remote'),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  IconButton(
+                                    tooltip: 'Forget pairing',
+                                    onPressed: remotePairingBusy.value ? null : () async {
+                                      await saveSettings({
+                                        'remoteHostIp': '',
+                                        'remotePeerPort': RemoteServer.port,
+                                      });
+                                    },
+                                    icon: const Icon(Icons.link_off_rounded, color: Colors.white),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ],
+                        );
+                      }
                     ),
-                  ),
+
+                  const SizedBox(height: 16),
 
                   // ── APPEARANCE & LAYOUT ───────────────────────────────────
                   if (showSection(
@@ -1138,6 +1334,54 @@ class SettingsScreen extends HookConsumerWidget {
                           color: const Color(0xFF7C3AED),
                           onTap: testAndSaveOllama,
                           loading: testingOllama.value,
+                        ),
+                      ],
+                    ),
+
+                  const SizedBox(height: 16),
+
+                  // ── GOTIFY PUSH NOTIFICATIONS ──────────────────────────────
+                  if (showSection('gotify push notifications alerts server token'))
+                    _SectionCard(
+                      title: 'GOTIFY PUSH NOTIFICATIONS',
+                      icon: Icons.notifications_active_rounded,
+                      isDark: isDark,
+                      cs: cs,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text('Enable Gotify Push',
+                                style: TextStyle(
+                                    color: Colors.white, fontSize: 14)),
+                            Switch(
+                              value: settings.gotifyEnabled,
+                              onChanged: (v) =>
+                                  saveSettings({'gotifyEnabled': v}),
+                              activeThumbColor: cs.primary,
+                            ),
+                          ],
+                        ),
+                        _SettingsLabel('GOTIFY SERVER URL'),
+                        _StyledTextField(
+                          controller: gotifyUrlCtrl,
+                          hint: 'https://gotify.example.com',
+                          onChanged: (v) => saveSettings({'gotifyUrl': v}),
+                        ),
+                        const SizedBox(height: 8),
+                        _SettingsLabel('APPLICATION TOKEN'),
+                        _StyledTextField(
+                          controller: gotifyTokenCtrl,
+                          hint: 'Your Gotify App Token',
+                          onChanged: (v) => saveSettings({'gotifyToken': v}),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Sends a push notification to your Gotify server when a followed artist drops a new release.',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.white.withValues(alpha: 0.45),
+                          ),
                         ),
                       ],
                     ),
@@ -1847,11 +2091,13 @@ class _StyledTextField extends StatelessWidget {
     required this.hint,
     this.obscure = false,
     this.onChanged,
+    this.onSubmitted,
   });
   final TextEditingController controller;
   final String hint;
   final bool obscure;
   final ValueChanged<String>? onChanged;
+  final ValueChanged<String>? onSubmitted;
 
   @override
   Widget build(BuildContext context) {
@@ -1866,6 +2112,7 @@ class _StyledTextField extends StatelessWidget {
         controller: controller,
         obscureText: obscure,
         onChanged: onChanged,
+        onSubmitted: onSubmitted,
         style: const TextStyle(color: Colors.white, fontSize: 14),
         decoration: InputDecoration(
           hintText: hint,
