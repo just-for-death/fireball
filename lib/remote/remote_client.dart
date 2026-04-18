@@ -28,6 +28,20 @@ class RemoteClient {
     return RemoteState.fromJson(j);
   }
 
+  /// Registers this device's address on the peer so they can control you too.
+  Future<void> registerPair(String myHost, int myPort) async {
+    final res = await http
+        .post(
+          Uri.parse('$_base/pair'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({'host': myHost, 'port': myPort}),
+        )
+        .timeout(const Duration(seconds: 5));
+    if (res.statusCode != 200) {
+      throw Exception('Remote /pair returned ${res.statusCode}');
+    }
+  }
+
   /// Sends a playback command to the remote host.
   Future<void> sendCommand(String action, {num? value}) async {
     final res = await http

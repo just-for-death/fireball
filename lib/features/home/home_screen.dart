@@ -8,6 +8,7 @@ import '../../core/api/fireball_api.dart';
 import '../../core/countries.dart';
 import '../../core/models/track.dart';
 import '../../core/store/providers.dart';
+import '../../core/ui/shell_content_insets.dart';
 import '../../core/utils.dart';
 import '../../core/widgets/empty_state.dart';
 import '../../core/widgets/glass_widgets.dart';
@@ -605,7 +606,9 @@ class HomeScreen extends HookConsumerWidget {
                 ),
             ],
 
-            const SliverToBoxAdapter(child: SizedBox(height: 160)),
+            SliverToBoxAdapter(
+              child: SizedBox(height: shellScrollBottomPadding(context)),
+            ),
           ],
         ),
       ),

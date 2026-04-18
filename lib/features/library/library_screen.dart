@@ -5,6 +5,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 import '../../core/models/track.dart';
 import '../../core/store/providers.dart';
+import '../../core/ui/shell_content_insets.dart';
 import '../../core/widgets/empty_state.dart';
 import '../../core/widgets/glass_widgets.dart';
 
@@ -311,7 +312,12 @@ class LibraryScreen extends HookConsumerWidget {
           );
         }
         return ListView.builder(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 160),
+          padding: EdgeInsets.fromLTRB(
+            16,
+            8,
+            16,
+            shellScrollBottomPadding(context),
+          ),
           itemCount: library.playlists.length,
           itemBuilder: (context, i) {
             final pl = library.playlists[i];
@@ -379,7 +385,12 @@ class LibraryScreen extends HookConsumerWidget {
           );
         }
         return GridView.builder(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 160),
+          padding: EdgeInsets.fromLTRB(
+            16,
+            8,
+            16,
+            shellScrollBottomPadding(context),
+          ),
           gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
             maxCrossAxisExtent: 160,
             childAspectRatio: 0.9,
@@ -427,7 +438,12 @@ class LibraryScreen extends HookConsumerWidget {
           );
         }
         return GridView.builder(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 160),
+          padding: EdgeInsets.fromLTRB(
+            16,
+            8,
+            16,
+            shellScrollBottomPadding(context),
+          ),
           gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
             maxCrossAxisExtent: 200,
             childAspectRatio: 0.75,
@@ -569,7 +585,7 @@ class _TrackList extends StatelessWidget {
       );
     }
     return ListView.builder(
-      padding: const EdgeInsets.only(bottom: 160),
+      padding: EdgeInsets.only(bottom: shellScrollBottomPadding(context)),
       itemCount: tracks.length,
       itemBuilder: (context, i) {
         final track = tracks[i];

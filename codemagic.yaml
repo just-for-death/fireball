@@ -1,5 +1,5 @@
-# Codemagic CI/CD — Fireball v1.5.x
-# Marketing version: FLUTTER_BUILD_NAME (1.5.0). Build number: CM_BUILD_NUMBER or ASC (signed IPA).
+# Codemagic CI/CD — Fireball v1.6.x
+# Marketing version: FLUTTER_BUILD_NAME (1.6.0). Build number: CM_BUILD_NUMBER or ASC (signed IPA).
 # Typical order: run `fireball-ios-unsigned-ipa` or `fireball-ios-ipa`, then `fireball-android-apk`.
 #
 # Docs: https://docs.codemagic.io/yaml-quick-start/building-a-flutter-app/
@@ -32,7 +32,7 @@ workflows:
     environment:
       flutter: stable
       vars:
-        FLUTTER_BUILD_NAME: "1.5.0"
+        FLUTTER_BUILD_NAME: "1.6.0"
     scripts:
       - name: Install dependencies
         script: |
@@ -42,7 +42,7 @@ workflows:
       - name: Build release APK
         script: |
           set -e
-          VERSION_NAME="${FLUTTER_BUILD_NAME:-1.5.0}"
+          VERSION_NAME="${FLUTTER_BUILD_NAME:-1.6.0}"
           BN="${CM_BUILD_NUMBER:-1}"
           flutter build apk --release \
             --build-name="$VERSION_NAME" \
@@ -60,7 +60,7 @@ workflows:
       xcode: latest
       cocoapods: default
       vars:
-        FLUTTER_BUILD_NAME: "1.5.0"
+        FLUTTER_BUILD_NAME: "1.6.0"
     scripts:
       - name: Install dependencies
         script: |
@@ -76,7 +76,7 @@ workflows:
       - name: Build unsigned iOS app and package IPA
         script: |
           set -e
-          VERSION_NAME="${FLUTTER_BUILD_NAME:-1.5.0}"
+          VERSION_NAME="${FLUTTER_BUILD_NAME:-1.6.0}"
           BN="${CM_BUILD_NUMBER:-1}"
 
           flutter build ios --release --no-codesign \
@@ -119,8 +119,8 @@ workflows:
         distribution_type: app_store
         bundle_identifier: com.fireball.fireball
       vars:
-        # Marketing version (CFBundleShortVersionString), e.g. 1.5.0
-        FLUTTER_BUILD_NAME: "1.5.0"
+        # Marketing version (CFBundleShortVersionString), e.g. 1.6.0
+        FLUTTER_BUILD_NAME: "1.6.0"
         # Optional: add APP_STORE_APPLE_ID in Codemagic → App → Environment variables
         # (numeric string, e.g. "1234567890") to bump build number from App Store Connect.
         # Do not define it here empty — Codemagic rejects empty vars.
@@ -143,7 +143,7 @@ workflows:
       - name: Flutter build IPA
         script: |
           set -e
-          VERSION_NAME="${FLUTTER_BUILD_NAME:-1.5.0}"
+          VERSION_NAME="${FLUTTER_BUILD_NAME:-1.6.0}"
 
           if [ -n "$APP_STORE_APPLE_ID" ]; then
             LATEST="$(app-store-connect get-latest-app-store-build-number "$APP_STORE_APPLE_ID" 2>/dev/null || echo 0)"

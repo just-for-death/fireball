@@ -8,7 +8,6 @@ import 'package:share_plus/share_plus.dart';
 
 import '../core/models/track.dart';
 import '../core/store/providers.dart';
-import '../features/remote/remote_screen.dart';
 
 void showMiniPlayerOverflowMenu({
   required BuildContext context,
@@ -27,11 +26,7 @@ void showMiniPlayerOverflowMenu({
             title: const Text('Remote control'),
             onTap: () {
               Navigator.pop(ctx);
-              Navigator.of(context).push(
-                MaterialPageRoute<void>(
-                  builder: (_) => const RemoteScreen(),
-                ),
-              );
+              context.go('/remote');
             },
           ),
           ListTile(
