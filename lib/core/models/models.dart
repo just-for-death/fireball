@@ -1,4 +1,11 @@
+import '../theme/flex_scheme_key.dart';
 import 'track.dart';
+
+String _parseThemeMode(dynamic v) {
+  final s = v?.toString() ?? 'system';
+  if (s == 'light' || s == 'dark' || s == 'system') return s;
+  return 'system';
+}
 
 class Playlist {
   final String id;
@@ -242,8 +249,8 @@ class FireballSettings {
       lyricsAutoScroll: toBool(j['lyricsAutoScroll'], true),
       lyricsReducedMotion: toBool(j['lyricsReducedMotion'], false),
       lyricsPreferEnglishHindi: toBool(j['lyricsPreferEnglishHindi'], true),
-      themeMode: j['themeMode']?.toString() ?? 'system',
-      flexScheme: j['flexScheme']?.toString() ?? 'deepPurple',
+      themeMode: _parseThemeMode(j['themeMode']),
+      flexScheme: normalizeFlexSchemeKey(j['flexScheme']?.toString()),
       useDynamicColorWhenAvailable:
           toBool(j['useDynamicColorWhenAvailable'], true),
       accentSeedColor: j['accentSeedColor'] == null

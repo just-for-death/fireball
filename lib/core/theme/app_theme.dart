@@ -2,11 +2,13 @@ import 'package:flex_color_scheme/flex_color_scheme.dart';
 import 'package:flutter/material.dart';
 
 import '../models/models.dart';
+import 'flex_scheme_key.dart';
 
 /// Maps persisted [FireballSettings.flexScheme] to [FlexScheme].
 FlexScheme flexSchemeFromKey(String key) {
+  final k = normalizeFlexSchemeKey(key);
   for (final v in FlexScheme.values) {
-    if (v.name == key) return v;
+    if (v.name == k) return v;
   }
   return FlexScheme.deepPurple;
 }

@@ -1,7 +1,7 @@
-import 'dart:io';
 import 'dart:ui';
 
-import 'package:flutter/foundation.dart';
+import 'package:flutter/foundation.dart'
+    show defaultTargetPlatform, kIsWeb, TargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:go_router/go_router.dart';
@@ -97,7 +97,8 @@ class ShellScaffold extends HookConsumerWidget {
       return null;
     }, [settings.remoteServerEnabled]);
 
-    final isIOS = !kIsWeb && Platform.isIOS;
+    final isIOS =
+        !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS;
     final width = MediaQuery.sizeOf(context).width;
     final isTablet = width >= 600;
 

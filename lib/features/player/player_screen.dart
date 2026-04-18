@@ -1,8 +1,8 @@
-import 'dart:io' show Platform;
 import 'dart:ui';
 
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart'
+    show defaultTargetPlatform, kIsWeb, TargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
@@ -1013,7 +1013,9 @@ class PlayerScreen extends HookConsumerWidget {
               return GestureDetector(
                 onTap: () {
                   if (!kIsWeb &&
-                      (Platform.isIOS || Platform.isAndroid)) {
+                      (defaultTargetPlatform == TargetPlatform.iOS ||
+                          defaultTargetPlatform ==
+                              TargetPlatform.android)) {
                     HapticFeedback.lightImpact();
                   }
                   ref.read(playerProvider.notifier).seekTo(seekPos);
