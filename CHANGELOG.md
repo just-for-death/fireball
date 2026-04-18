@@ -2,13 +2,62 @@
 
 All notable changes to **Fireball** are documented here. Release binaries live on [GitHub Releases](https://github.com/just-for-death/fireball/releases).
 
+## [2.0.0] — 2026-04-19
+
+### Artist Discovery
+
+- **Artist page**: Tap the artist name in the Now Playing screen to open a full artist profile, powered by the iTunes API — parallax hero, top 20 songs (tap to play instantly), and albums grid.
+- **iTunes API** extended with `itunesFindArtist`, `itunesArtistTopSongs`, `itunesArtistAlbums`.
+- **`/artist?name=…` route** added to GoRouter; artist name rendered with accent underline + chevron to signal tappability.
+
+### Playlists
+
+- **Tap to open** playlist detail sheet (previously tap played the playlist immediately).
+- **Draggable detail sheet** (70 % → 95 %) with Play All button, scrollable track list, per-track `⋯` menu and long-press `TrackOptionsSheet`.
+- **`⋯` / long-press on playlist row** opens a menu: Play All, Add All to Queue, Play Next, Delete.
+
+### Queue
+
+- **Long-press** any queue track to open the full `TrackOptionsSheet` (Play Now, Play Next, Add to Queue, Favorites, Add to Playlist, Share).
+
+### Desktop / Tablet
+
+- **Sidebar collapse toggle** — minimize/expand the navigation rail on tablet & desktop; preference persisted in `localStoreProvider`.
+
+### Home grid
+
+- Trending Now grid switched from `childAspectRatio` to `mainAxisExtent: 176` — eliminates wasted whitespace below track text.
+
+### Bug fixes
+
+- `showModalBottomSheet` calls now use `useRootNavigator: true` to prevent sheets rendering beneath the MiniPlayer overlay.
+- Fixed `apiProvider` undefined reference in `artist_screen.dart` (now uses `const FireballApi()`).
+- Fixed `Future.wait` type inference error in `artist_screen.dart`.
+
+### Downloads (v2.0.0)
+
+| Platform | Asset name |
+|----------|------------|
+| Android | `Fireball-2.0.0-android.apk` |
+| iOS | `Fireball-2.0.0-ios-unsigned.ipa` (unsigned — sideload / your signing) |
+
+**pubspec**: `2.0.0+1`.
+
+```bash
+cp build/app/outputs/flutter-apk/app-release.apk dist/Fireball-2.0.0-android.apk
+cp fireball_unsigned.ipa dist/Fireball-2.0.0-ios-unsigned.ipa
+( cd dist && sha256sum Fireball-2.0.0-android.apk Fireball-2.0.0-ios-unsigned.ipa > SHA256SUMS.txt )
+```
+
+---
+
 ## [1.6.0] — 2026-04-18
 
 ### Remote (LAN)
 
 - **Remote tab**: Bottom navigation (and iPad sidebar) includes a **Remote** destination — pairing, host QR, scan, and control in one place. Settings keeps a shortcut row only.
-- **Single QR code** on the host: `http://<ip>:7771` (works with Fireball’s scanner and generic scanners). Pairing code + copy buttons unchanged.
-- **Bidirectional pairing**: `POST /pair` on the remote HTTP server registers the caller’s address. After you scan or enter a code, this device saves the peer **and** notifies them so **both** can tap **Control** without typing the other’s IP (both devices should enable the remote server on the same Wi‑Fi).
+- **Single QR code** on the host: `http://<ip>:7771` (works with Fireball's scanner and generic scanners). Pairing code + copy buttons unchanged.
+- **Bidirectional pairing**: `POST /pair` on the remote HTTP server registers the caller's address. After you scan or enter a code, this device saves the peer **and** notifies them so **both** can tap **Control** without typing the other's IP (both devices should enable the remote server on the same Wi‑Fi).
 - **`remotePeerPort`** in settings for non-default ports.
 - **Mini player** is hidden on the Remote tab and when **RemoteScreen** (host/control) is open (`remoteScreenCoversShellProvider`), so the strip never covers remote UIs. Full-screen routes use the root navigator where needed.
 
@@ -40,7 +89,7 @@ Verify with `sha256sum -c SHA256SUMS.txt`. Upload **`dist/`** assets + `SHA256SU
 
 ### Sync & library
 
-- **WebDAV live sync**: Pulling a newer remote `library.json` **merges** libraries (history, favorites, playlists, artists, albums) instead of replacing the whole device, so two devices are less likely to wipe each other’s edits.
+- **WebDAV live sync**: Pulling a newer remote `library.json` **merges** libraries (history, favorites, playlists, artists, albums) instead of replacing the whole device, so two devices are less likely to wipe each other's edits.
 - **Periodic sync**: Optional background check every few minutes while the app runs (when live sync is enabled).
 - **Shared settings merge**: Account-related fields from the remote library merge without overwriting local theme / iPad layout / remote-server preferences.
 
@@ -76,6 +125,7 @@ Verify downloads with `SHA256SUMS.txt` on the release.
 
 Initial public release: Invidious playback, library, lyrics, ListenBrainz, Google Drive & WebDAV backup, tablet UI, Material 3 / dynamic color. See GitHub release [v1.0.0](https://github.com/just-for-death/fireball/releases/tag/v1.0.0) for assets and checksums.
 
+[2.0.0]: https://github.com/just-for-death/fireball/releases/tag/v2.0.0
 [1.6.0]: https://github.com/just-for-death/fireball/releases/tag/v1.6.0
 [1.5.0]: https://github.com/just-for-death/fireball/releases/tag/v1.5.0
 [1.0.0]: https://github.com/just-for-death/fireball/releases/tag/v1.0.0
