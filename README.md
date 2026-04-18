@@ -19,22 +19,24 @@ Fireball streams music through [Invidious](https://invidious.io), discovers lyri
 | **Lyrics** | Synced (LRC) + plain lyrics from LRCLIB with structured multi-step fallback · NetEase fallback for Asian tracks |
 | **Library** | Local-first JSON store (`path_provider`) · favorites, playlists, artists, albums · full play history |
 | **Scrobbling** | Direct ListenBrainz scrobbling · Last.fm API key validation |
-| **Backup & Sync** | Google Drive (`appDataFolder`) backup/restore · WebDAV / Nextcloud backup/restore |
+| **Backup & Sync** | Google Drive (`appDataFolder`) backup/restore · WebDAV / Nextcloud backup/restore · optional **live sync** with merge across devices |
 | **Tablet UI** | iPad glass sidebar · Android NavigationRail · two-pane player and library on large screens |
+| **Remote** | LAN HTTP remote control (optional) · QR / pairing code · in-app scanner on mobile |
 | **Theming** | Material 3 · FlexColorScheme · dynamic color (Android 12+) · true-black dark mode option |
 
 ---
 
 ## Releases
 
-Official binaries are published on **[GitHub Releases](https://github.com/just-for-death/fireball/releases)** (not stored in git).
+Official binaries are published on **[GitHub Releases](https://github.com/just-for-death/fireball/releases)** (not stored in git). **Changelog:** [`CHANGELOG.md`](CHANGELOG.md).
 
 | Version | Android | iOS |
 |--------|---------|-----|
-| **v1.0.0** (first release) | `Fireball-1.0.0-android.apk` — universal release APK | `Fireball-1.0.0-ios-unsigned.ipa` — **unsigned** IPA for sideloading / your own signing |
+| **v1.5.0** (current) | `Fireball-1.5.0-android.apk` | `Fireball-1.5.0-ios-unsigned.ipa` — **unsigned** |
+| **v1.0.0** | `Fireball-1.0.0-android.apk` | `Fireball-1.0.0-ios-unsigned.ipa` — **unsigned** |
 
-- **Android**: Open the APK on device, or `adb install Fireball-1.0.0-android.apk`. You may need to allow installs from your file manager or developer options.
-- **iOS**: The IPA is **not** signed for App Store distribution. Install with tools such as AltStore / Sideloadly, or sign with your Apple Developer account / CI. See release notes for details.
+- **Android**: Open the APK on device, or `adb install …`. You may need to allow installs from your file manager or developer options.
+- **iOS**: IPAs are **not** signed for App Store distribution. Install with AltStore / Sideloadly, or sign with your Apple Developer account / CI.
 - **Integrity**: Each release includes `SHA256SUMS.txt`. Verify with `sha256sum -c SHA256SUMS.txt` after downloading.
 
 ---
