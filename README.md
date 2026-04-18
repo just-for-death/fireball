@@ -25,6 +25,20 @@ Fireball streams music through [Invidious](https://invidious.io), discovers lyri
 
 ---
 
+## Releases
+
+Official binaries are published on **[GitHub Releases](https://github.com/just-for-death/fireball/releases)** (not stored in git).
+
+| Version | Android | iOS |
+|--------|---------|-----|
+| **v1.0.0** (first release) | `Fireball-1.0.0-android.apk` — universal release APK | `Fireball-1.0.0-ios-unsigned.ipa` — **unsigned** IPA for sideloading / your own signing |
+
+- **Android**: Open the APK on device, or `adb install Fireball-1.0.0-android.apk`. You may need to allow installs from your file manager or developer options.
+- **iOS**: The IPA is **not** signed for App Store distribution. Install with tools such as AltStore / Sideloadly, or sign with your Apple Developer account / CI. See release notes for details.
+- **Integrity**: Each release includes `SHA256SUMS.txt`. Verify with `sha256sum -c SHA256SUMS.txt` after downloading.
+
+---
+
 ## Screenshots
 
 > _Coming soon_
@@ -46,9 +60,11 @@ git clone https://github.com/just-for-death/fireball.git
 cd fireball
 flutter pub get
 flutter run                    # attach a device or emulator
-flutter build apk --release   # Android APK
+flutter build apk --release   # Android APK → build/app/outputs/flutter-apk/app-release.apk
 flutter build ipa              # iOS (requires macOS + Xcode)
 ```
+
+**Android / Gradle:** Use **JDK 17 or 21** for release builds. JDK 26+ can break Gradle’s Kotlin DSL (`IllegalArgumentException` parsing the Java version). On Arch Linux, for example: `export JAVA_HOME=/usr/lib/jvm/java-21-openjdk`. If the NDK error `CXX1101` / missing `source.properties` appears, remove the broken NDK folder under your Android SDK and rebuild so Gradle re-downloads it (see `android/gradle.properties` comments).
 
 ### First Run
 
