@@ -200,10 +200,12 @@ class HomeScreen extends HookConsumerWidget {
                       ),
                     )
                   : Container(
-                      height: 48,
+                      height: 58,
                       margin: const EdgeInsets.only(top: 8),
+                      alignment: Alignment.center,
                       child: ListView.separated(
                         scrollDirection: Axis.horizontal,
+                        clipBehavior: Clip.none,
                         padding: const EdgeInsets.symmetric(horizontal: 24),
                         itemCount: visibleCountries.length,
                         separatorBuilder: (_, __) => const SizedBox(width: 10),
@@ -682,10 +684,12 @@ class _RangePills extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      height: 38,
+    return Container(
+      height: 58,
+      alignment: Alignment.center,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
+        clipBehavior: Clip.none,
         padding: const EdgeInsets.symmetric(horizontal: 24),
         itemCount: _lbRanges.length,
         separatorBuilder: (_, __) => const SizedBox(width: 10),

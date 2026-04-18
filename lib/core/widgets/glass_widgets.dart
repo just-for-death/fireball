@@ -77,44 +77,51 @@ class GlassPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 250),
-        curve: Curves.easeOutCubic,
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
-        decoration: BoxDecoration(
-          color: selected
-              ? (color ?? cs.primary)
-              : Colors.white.withValues(alpha: 0.05),
-          borderRadius: BorderRadius.circular(25),
-          border: Border.all(
+    final accent = color ?? cs.primary;
+    // Reserve space so the selected shadow stays inside layout bounds (avoids
+    // clipping / "overflow" halos in tight rows like the home country ListView).
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 5),
+      child: GestureDetector(
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 250),
+          curve: Curves.easeOutCubic,
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
+          decoration: BoxDecoration(
             color: selected
-                ? (color ?? cs.primary).withValues(alpha: 0.3)
-                : Colors.white.withValues(alpha: 0.1),
-            width: 1,
+                ? accent
+                : Colors.white.withValues(alpha: 0.05),
+            borderRadius: BorderRadius.circular(25),
+            border: Border.all(
+              color: selected
+                  ? accent.withValues(alpha: 0.35)
+                  : Colors.white.withValues(alpha: 0.1),
+              width: 1,
+            ),
+            boxShadow: selected
+                ? [
+                    BoxShadow(
+                      color: accent.withValues(alpha: 0.2),
+                      blurRadius: 6,
+                      spreadRadius: 0,
+                      offset: const Offset(0, 2),
+                    ),
+                  ]
+                : null,
           ),
-          boxShadow: selected
-              ? [
-                  BoxShadow(
-                    color: (color ?? cs.primary).withValues(alpha: 0.3),
-                    blurRadius: 15,
-                    offset: const Offset(0, 4),
-                  )
-                ]
-              : null,
-        ),
-        child: Text(
-          label,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            fontSize: 13,
-            fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-            color: selected
-                ? (color != null ? Colors.white : cs.onPrimary)
-                : Colors.white.withValues(alpha: 0.6),
+          child: Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+              color: selected
+                  ? (color != null ? Colors.white : cs.onPrimary)
+                  : Colors.white.withValues(alpha: 0.6),
+            ),
           ),
         ),
       ),
