@@ -398,4 +398,44 @@ class FireballSettings {
             clearAccentSeedColor ? null : (accentSeedColor ?? this.accentSeedColor),
         ipadSidebarCollapsed: ipadSidebarCollapsed ?? this.ipadSidebarCollapsed,
       );
+
+  /// Fills empty service/account fields from [remote] when merging WebDAV
+  /// libraries from another device. Unions playlist ID mappings and home
+  /// chart countries. Does not change theme, iPad sidebar, or remote-server prefs.
+  FireballSettings mergeSharedFromRemote(FireballSettings remote) {
+    String pick(String a, String b) => a.isNotEmpty ? a : b;
+    String? pickOpt(String? a, String? b) {
+      if (a != null && a.isNotEmpty) return a;
+      if (b != null && b.isNotEmpty) return b;
+      return a ?? b;
+    }
+
+    final countries = <String>{...homeCountries, ...remote.homeCountries}.toList()
+      ..sort();
+    final mappings = {
+      ...remote.invidiousPlaylistMappings,
+      ...invidiousPlaylistMappings,
+    };
+
+    final mergedSid = pickOpt(invidiousSid, remote.invidiousSid);
+    final mergedInvUser = pickOpt(invidiousUsername, remote.invidiousUsername);
+
+    return copyWith(
+      ollamaUrl: pick(ollamaUrl, remote.ollamaUrl),
+      ollamaModel: pick(ollamaModel, remote.ollamaModel),
+      lastFmApiKey: pick(lastFmApiKey, remote.lastFmApiKey),
+      listenBrainzToken: pick(listenBrainzToken, remote.listenBrainzToken),
+      listenBrainzUsername: pick(listenBrainzUsername, remote.listenBrainzUsername),
+      invidiousInstance: pick(invidiousInstance, remote.invidiousInstance),
+      invidiousSid: mergedSid,
+      clearInvidiousSid: mergedSid == null,
+      invidiousUsername: mergedInvUser,
+      clearInvidiousUsername: mergedInvUser == null,
+      webDavUrl: pick(webDavUrl, remote.webDavUrl),
+      webDavUsername: pick(webDavUsername, remote.webDavUsername),
+      webDavPassword: pick(webDavPassword, remote.webDavPassword),
+      invidiousPlaylistMappings: mappings,
+      homeCountries: countries,
+    );
+  }
 }

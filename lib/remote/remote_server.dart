@@ -109,17 +109,42 @@ class RemoteServer {
     }
   }
 
+  static bool _isPrivateIpv4(String ip) {
+    final parts = ip.split('.');
+    if (parts.length != 4) return false;
+    final a = int.tryParse(parts[0]) ?? -1;
+    final b = int.tryParse(parts[1]) ?? -1;
+    if (a == 10) return true;
+    if (a == 172 && b >= 16 && b <= 31) return true;
+    if (a == 192 && b == 168) return true;
+    return false;
+  }
+
+  /// Prefer a private LAN address (e.g. 192.168.x.x) so phones pick Wi‑Fi over
+  /// mobile data interfaces when both exist.
   static Future<String?> _resolveLocalIp() async {
     try {
       final interfaces = await NetworkInterface.list(
         type: InternetAddressType.IPv4,
         includeLinkLocal: false,
       );
+      final private = <String>[];
+      final other = <String>[];
       for (final iface in interfaces) {
         for (final addr in iface.addresses) {
-          if (!addr.isLoopback) return addr.address;
+          if (addr.isLoopback) continue;
+          final ip = addr.address;
+          if (_isPrivateIpv4(ip)) {
+            private.add(ip);
+          } else {
+            other.add(ip);
+          }
         }
       }
+      private.sort();
+      if (private.isNotEmpty) return private.first;
+      other.sort();
+      if (other.isNotEmpty) return other.first;
     } catch (_) {}
     return null;
   }

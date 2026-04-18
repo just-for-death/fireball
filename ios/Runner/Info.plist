@@ -78,5 +78,7 @@
 			<key>NSAllowsArbitraryLoads</key>
 			<true/>
 		</dict>
+		<key>NSCameraUsageDescription</key>
+		<string>Fireball uses the camera to scan QR codes for remote control pairing.</string>
 	</dict>
 </plist>

@@ -66,13 +66,13 @@ class WebDavLiveSync {
           password: s.webDavPassword,
         );
         if (json != null) {
-          await store.restore(json);
+          await store.mergeFromLibraryJson(json);
           // Record pull time so the next isRemoteNewer() check doesn't
           // treat the same remote file as "newer" and pull again.
           await store.updateSettings({
             'lastBackupAt': DateTime.now().toIso8601String(),
           });
-          dev.log('WebDavLiveSync: pulled from remote');
+          dev.log('WebDavLiveSync: merged from remote');
         }
       } else {
         await WebDavSync.backup(

@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 
 import '../models/models.dart';
 import '../models/track.dart';
+import '../url_utils.dart';
 
 /// Standalone API client for Fireball.
 ///
@@ -219,7 +220,7 @@ class FireballApi {
               videoId: v['videoId']?.toString(),
               title: v['title'] ?? '',
               artist: v['author'] ?? v['artist'] ?? '',
-              artwork: () {
+              artwork: normalizeHttpUrl(() {
                 final vt = v['videoThumbnails'];
                 if (vt is List && vt.isNotEmpty && vt[0] is Map) {
                   return vt[0]['url'] as String?;
@@ -229,7 +230,7 @@ class FireballApi {
                   return th[0]['url'] as String?;
                 }
                 return null;
-              }(),
+              }()),
               duration: v['lengthSeconds'] ?? v['duration'],
             ))
         .toList();
@@ -391,7 +392,7 @@ class FireballApi {
             videoId: videoId,
             title: v['title']?.toString() ?? '',
             artist: v['author']?.toString() ?? '',
-            artwork: artwork,
+            artwork: normalizeHttpUrl(artwork),
             duration: v['lengthSeconds'] is int ? v['lengthSeconds'] as int : null,
           );
         })
