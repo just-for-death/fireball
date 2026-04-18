@@ -30,7 +30,7 @@ Configure an **Invidious instance URL** in Settings on first launch (required fo
 
 ## Build from source
 
-See [README.md](../README.md): `flutter build apk --release`, `flutter build ipa` (macOS + Xcode for iOS).
+See the repository [README](https://github.com/just-for-death/fireball/blob/main/README.md): `flutter build apk --release`, `flutter build ipa` (macOS + Xcode for iOS).
 
 ## SHA-256 checksums
 
@@ -43,4 +43,4 @@ A `SHA256SUMS.txt` file is attached to the GitHub release alongside the binaries
 
 ## License
 
-MIT — see [LICENSE](../LICENSE).
+MIT — see [LICENSE](https://github.com/just-for-death/fireball/blob/main/LICENSE).
