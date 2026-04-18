@@ -677,6 +677,8 @@ class SettingsScreen extends HookConsumerWidget {
                                           settings.accentSeedColor != null
                                               ? 'Disabled while a custom accent is set'
                                               : 'Android 12+ wallpaper colors when available',
+                                          maxLines: 3,
+                                          overflow: TextOverflow.ellipsis,
                                           style: TextStyle(
                                             fontSize: 11,
                                             color: Colors.white
@@ -703,6 +705,8 @@ class SettingsScreen extends HookConsumerWidget {
                               _SettingsLabel('ACCENT (OPTIONAL)'),
                               Text(
                                 'Tap a swatch or use scheme default',
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
                                 style: TextStyle(
                                   fontSize: 11,
                                   color: Colors.white.withValues(alpha: 0.45),
@@ -805,6 +809,8 @@ class SettingsScreen extends HookConsumerWidget {
                                           ),
                                           Text(
                                             'Icon-only rail to maximize content width',
+                                            maxLines: 3,
+                                            overflow: TextOverflow.ellipsis,
                                             style: TextStyle(
                                               fontSize: 11,
                                               color: Colors.white
@@ -1677,13 +1683,17 @@ class _SectionCard extends StatelessWidget {
             children: [
               Icon(icon, size: 16, color: cs.primary),
               const SizedBox(width: 8),
-              Text(
-                title,
-                style: TextStyle(
-                  color: cs.primary,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 1.5,
+              Expanded(
+                child: Text(
+                  title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: cs.primary,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 1.5,
+                  ),
                 ),
               ),
             ],
@@ -1706,6 +1716,8 @@ class _SettingsLabel extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: 6),
       child: Text(
         text,
+        maxLines: 3,
+        overflow: TextOverflow.ellipsis,
         style: TextStyle(
           color: Colors.white.withValues(alpha: 0.4),
           fontSize: 10,
@@ -1775,6 +1787,7 @@ class _SyncButton extends StatelessWidget {
     return GestureDetector(
       onTap: loading ? null : onTap,
       child: Container(
+        width: double.infinity,
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         decoration: BoxDecoration(
           color: color.withValues(alpha: 0.15),
@@ -1783,7 +1796,6 @@ class _SyncButton extends StatelessWidget {
               color: color.withValues(alpha: 0.3), width: 0.5),
         ),
         child: Row(
-          mainAxisSize: MainAxisSize.min,
           children: [
             if (loading)
               SizedBox(
@@ -1795,12 +1807,16 @@ class _SyncButton extends StatelessWidget {
             else
               Icon(icon, size: 16, color: color),
             const SizedBox(width: 8),
-            Text(
-              label,
-              style: TextStyle(
-                color: color,
-                fontSize: 13,
-                fontWeight: FontWeight.w700,
+            Expanded(
+              child: Text(
+                label,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: color,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
             ),
           ],
@@ -1825,6 +1841,7 @@ class _DangerButton extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
+        width: double.infinity,
         padding:
             const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         decoration: BoxDecoration(
@@ -1834,16 +1851,19 @@ class _DangerButton extends StatelessWidget {
               color: Colors.redAccent.withValues(alpha: 0.3), width: 0.5),
         ),
         child: Row(
-          mainAxisSize: MainAxisSize.min,
           children: [
             Icon(icon, size: 16, color: Colors.redAccent),
             const SizedBox(width: 8),
-            Text(
-              label,
-              style: const TextStyle(
-                color: Colors.redAccent,
-                fontSize: 13,
-                fontWeight: FontWeight.w700,
+            Expanded(
+              child: Text(
+                label,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: Colors.redAccent,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
             ),
           ],
@@ -1870,16 +1890,17 @@ class _QueueModeSelector extends StatelessWidget {
       ('ai', 'AI Queue'),
       ('repeat', 'Repeat'),
     ];
-    return Row(
+    return Wrap(
+      spacing: 10,
+      runSpacing: 10,
       children: modes
-          .map((m) => Padding(
-                padding: const EdgeInsets.only(right: 10),
-                child: GlassPill(
-                  label: m.$2,
-                  selected: value == m.$1,
-                  onTap: () => onChanged(m.$1),
-                ),
-              ))
+          .map(
+            (m) => GlassPill(
+              label: m.$2,
+              selected: value == m.$1,
+              onTap: () => onChanged(m.$1),
+            ),
+          )
           .toList(),
     );
   }
@@ -1905,11 +1926,19 @@ class _PlaylistSyncTile extends StatelessWidget {
       contentPadding: const EdgeInsets.symmetric(horizontal: 4),
       leading: Icon(Icons.queue_music_rounded,
           color: cs.primary.withValues(alpha: 0.8), size: 22),
-      title: Text(title,
-          style: const TextStyle(color: Colors.white, fontSize: 14)),
+      title: Text(
+        title,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: const TextStyle(color: Colors.white, fontSize: 14),
+      ),
       subtitle: subtitle != null
-          ? Text(subtitle!,
-              style: const TextStyle(color: Colors.white54, fontSize: 12))
+          ? Text(
+              subtitle!,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(color: Colors.white54, fontSize: 12),
+            )
           : null,
       onTap: onTap,
       trailing: _SyncTrailingButton(onSync: onSync),

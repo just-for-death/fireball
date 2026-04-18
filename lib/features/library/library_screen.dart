@@ -337,14 +337,22 @@ class LibraryScreen extends HookConsumerWidget {
                     child: Icon(Icons.queue_music_rounded,
                         color: cs.primary),
                   ),
-                  title: Text(pl.title,
-                      style: const TextStyle(
-                          fontWeight: FontWeight.w700,
-                          color: Colors.white)),
+                  title: Text(
+                    pl.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white,
+                    ),
+                  ),
                   subtitle: Text(
                     '${pl.videos.length} tracks',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.5)),
+                      color: Colors.white.withValues(alpha: 0.5),
+                    ),
                   ),
                   trailing: IconButton(
                     icon: Icon(Icons.delete_outline_rounded,
