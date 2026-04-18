@@ -6,7 +6,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
-BUILD_NAME="${FLUTTER_BUILD_NAME:-1.0.0}"
+BUILD_NAME="${FLUTTER_BUILD_NAME:-1.5.0}"
 BUILD_NUMBER="${FLUTTER_BUILD_NUMBER:-1}"
 OUT_NAME="${1:-build/ios/fireball_unsigned.ipa}"
 
