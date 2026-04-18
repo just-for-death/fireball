@@ -11,6 +11,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 import '../../core/api/fireball_api.dart';
 import '../../core/countries.dart';
+import '../../core/models/sponsor_segment.dart';
 import '../../core/store/providers.dart';
 import '../../core/ui/shell_content_insets.dart';
 import '../../core/theme/app_theme.dart';
@@ -115,8 +116,8 @@ class SettingsScreen extends HookConsumerWidget {
       testingLB.value = true;
       try {
         final res = await api.validateListenBrainzToken(token);
-        final username = res['user_name']?.toString() ??
-            res['username']?.toString() ?? '';
+        final username =
+            res['user_name']?.toString() ?? res['username']?.toString() ?? '';
         lbUserCtrl.text = username;
         await saveSettings({
           'listenBrainzToken': token,
@@ -154,8 +155,8 @@ class SettingsScreen extends HookConsumerWidget {
         }
       } catch (e) {
         if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('Last.fm test failed: $e')));
+          ScaffoldMessenger.of(context)
+              .showSnackBar(SnackBar(content: Text('Last.fm test failed: $e')));
         }
       } finally {
         testingLastFm.value = false;
@@ -166,8 +167,8 @@ class SettingsScreen extends HookConsumerWidget {
       final url = ollamaUrlCtrl.text.trim();
       final model = ollamaModelCtrl.text.trim();
       if (url.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Enter an Ollama URL')));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('Enter an Ollama URL')));
         return;
       }
       testingOllama.value = true;
@@ -179,13 +180,13 @@ class SettingsScreen extends HookConsumerWidget {
           'ollamaEnabled': true,
         });
         if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Ollama verified ✓')));
+          ScaffoldMessenger.of(context)
+              .showSnackBar(const SnackBar(content: Text('Ollama verified ✓')));
         }
       } catch (e) {
         if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('Ollama failed: $e')));
+          ScaffoldMessenger.of(context)
+              .showSnackBar(SnackBar(content: Text('Ollama failed: $e')));
         }
       } finally {
         testingOllama.value = false;
@@ -207,14 +208,15 @@ class SettingsScreen extends HookConsumerWidget {
         await saveSettings({'invidiousInstance': sanitized});
         await api.invidiousSearch('test', instanceUrl: sanitized);
         if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Invidious instance saved & verified ✓')));
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+              content: Text('Invidious instance saved & verified ✓')));
         }
       } catch (e) {
         // Instance was already saved above; just warn the user the test failed
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text('Instance saved, but test search failed: $e\nPlayback may still work.'),
+            content: Text(
+                'Instance saved, but test search failed: $e\nPlayback may still work.'),
             duration: const Duration(seconds: 5),
           ));
         }
@@ -280,8 +282,8 @@ class SettingsScreen extends HookConsumerWidget {
       final user = invUserCtrl.text.trim();
       final pass = invPassCtrl.text.trim();
       if (instance.isEmpty || user.isEmpty || pass.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Fill in instance, username, and password')));
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Fill in instance, username, and password')));
         return;
       }
       try {
@@ -396,7 +398,8 @@ class SettingsScreen extends HookConsumerWidget {
           username: webDavUserCtrl.text.trim(),
           password: webDavPassCtrl.text.trim(),
         );
-        webDavStatus.value = ok ? 'Connection successful ✓' : 'Connection failed';
+        webDavStatus.value =
+            ok ? 'Connection successful ✓' : 'Connection failed';
       } catch (e) {
         webDavStatus.value = 'Error: $e';
       } finally {
@@ -407,7 +410,7 @@ class SettingsScreen extends HookConsumerWidget {
     Future<void> webDavBackup() async {
       await saveWebDavSettings();
       // Use controller text directly — settings provider may not have flushed yet
-      final url  = webDavUrlCtrl.text.trim();
+      final url = webDavUrlCtrl.text.trim();
       final user = webDavUserCtrl.text.trim();
       final pass = webDavPassCtrl.text.trim();
       backupLoading.value = true;
@@ -433,7 +436,7 @@ class SettingsScreen extends HookConsumerWidget {
     Future<void> webDavRestore() async {
       await saveWebDavSettings();
       // Use controller text directly — settings provider may not have flushed yet
-      final url  = webDavUrlCtrl.text.trim();
+      final url = webDavUrlCtrl.text.trim();
       final user = webDavUserCtrl.text.trim();
       final pass = webDavPassCtrl.text.trim();
       restoreLoading.value = true;
@@ -510,17 +513,18 @@ class SettingsScreen extends HookConsumerWidget {
                   fillColor: Colors.white.withValues(alpha: 0.06),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(14),
-                    borderSide: BorderSide(
-                        color: Colors.white.withValues(alpha: 0.08)),
+                    borderSide:
+                        BorderSide(color: Colors.white.withValues(alpha: 0.08)),
                   ),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(14),
-                    borderSide: BorderSide(
-                        color: Colors.white.withValues(alpha: 0.08)),
+                    borderSide:
+                        BorderSide(color: Colors.white.withValues(alpha: 0.08)),
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(14),
-                    borderSide: BorderSide(color: cs.primary.withValues(alpha: 0.6)),
+                    borderSide:
+                        BorderSide(color: cs.primary.withValues(alpha: 0.6)),
                   ),
                   contentPadding:
                       const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
@@ -544,8 +548,8 @@ class SettingsScreen extends HookConsumerWidget {
                       color: Colors.white.withValues(alpha: 0.06),
                       borderRadius: BorderRadius.circular(14),
                       child: ListTile(
-                        leading:
-                            Icon(Icons.cast_rounded, color: cs.primary, size: 26),
+                        leading: Icon(Icons.cast_rounded,
+                            color: cs.primary, size: 26),
                         title: const Text(
                           'Remote control',
                           style: TextStyle(
@@ -578,9 +582,8 @@ class SettingsScreen extends HookConsumerWidget {
                         final showIpadLayout = !kIsWeb &&
                             defaultTargetPlatform == TargetPlatform.iOS &&
                             shortest >= 600;
-                        final curatedIds = kFireballSchemeChoices
-                            .map((e) => e.$1)
-                            .toSet();
+                        final curatedIds =
+                            kFireballSchemeChoices.map((e) => e.$1).toSet();
                         final schemeDropdownItems = <DropdownMenuItem<String>>[
                           if (!curatedIds.contains(settings.flexScheme))
                             DropdownMenuItem(
@@ -629,8 +632,8 @@ class SettingsScreen extends HookConsumerWidget {
                                   ButtonSegment(
                                     value: 'dark',
                                     label: Text('Dark'),
-                                    icon: Icon(Icons.dark_mode_rounded,
-                                        size: 18),
+                                    icon:
+                                        Icon(Icons.dark_mode_rounded, size: 18),
                                   ),
                                 ],
                                 selected: {settings.themeMode},
@@ -694,8 +697,7 @@ class SettingsScreen extends HookConsumerWidget {
                                     onChanged: settings.accentSeedColor != null
                                         ? null
                                         : (v) => saveSettings({
-                                              'useDynamicColorWhenAvailable':
-                                                  v,
+                                              'useDynamicColorWhenAvailable': v,
                                             }),
                                     activeThumbColor: cs.primary,
                                   ),
@@ -732,8 +734,7 @@ class SettingsScreen extends HookConsumerWidget {
                                                   }
                                                 : {'accentSeedColor': preset},
                                           ),
-                                          customBorder:
-                                              const CircleBorder(),
+                                          customBorder: const CircleBorder(),
                                           child: Container(
                                             width: 36,
                                             height: 36,
@@ -744,15 +745,14 @@ class SettingsScreen extends HookConsumerWidget {
                                                             .accentSeedColor ==
                                                         preset
                                                     ? cs.primary
-                                                    : Colors.white
-                                                        .withValues(
-                                                            alpha: 0.2,
-                                                          ),
-                                                width: settings
-                                                            .accentSeedColor ==
-                                                        preset
-                                                    ? 2.5
-                                                    : 1,
+                                                    : Colors.white.withValues(
+                                                        alpha: 0.2,
+                                                      ),
+                                                width:
+                                                    settings.accentSeedColor ==
+                                                            preset
+                                                        ? 2.5
+                                                        : 1,
                                               ),
                                               color: preset == null
                                                   ? Colors.white
@@ -763,10 +763,10 @@ class SettingsScreen extends HookConsumerWidget {
                                                 ? Icon(
                                                     Icons.palette_outlined,
                                                     size: 18,
-                                                    color: Colors.white
-                                                        .withValues(
-                                                          alpha: 0.8,
-                                                        ),
+                                                    color:
+                                                        Colors.white.withValues(
+                                                      alpha: 0.8,
+                                                    ),
                                                   )
                                                 : null,
                                           ),
@@ -839,498 +839,579 @@ class SettingsScreen extends HookConsumerWidget {
                   // ── YOUTUBE / INVIDIOUS ─────────────────────────────────
                   if (showSection(
                       'youtube invidious instance playlist login trending video'))
-                  _SectionCard(
-                    title: 'YOUTUBE / INVIDIOUS',
-                    icon: Icons.play_circle_outline_rounded,
-                    isDark: isDark,
-                    cs: cs,
-                    children: [
-                      _SettingsLabel('INSTANCE URL'),
-                      _StyledTextField(
-                        controller: invidiousInstanceCtrl,
-                        hint: 'https://invidious.example.com',
-                      ),
-                      const SizedBox(height: 8),
-                      _SyncButton(
-                        label: testingInvidious.value
-                            ? 'Testing...'
-                            : 'Test & Save Instance',
-                        icon: Icons.check_circle_outline_rounded,
-                        color: cs.primary,
-                        onTap: testAndSaveInvidious,
-                        loading: testingInvidious.value,
-                      ),
-                      const SizedBox(height: 16),
-                      if (settings.invidiousUsername != null) ...[
-                        _SettingsLabel('LOGGED IN AS'),
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 8),
-                          child: Row(
-                            children: [
-                              Icon(Icons.account_circle_rounded,
-                                  size: 18,
-                                  color: cs.primary.withValues(alpha: 0.7)),
-                              const SizedBox(width: 8),
-                              Text(settings.invidiousUsername!,
-                                  style: TextStyle(
-                                      color: Colors.white.withValues(alpha: 0.7),
-                                      fontSize: 14)),
-                              const Spacer(),
-                              TextButton(
-                                onPressed: () {
-                                  invPlaylists.value = [];
-                                  saveSettings({
-                                    'invidiousSid': null,
-                                    'invidiousUsername': null,
-                                  });
-                                },
-                                child: const Text('Sign out',
-                                    style: TextStyle(color: Colors.redAccent)),
-                              )
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        _SettingsLabel('PLAYLISTS'),
-                        if (invPlaylistsLoading.value)
-                          const Padding(
-                            padding: EdgeInsets.symmetric(vertical: 12),
-                            child: Center(
-                                child: CircularProgressIndicator(strokeWidth: 2)),
-                          )
-                        else if (invPlaylists.value.isEmpty)
-                          Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 8),
-                            child: Text(
-                              'No playlists found',
-                              style: TextStyle(
-                                  color: Colors.white54, fontSize: 13),
-                            ),
-                          )
-                        else
-                          ...invPlaylists.value.map((pl) {
-                            final id = pl['playlistId']?.toString() ?? '';
-                            final name =
-                                pl['title']?.toString() ?? 'Playlist';
-                            final count =
-                                pl['videoCount']?.toString() ?? '';
-                            return _PlaylistSyncTile(
-                              title: name,
-                              subtitle: count.isNotEmpty
-                                  ? '$count tracks'
-                                  : null,
-                              onSync: () async {
-                                final messenger =
-                                    ScaffoldMessenger.of(context);
-                                try {
-                                  final synced =
-                                      await api.syncInvidiousPlaylist(
-                                    id,
-                                    instanceUrl:
-                                        settings.invidiousInstance,
-                                    sid: settings.invidiousSid,
-                                  );
-                                  await ref
-                                      .read(localStoreProvider.notifier)
-                                      .addPlaylist(synced);
-                                  messenger.showSnackBar(const SnackBar(
-                                      content: Text(
-                                          'Playlist synced to Library ✓')));
-                                } catch (e) {
-                                  messenger.showSnackBar(SnackBar(
-                                      content: Text(
-                                          'Sync failed: ${e.toString().replaceAll("Exception: ", "")}')));
-                                }
-                              },
-                              onTap: () =>
-                                  showInvidiousPlaylistPreview(id, name),
-                            );
-                          }),
-                        Row(
-                          children: [
-                            TextButton.icon(
-                              icon: const Icon(Icons.refresh_rounded,
-                                  size: 16),
-                              label: const Text('Refresh'),
-                              onPressed: loadInvidiousPlaylists,
-                            ),
-                          ],
-                        ),
-                      ] else ...[
-                        _SettingsLabel('LOGIN (OPTIONAL)'),
+                    _SectionCard(
+                      title: 'YOUTUBE / INVIDIOUS',
+                      icon: Icons.play_circle_outline_rounded,
+                      isDark: isDark,
+                      cs: cs,
+                      children: [
+                        _SettingsLabel('INSTANCE URL'),
                         _StyledTextField(
-                            controller: invUserCtrl, hint: 'Username'),
-                        const SizedBox(height: 8),
-                        _StyledTextField(
-                            controller: invPassCtrl,
-                            hint: 'Password',
-                            obscure: true),
+                          controller: invidiousInstanceCtrl,
+                          hint: 'https://invidious.example.com',
+                        ),
                         const SizedBox(height: 8),
                         _SyncButton(
-                          label: 'Login',
-                          icon: Icons.login_rounded,
-                          color: cs.secondary,
-                          onTap: invidiousLogin,
+                          label: testingInvidious.value
+                              ? 'Testing...'
+                              : 'Test & Save Instance',
+                          icon: Icons.check_circle_outline_rounded,
+                          color: cs.primary,
+                          onTap: testAndSaveInvidious,
+                          loading: testingInvidious.value,
                         ),
-                      ],
-                      const SizedBox(height: 12),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text('Auto-Push to Invidious',
-                                  style: TextStyle(
-                                      color: Colors.white, fontSize: 14)),
-                              Text(
-                                'Sync local playlist changes to Invidious',
+                        const SizedBox(height: 16),
+                        if (settings.invidiousUsername != null) ...[
+                          _SettingsLabel('LOGGED IN AS'),
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 8),
+                            child: Row(
+                              children: [
+                                Icon(Icons.account_circle_rounded,
+                                    size: 18,
+                                    color: cs.primary.withValues(alpha: 0.7)),
+                                const SizedBox(width: 8),
+                                Text(settings.invidiousUsername!,
+                                    style: TextStyle(
+                                        color:
+                                            Colors.white.withValues(alpha: 0.7),
+                                        fontSize: 14)),
+                                const Spacer(),
+                                TextButton(
+                                  onPressed: () {
+                                    invPlaylists.value = [];
+                                    saveSettings({
+                                      'invidiousSid': null,
+                                      'invidiousUsername': null,
+                                    });
+                                  },
+                                  child: const Text('Sign out',
+                                      style:
+                                          TextStyle(color: Colors.redAccent)),
+                                )
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          _SettingsLabel('PLAYLISTS'),
+                          if (invPlaylistsLoading.value)
+                            const Padding(
+                              padding: EdgeInsets.symmetric(vertical: 12),
+                              child: Center(
+                                  child: CircularProgressIndicator(
+                                      strokeWidth: 2)),
+                            )
+                          else if (invPlaylists.value.isEmpty)
+                            Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 8),
+                              child: Text(
+                                'No playlists found',
                                 style: TextStyle(
-                                    fontSize: 11,
-                                    color:
-                                        Colors.white.withValues(alpha: 0.4)),
+                                    color: Colors.white54, fontSize: 13),
+                              ),
+                            )
+                          else
+                            ...invPlaylists.value.map((pl) {
+                              final id = pl['playlistId']?.toString() ?? '';
+                              final name =
+                                  pl['title']?.toString() ?? 'Playlist';
+                              final count = pl['videoCount']?.toString() ?? '';
+                              return _PlaylistSyncTile(
+                                title: name,
+                                subtitle:
+                                    count.isNotEmpty ? '$count tracks' : null,
+                                onSync: () async {
+                                  final messenger =
+                                      ScaffoldMessenger.of(context);
+                                  try {
+                                    final synced =
+                                        await api.syncInvidiousPlaylist(
+                                      id,
+                                      instanceUrl: settings.invidiousInstance,
+                                      sid: settings.invidiousSid,
+                                    );
+                                    await ref
+                                        .read(localStoreProvider.notifier)
+                                        .addPlaylist(synced);
+                                    messenger.showSnackBar(const SnackBar(
+                                        content: Text(
+                                            'Playlist synced to Library ✓')));
+                                  } catch (e) {
+                                    messenger.showSnackBar(SnackBar(
+                                        content: Text(
+                                            'Sync failed: ${e.toString().replaceAll("Exception: ", "")}')));
+                                  }
+                                },
+                                onTap: () =>
+                                    showInvidiousPlaylistPreview(id, name),
+                              );
+                            }),
+                          Row(
+                            children: [
+                              TextButton.icon(
+                                icon:
+                                    const Icon(Icons.refresh_rounded, size: 16),
+                                label: const Text('Refresh'),
+                                onPressed: loadInvidiousPlaylists,
                               ),
                             ],
                           ),
-                          Switch(
-                            value: settings.invidiousAutoPush,
-                            onChanged: (v) =>
-                                saveSettings({'invidiousAutoPush': v}),
-                            activeThumbColor: cs.primary,
+                        ] else ...[
+                          _SettingsLabel('LOGIN (OPTIONAL)'),
+                          _StyledTextField(
+                              controller: invUserCtrl, hint: 'Username'),
+                          const SizedBox(height: 8),
+                          _StyledTextField(
+                              controller: invPassCtrl,
+                              hint: 'Password',
+                              obscure: true),
+                          const SizedBox(height: 8),
+                          _SyncButton(
+                            label: 'Login',
+                            icon: Icons.login_rounded,
+                            color: cs.secondary,
+                            onTap: invidiousLogin,
                           ),
                         ],
-                      ),
-                    ],
-                  ),
+                        const SizedBox(height: 12),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text('Auto-Push to Invidious',
+                                    style: TextStyle(
+                                        color: Colors.white, fontSize: 14)),
+                                Text(
+                                  'Sync local playlist changes to Invidious',
+                                  style: TextStyle(
+                                      fontSize: 11,
+                                      color:
+                                          Colors.white.withValues(alpha: 0.4)),
+                                ),
+                              ],
+                            ),
+                            Switch(
+                              value: settings.invidiousAutoPush,
+                              onChanged: (v) =>
+                                  saveSettings({'invidiousAutoPush': v}),
+                              activeThumbColor: cs.primary,
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
 
                   const SizedBox(height: 16),
 
                   // ── LISTENBRAINZ ─────────────────────────────────────────
                   if (showSection(
                       'listenbrainz brainz token scrobble playing now'))
-                  _SectionCard(
-                    title: 'LISTENBRAINZ',
-                    icon: Icons.graphic_eq_rounded,
-                    isDark: isDark,
-                    cs: cs,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          const Text('Enable ListenBrainz',
-                              style: TextStyle(
-                                  color: Colors.white, fontSize: 14)),
-                          Switch(
-                            value: settings.listenBrainzEnabled,
-                            onChanged: (v) =>
-                                saveSettings({'listenBrainzEnabled': v}),
-                            activeThumbColor: cs.primary,
-                          ),
-                        ],
-                      ),
-                      _SettingsLabel('TOKEN'),
-                      _StyledTextField(
-                        controller: lbTokenCtrl,
-                        hint: 'Your ListenBrainz user token',
-                      ),
-                      const SizedBox(height: 8),
-                      _SettingsLabel('USERNAME'),
-                      _StyledTextField(
-                          controller: lbUserCtrl,
-                          hint: 'Auto-filled after token test'),
-                      const SizedBox(height: 8),
-                      _SyncButton(
-                        label: testingLB.value
-                            ? 'Testing...'
-                            : 'Test & Save Token',
-                        icon: Icons.verified_rounded,
-                        color: const Color(0xFFEB743B),
-                        onTap: testAndSaveLB,
-                        loading: testingLB.value,
-                      ),
-                      const SizedBox(height: 12),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          const Text('Submit Playing Now',
-                              style: TextStyle(
-                                  color: Colors.white, fontSize: 14)),
-                          Switch(
-                            value: settings.listenBrainzPlayingNow,
-                            onChanged: (v) =>
-                                saveSettings({'listenBrainzPlayingNow': v}),
-                            activeThumbColor: cs.primary,
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
+                    _SectionCard(
+                      title: 'LISTENBRAINZ',
+                      icon: Icons.graphic_eq_rounded,
+                      isDark: isDark,
+                      cs: cs,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text('Enable ListenBrainz',
+                                style: TextStyle(
+                                    color: Colors.white, fontSize: 14)),
+                            Switch(
+                              value: settings.listenBrainzEnabled,
+                              onChanged: (v) =>
+                                  saveSettings({'listenBrainzEnabled': v}),
+                              activeThumbColor: cs.primary,
+                            ),
+                          ],
+                        ),
+                        _SettingsLabel('TOKEN'),
+                        _StyledTextField(
+                          controller: lbTokenCtrl,
+                          hint: 'Your ListenBrainz user token',
+                        ),
+                        const SizedBox(height: 8),
+                        _SettingsLabel('USERNAME'),
+                        _StyledTextField(
+                            controller: lbUserCtrl,
+                            hint: 'Auto-filled after token test'),
+                        const SizedBox(height: 8),
+                        _SyncButton(
+                          label: testingLB.value
+                              ? 'Testing...'
+                              : 'Test & Save Token',
+                          icon: Icons.verified_rounded,
+                          color: const Color(0xFFEB743B),
+                          onTap: testAndSaveLB,
+                          loading: testingLB.value,
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text('Submit Playing Now',
+                                style: TextStyle(
+                                    color: Colors.white, fontSize: 14)),
+                            Switch(
+                              value: settings.listenBrainzPlayingNow,
+                              onChanged: (v) =>
+                                  saveSettings({'listenBrainzPlayingNow': v}),
+                              activeThumbColor: cs.primary,
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
 
                   const SizedBox(height: 16),
 
                   // ── LAST.FM ──────────────────────────────────────────────
                   if (showSection('last.fm lastfm chart radio api'))
-                  _SectionCard(
-                    title: 'LAST.FM',
-                    icon: Icons.radio_rounded,
-                    isDark: isDark,
-                    cs: cs,
-                    children: [
-                      _SettingsLabel('API KEY'),
-                      _StyledTextField(
-                        controller: lastFmKeyCtrl,
-                        hint: 'Your Last.fm API key',
-                      ),
-                      const SizedBox(height: 8),
-                      _SyncButton(
-                        label: testingLastFm.value
-                            ? 'Testing...'
-                            : 'Test & Save Key',
-                        icon: Icons.check_circle_outline_rounded,
-                        color: const Color(0xFFD51007),
-                        onTap: testAndSaveLastFm,
-                        loading: testingLastFm.value,
-                      ),
-                    ],
-                  ),
+                    _SectionCard(
+                      title: 'LAST.FM',
+                      icon: Icons.radio_rounded,
+                      isDark: isDark,
+                      cs: cs,
+                      children: [
+                        _SettingsLabel('API KEY'),
+                        _StyledTextField(
+                          controller: lastFmKeyCtrl,
+                          hint: 'Your Last.fm API key',
+                        ),
+                        const SizedBox(height: 8),
+                        _SyncButton(
+                          label: testingLastFm.value
+                              ? 'Testing...'
+                              : 'Test & Save Key',
+                          icon: Icons.check_circle_outline_rounded,
+                          color: const Color(0xFFD51007),
+                          onTap: testAndSaveLastFm,
+                          loading: testingLastFm.value,
+                        ),
+                      ],
+                    ),
 
                   const SizedBox(height: 16),
 
                   // ── OLLAMA AI ────────────────────────────────────────────
                   if (showSection('ollama ai llm queue model'))
-                  _SectionCard(
-                    title: 'OLLAMA AI QUEUE',
-                    icon: Icons.auto_awesome_rounded,
-                    isDark: isDark,
-                    cs: cs,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          const Text('Enable AI Queue',
-                              style: TextStyle(
-                                  color: Colors.white, fontSize: 14)),
-                          Switch(
-                            value: settings.ollamaEnabled,
-                            onChanged: (v) =>
-                                saveSettings({'ollamaEnabled': v}),
-                            activeThumbColor: cs.primary,
-                          ),
-                        ],
-                      ),
-                      _SettingsLabel('OLLAMA URL'),
-                      _StyledTextField(
-                        controller: ollamaUrlCtrl,
-                        hint: 'http://192.168.1.x:11434',
-                      ),
-                      const SizedBox(height: 8),
-                      _SettingsLabel('MODEL'),
-                      _StyledTextField(
-                        controller: ollamaModelCtrl,
-                        hint: 'llama3.2:3b',
-                      ),
-                      const SizedBox(height: 8),
-                      _SyncButton(
-                        label: testingOllama.value
-                            ? 'Testing...'
-                            : 'Test & Save Ollama',
-                        icon: Icons.science_rounded,
-                        color: const Color(0xFF7C3AED),
-                        onTap: testAndSaveOllama,
-                        loading: testingOllama.value,
-                      ),
-                    ],
-                  ),
+                    _SectionCard(
+                      title: 'OLLAMA AI QUEUE',
+                      icon: Icons.auto_awesome_rounded,
+                      isDark: isDark,
+                      cs: cs,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text('Enable AI Queue',
+                                style: TextStyle(
+                                    color: Colors.white, fontSize: 14)),
+                            Switch(
+                              value: settings.ollamaEnabled,
+                              onChanged: (v) =>
+                                  saveSettings({'ollamaEnabled': v}),
+                              activeThumbColor: cs.primary,
+                            ),
+                          ],
+                        ),
+                        _SettingsLabel('OLLAMA URL'),
+                        _StyledTextField(
+                          controller: ollamaUrlCtrl,
+                          hint: 'http://192.168.1.x:11434',
+                        ),
+                        const SizedBox(height: 8),
+                        _SettingsLabel('MODEL'),
+                        _StyledTextField(
+                          controller: ollamaModelCtrl,
+                          hint: 'llama3.2:3b',
+                        ),
+                        const SizedBox(height: 8),
+                        _SyncButton(
+                          label: testingOllama.value
+                              ? 'Testing...'
+                              : 'Test & Save Ollama',
+                          icon: Icons.science_rounded,
+                          color: const Color(0xFF7C3AED),
+                          onTap: testAndSaveOllama,
+                          loading: testingOllama.value,
+                        ),
+                      ],
+                    ),
 
                   const SizedBox(height: 16),
 
                   // ── PLAYBACK ─────────────────────────────────────────────
                   if (showSection(
                       'playback quality audio queue lyrics scroll sync english hindi language reduced motion accessibility'))
-                  _SectionCard(
-                    title: 'PLAYBACK',
-                    icon: Icons.music_note_rounded,
-                    isDark: isDark,
-                    cs: cs,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          const Text('High Quality Audio',
-                              style: TextStyle(
-                                  color: Colors.white, fontSize: 14)),
-                          Switch(
-                            value: settings.highQuality,
-                            onChanged: (v) =>
-                                saveSettings({'highQuality': v}),
-                            activeThumbColor: cs.primary,
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      _SettingsLabel('AI QUEUE MODE'),
-                      _QueueModeSelector(
-                        value: settings.queueMode,
-                        onChanged: (v) => saveSettings({'queueMode': v}),
-                        cs: cs,
-                      ),
-                      const SizedBox(height: 12),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text('Auto-scroll synced lyrics',
-                                  style: TextStyle(
-                                      color: Colors.white, fontSize: 14)),
-                              Text(
-                                'Follow the active line while playing',
+                    _SectionCard(
+                      title: 'PLAYBACK',
+                      icon: Icons.music_note_rounded,
+                      isDark: isDark,
+                      cs: cs,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text('High Quality Audio',
                                 style: TextStyle(
-                                    fontSize: 11,
-                                    color:
-                                        Colors.white.withValues(alpha: 0.4)),
-                              ),
-                            ],
-                          ),
-                          Switch(
-                            value: settings.lyricsAutoScroll,
-                            onChanged: (v) =>
-                                saveSettings({'lyricsAutoScroll': v}),
-                            activeThumbColor: cs.primary,
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text('Reduced motion for lyrics',
+                                    color: Colors.white, fontSize: 14)),
+                            Switch(
+                              value: settings.highQuality,
+                              onChanged: (v) =>
+                                  saveSettings({'highQuality': v}),
+                              activeThumbColor: cs.primary,
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        _SettingsLabel('AI QUEUE MODE'),
+                        _QueueModeSelector(
+                          value: settings.queueMode,
+                          onChanged: (v) => saveSettings({'queueMode': v}),
+                          cs: cs,
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text('Auto-scroll synced lyrics',
+                                    style: TextStyle(
+                                        color: Colors.white, fontSize: 14)),
+                                Text(
+                                  'Follow the active line while playing',
                                   style: TextStyle(
-                                      color: Colors.white, fontSize: 14)),
-                              Text(
-                                'Jump instead of animating when following the active line',
-                                style: TextStyle(
-                                    fontSize: 11,
-                                    color:
-                                        Colors.white.withValues(alpha: 0.4)),
-                              ),
-                            ],
-                          ),
-                          Switch(
-                            value: settings.lyricsReducedMotion,
-                            onChanged: (v) =>
-                                saveSettings({'lyricsReducedMotion': v}),
-                            activeThumbColor: cs.primary,
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text('Prefer English / Hindi lyrics',
+                                      fontSize: 11,
+                                      color:
+                                          Colors.white.withValues(alpha: 0.4)),
+                                ),
+                              ],
+                            ),
+                            Switch(
+                              value: settings.lyricsAutoScroll,
+                              onChanged: (v) =>
+                                  saveSettings({'lyricsAutoScroll': v}),
+                              activeThumbColor: cs.primary,
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text('Reduced motion for lyrics',
+                                    style: TextStyle(
+                                        color: Colors.white, fontSize: 14)),
+                                Text(
+                                  'Jump instead of animating when following the active line',
                                   style: TextStyle(
-                                      color: Colors.white, fontSize: 14)),
-                              Text(
-                                'When LRCLIB has several scripts, favor Latin or Devanagari',
-                                style: TextStyle(
-                                    fontSize: 11,
-                                    color:
-                                        Colors.white.withValues(alpha: 0.4)),
-                              ),
-                            ],
-                          ),
-                          Switch(
-                            value: settings.lyricsPreferEnglishHindi,
-                            onChanged: (v) =>
-                                saveSettings({'lyricsPreferEnglishHindi': v}),
-                            activeThumbColor: cs.primary,
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
+                                      fontSize: 11,
+                                      color:
+                                          Colors.white.withValues(alpha: 0.4)),
+                                ),
+                              ],
+                            ),
+                            Switch(
+                              value: settings.lyricsReducedMotion,
+                              onChanged: (v) =>
+                                  saveSettings({'lyricsReducedMotion': v}),
+                              activeThumbColor: cs.primary,
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text('Prefer English / Hindi lyrics',
+                                    style: TextStyle(
+                                        color: Colors.white, fontSize: 14)),
+                                Text(
+                                  'When LRCLIB has several scripts, favor Latin or Devanagari',
+                                  style: TextStyle(
+                                      fontSize: 11,
+                                      color:
+                                          Colors.white.withValues(alpha: 0.4)),
+                                ),
+                              ],
+                            ),
+                            Switch(
+                              value: settings.lyricsPreferEnglishHindi,
+                              onChanged: (v) =>
+                                  saveSettings({'lyricsPreferEnglishHindi': v}),
+                              activeThumbColor: cs.primary,
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
 
                   const SizedBox(height: 16),
 
                   // ── BACKUP & SYNC ─────────────────────────────────────────
                   if (showSection(
                       'backup sync google drive webdav nextcloud cloud'))
-                  _SectionCard(
-                    title: 'BACKUP & SYNC',
-                    icon: Icons.cloud_sync_rounded,
-                    isDark: isDark,
-                    cs: cs,
-                    children: [
-                      // Last backup info
-                      if (settings.lastBackupAt != null &&
-                          DateTime.tryParse(settings.lastBackupAt!) != null)
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 12),
-                          child: Row(
-                            children: [
-                              Icon(Icons.history_rounded,
-                                  size: 14,
-                                  color: Colors.white.withValues(alpha: 0.4)),
-                              const SizedBox(width: 6),
-                              Text(
-                                'Last backup: ${_fmtTime(DateTime.tryParse(settings.lastBackupAt!)!)}',
-                                style: TextStyle(
-                                    fontSize: 12,
-                                    color:
-                                        Colors.white.withValues(alpha: 0.4)),
-                              ),
-                            ],
-                          ),
-                        ),
-
-                      // ── Google Drive ──────────────────────────────────────
-                      _SettingsLabel('GOOGLE DRIVE'),
-                      if (gDriveUser.value == null)
-                        _SyncButton(
-                          label: gDriveLoading.value
-                              ? 'Signing in...'
-                              : 'Sign in with Google',
-                          icon: Icons.account_circle_rounded,
-                          color: const Color(0xFF4285F4),
-                          onTap: gDriveSignIn,
-                          loading: gDriveLoading.value,
-                        )
-                      else ...[
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 8),
-                          child: Row(
-                            children: [
-                              Icon(Icons.check_circle_rounded,
-                                  size: 16,
-                                  color:
-                                      const Color(0xFF4285F4).withValues(alpha: 0.8)),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  gDriveUser.value!.email,
+                    _SectionCard(
+                      title: 'BACKUP & SYNC',
+                      icon: Icons.cloud_sync_rounded,
+                      isDark: isDark,
+                      cs: cs,
+                      children: [
+                        // Last backup info
+                        if (settings.lastBackupAt != null &&
+                            DateTime.tryParse(settings.lastBackupAt!) != null)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 12),
+                            child: Row(
+                              children: [
+                                Icon(Icons.history_rounded,
+                                    size: 14,
+                                    color: Colors.white.withValues(alpha: 0.4)),
+                                const SizedBox(width: 6),
+                                Text(
+                                  'Last backup: ${_fmtTime(DateTime.tryParse(settings.lastBackupAt!)!)}',
                                   style: TextStyle(
-                                      color: Colors.white.withValues(alpha: 0.8),
-                                      fontSize: 13),
+                                      fontSize: 12,
+                                      color:
+                                          Colors.white.withValues(alpha: 0.4)),
+                                ),
+                              ],
+                            ),
+                          ),
+
+                        // ── Google Drive ──────────────────────────────────────
+                        _SettingsLabel('GOOGLE DRIVE'),
+                        if (gDriveUser.value == null)
+                          _SyncButton(
+                            label: gDriveLoading.value
+                                ? 'Signing in...'
+                                : 'Sign in with Google',
+                            icon: Icons.account_circle_rounded,
+                            color: const Color(0xFF4285F4),
+                            onTap: gDriveSignIn,
+                            loading: gDriveLoading.value,
+                          )
+                        else ...[
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 8),
+                            child: Row(
+                              children: [
+                                Icon(Icons.check_circle_rounded,
+                                    size: 16,
+                                    color: const Color(0xFF4285F4)
+                                        .withValues(alpha: 0.8)),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    gDriveUser.value!.email,
+                                    style: TextStyle(
+                                        color:
+                                            Colors.white.withValues(alpha: 0.8),
+                                        fontSize: 13),
+                                  ),
+                                ),
+                                TextButton(
+                                  onPressed: gDriveSignOut,
+                                  child: const Text('Sign out',
+                                      style: TextStyle(
+                                          color: Colors.redAccent,
+                                          fontSize: 12)),
+                                ),
+                              ],
+                            ),
+                          ),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: _SyncButton(
+                                  label: backupLoading.value
+                                      ? 'Backing up...'
+                                      : 'Back Up Now',
+                                  icon: Icons.cloud_upload_rounded,
+                                  color: const Color(0xFF4285F4),
+                                  onTap: gDriveBackup,
+                                  loading: backupLoading.value,
                                 ),
                               ),
-                              TextButton(
-                                onPressed: gDriveSignOut,
-                                child: const Text('Sign out',
-                                    style: TextStyle(
-                                        color: Colors.redAccent,
-                                        fontSize: 12)),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: _SyncButton(
+                                  label: restoreLoading.value
+                                      ? 'Restoring...'
+                                      : 'Restore',
+                                  icon: Icons.cloud_download_rounded,
+                                  color: Colors.green,
+                                  onTap: gDriveRestore,
+                                  loading: restoreLoading.value,
+                                ),
                               ),
                             ],
                           ),
+                        ],
+                        if (gDriveStatus.value.isNotEmpty) ...[
+                          const SizedBox(height: 6),
+                          Text(
+                            gDriveStatus.value,
+                            style: TextStyle(
+                                fontSize: 12,
+                                color: gDriveStatus.value.contains('failed') ||
+                                        gDriveStatus.value.contains('Error')
+                                    ? Colors.redAccent.withValues(alpha: 0.8)
+                                    : Colors.greenAccent
+                                        .withValues(alpha: 0.8)),
+                          ),
+                        ],
+
+                        const SizedBox(height: 20),
+                        Divider(color: Colors.white.withValues(alpha: 0.08)),
+                        const SizedBox(height: 16),
+
+                        // ── WebDAV / Nextcloud ────────────────────────────────
+                        _SettingsLabel('WEBDAV / NEXTCLOUD'),
+                        _StyledTextField(
+                          controller: webDavUrlCtrl,
+                          hint:
+                              'https://nextcloud.example.com/remote.php/dav/files/user',
+                          onChanged: (_) {},
                         ),
+                        const SizedBox(height: 8),
+                        _StyledTextField(
+                          controller: webDavUserCtrl,
+                          hint: 'Username',
+                          onChanged: (_) {},
+                        ),
+                        const SizedBox(height: 8),
+                        _StyledTextField(
+                          controller: webDavPassCtrl,
+                          hint: 'Password / App Token',
+                          obscure: true,
+                          onChanged: (_) {},
+                        ),
+                        const SizedBox(height: 8),
+                        IntrinsicWidth(
+                          child: _SyncButton(
+                            label: webDavTesting.value
+                                ? 'Testing...'
+                                : 'Test Connection',
+                            icon: Icons.cable_rounded,
+                            color: const Color(0xFF0082C9),
+                            onTap: testWebDav,
+                            loading: webDavTesting.value,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
                         Row(
                           children: [
                             Expanded(
@@ -1338,9 +1419,9 @@ class SettingsScreen extends HookConsumerWidget {
                                 label: backupLoading.value
                                     ? 'Backing up...'
                                     : 'Back Up Now',
-                                icon: Icons.cloud_upload_rounded,
-                                color: const Color(0xFF4285F4),
-                                onTap: gDriveBackup,
+                                icon: Icons.upload_rounded,
+                                color: const Color(0xFF0082C9),
+                                onTap: webDavBackup,
                                 loading: backupLoading.value,
                               ),
                             ),
@@ -1350,273 +1431,304 @@ class SettingsScreen extends HookConsumerWidget {
                                 label: restoreLoading.value
                                     ? 'Restoring...'
                                     : 'Restore',
-                                icon: Icons.cloud_download_rounded,
+                                icon: Icons.download_rounded,
                                 color: Colors.green,
-                                onTap: gDriveRestore,
+                                onTap: webDavRestore,
                                 loading: restoreLoading.value,
                               ),
                             ),
                           ],
                         ),
-                      ],
-                      if (gDriveStatus.value.isNotEmpty) ...[
-                        const SizedBox(height: 6),
-                        Text(
-                          gDriveStatus.value,
-                          style: TextStyle(
-                              fontSize: 12,
-                              color: gDriveStatus.value.contains('failed') ||
-                                      gDriveStatus.value.contains('Error')
-                                  ? Colors.redAccent.withValues(alpha: 0.8)
-                                  : Colors.greenAccent.withValues(alpha: 0.8)),
-                        ),
-                      ],
-
-                      const SizedBox(height: 20),
-                      Divider(color: Colors.white.withValues(alpha: 0.08)),
-                      const SizedBox(height: 16),
-
-                      // ── WebDAV / Nextcloud ────────────────────────────────
-                      _SettingsLabel('WEBDAV / NEXTCLOUD'),
-                      _StyledTextField(
-                        controller: webDavUrlCtrl,
-                        hint: 'https://nextcloud.example.com/remote.php/dav/files/user',
-                        onChanged: (_) {},
-                      ),
-                      const SizedBox(height: 8),
-                      _StyledTextField(
-                        controller: webDavUserCtrl,
-                        hint: 'Username',
-                        onChanged: (_) {},
-                      ),
-                      const SizedBox(height: 8),
-                      _StyledTextField(
-                        controller: webDavPassCtrl,
-                        hint: 'Password / App Token',
-                        obscure: true,
-                        onChanged: (_) {},
-                      ),
-                      const SizedBox(height: 8),
-                      IntrinsicWidth(
-                        child: _SyncButton(
-                          label: webDavTesting.value
-                              ? 'Testing...'
-                              : 'Test Connection',
-                          icon: Icons.cable_rounded,
-                          color: const Color(0xFF0082C9),
-                          onTap: testWebDav,
-                          loading: webDavTesting.value,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: _SyncButton(
-                              label: backupLoading.value
-                                  ? 'Backing up...'
-                                  : 'Back Up Now',
-                              icon: Icons.upload_rounded,
-                              color: const Color(0xFF0082C9),
-                              onTap: webDavBackup,
-                              loading: backupLoading.value,
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: _SyncButton(
-                              label: restoreLoading.value
-                                  ? 'Restoring...'
-                                  : 'Restore',
-                              icon: Icons.download_rounded,
-                              color: Colors.green,
-                              onTap: webDavRestore,
-                              loading: restoreLoading.value,
-                            ),
+                        if (webDavStatus.value.isNotEmpty) ...[
+                          const SizedBox(height: 6),
+                          Text(
+                            webDavStatus.value,
+                            style: TextStyle(
+                                fontSize: 12,
+                                color: webDavStatus.value.contains('failed') ||
+                                        webDavStatus.value.contains('Error')
+                                    ? Colors.redAccent.withValues(alpha: 0.8)
+                                    : Colors.greenAccent
+                                        .withValues(alpha: 0.8)),
                           ),
                         ],
-                      ),
-                      if (webDavStatus.value.isNotEmpty) ...[
-                        const SizedBox(height: 6),
-                        Text(
-                          webDavStatus.value,
-                          style: TextStyle(
-                              fontSize: 12,
-                              color: webDavStatus.value.contains('failed') ||
-                                      webDavStatus.value.contains('Error')
-                                  ? Colors.redAccent.withValues(alpha: 0.8)
-                                  : Colors.greenAccent.withValues(alpha: 0.8)),
-                        ),
-                      ],
-                      const SizedBox(height: 12),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text('Live Sync',
+                        const SizedBox(height: 12),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text('Live Sync',
+                                    style: TextStyle(
+                                        color: Colors.white, fontSize: 14)),
+                                Text(
+                                  'Auto pull/push on app resume',
                                   style: TextStyle(
-                                      color: Colors.white, fontSize: 14)),
-                              Text(
-                                'Auto pull/push on app resume',
-                                style: TextStyle(
-                                    fontSize: 11,
-                                    color:
-                                        Colors.white.withValues(alpha: 0.4)),
-                              ),
-                            ],
-                          ),
-                          Switch(
-                            value: settings.webDavLiveSync,
-                            onChanged: (v) =>
-                                saveSettings({'webDavLiveSync': v}),
-                            activeThumbColor: cs.primary,
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
+                                      fontSize: 11,
+                                      color:
+                                          Colors.white.withValues(alpha: 0.4)),
+                                ),
+                              ],
+                            ),
+                            Switch(
+                              value: settings.webDavLiveSync,
+                              onChanged: (v) =>
+                                  saveSettings({'webDavLiveSync': v}),
+                              activeThumbColor: cs.primary,
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
 
                   const SizedBox(height: 16),
 
                   // ── TRENDING COUNTRIES ────────────────────────────────────
                   if (showSection(
                       'trending countries home charts region picker'))
-                  _SectionCard(
-                    title: 'TRENDING COUNTRIES',
-                    icon: Icons.public_rounded,
-                    isDark: isDark,
-                    cs: cs,
-                    children: [
-                      Text(
-                        'Choose which countries appear in the home screen trending picker.',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Colors.white.withValues(alpha: 0.5),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: kAllCountries.map((entry) {
-                          final (code, label) = entry;
-                          final selected = settings.homeCountries.isEmpty
-                              ? kDefaultHomeCountries.contains(code)
-                              : settings.homeCountries.contains(code);
-                          return GestureDetector(
-                            onTap: () {
-                              final current = settings.homeCountries.isEmpty
-                                  ? List<String>.from(kDefaultHomeCountries)
-                                  : List<String>.from(settings.homeCountries);
-                              if (selected) {
-                                if (current.length <= 1) return;
-                                current.remove(code);
-                              } else {
-                                current.add(code);
-                              }
-                              saveSettings({'homeCountries': current});
-                            },
-                            child: AnimatedContainer(
-                              duration: const Duration(milliseconds: 180),
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 12, vertical: 7),
-                              decoration: BoxDecoration(
-                                color: selected
-                                    ? cs.primary.withValues(alpha: 0.25)
-                                    : Colors.white.withValues(alpha: 0.06),
-                                borderRadius: BorderRadius.circular(20),
-                                border: Border.all(
-                                  color: selected
-                                      ? cs.primary
-                                      : Colors.white.withValues(alpha: 0.12),
-                                  width: 1.5,
-                                ),
-                              ),
-                              child: Text(
-                                label,
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: selected
-                                      ? FontWeight.w600
-                                      : FontWeight.w400,
-                                  color: selected
-                                      ? Colors.white
-                                      : Colors.white.withValues(alpha: 0.55),
-                                ),
-                              ),
-                            ),
-                          );
-                        }).toList(),
-                      ),
-                      const SizedBox(height: 8),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        children: [
-                          TextButton(
-                            onPressed: () =>
-                                saveSettings({'homeCountries': kDefaultHomeCountries}),
-                            child: Text('Reset to defaults',
-                                style: TextStyle(
-                                    fontSize: 12,
-                                    color: cs.primary.withValues(alpha: 0.8))),
+                    _SectionCard(
+                      title: 'TRENDING COUNTRIES',
+                      icon: Icons.public_rounded,
+                      isDark: isDark,
+                      cs: cs,
+                      children: [
+                        Text(
+                          'Choose which countries appear in the home screen trending picker.',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.white.withValues(alpha: 0.5),
                           ),
-                        ],
-                      ),
-                    ],
-                  ),
+                        ),
+                        const SizedBox(height: 12),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: kAllCountries.map((entry) {
+                            final (code, label) = entry;
+                            final selected = settings.homeCountries.isEmpty
+                                ? kDefaultHomeCountries.contains(code)
+                                : settings.homeCountries.contains(code);
+                            return GestureDetector(
+                              onTap: () {
+                                final current = settings.homeCountries.isEmpty
+                                    ? List<String>.from(kDefaultHomeCountries)
+                                    : List<String>.from(settings.homeCountries);
+                                if (selected) {
+                                  if (current.length <= 1) return;
+                                  current.remove(code);
+                                } else {
+                                  current.add(code);
+                                }
+                                saveSettings({'homeCountries': current});
+                              },
+                              child: AnimatedContainer(
+                                duration: const Duration(milliseconds: 180),
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 12, vertical: 7),
+                                decoration: BoxDecoration(
+                                  color: selected
+                                      ? cs.primary.withValues(alpha: 0.25)
+                                      : Colors.white.withValues(alpha: 0.06),
+                                  borderRadius: BorderRadius.circular(20),
+                                  border: Border.all(
+                                    color: selected
+                                        ? cs.primary
+                                        : Colors.white.withValues(alpha: 0.12),
+                                    width: 1.5,
+                                  ),
+                                ),
+                                child: Text(
+                                  label,
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: selected
+                                        ? FontWeight.w600
+                                        : FontWeight.w400,
+                                    color: selected
+                                        ? Colors.white
+                                        : Colors.white.withValues(alpha: 0.55),
+                                  ),
+                                ),
+                              ),
+                            );
+                          }).toList(),
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          children: [
+                            TextButton(
+                              onPressed: () => saveSettings(
+                                  {'homeCountries': kDefaultHomeCountries}),
+                              child: Text('Reset to defaults',
+                                  style: TextStyle(
+                                      fontSize: 12,
+                                      color:
+                                          cs.primary.withValues(alpha: 0.8))),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
 
                   const SizedBox(height: 16),
+
+                  // ── SPONSORBLOCK ─────────────────────────────────────────
+                  if (showSection(
+                      'sponsorblock skip sponsor promo intro outro'))
+                    _SectionCard(
+                      title: 'SPONSORBLOCK',
+                      icon: Icons.fast_forward_rounded,
+                      isDark: isDark,
+                      cs: cs,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text('Enable Auto-Skip',
+                                      style: TextStyle(
+                                          color: Colors.white, fontSize: 14)),
+                                  Text(
+                                    'Crowd-sourced skipping of non-music segments',
+                                    style: TextStyle(
+                                        fontSize: 11,
+                                        color: Colors.white.withValues(alpha: 0.4)),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Switch(
+                              value: settings.sponsorBlock,
+                              onChanged: (v) => saveSettings({'sponsorBlock': v}),
+                              activeThumbColor: cs.primary,
+                            ),
+                          ],
+                        ),
+                        if (settings.sponsorBlock) ...[
+                          const SizedBox(height: 12),
+                          const Padding(
+                            padding: EdgeInsets.symmetric(horizontal: 4),
+                            child: Text(
+                              'Skip Categories',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: SponsorSegment.allCategories.map((cat) {
+                              final label = SponsorSegment.categoryLabels[cat]!;
+                              final isSelected =
+                                  settings.sponsorBlockCategories.contains(cat);
+
+                              return GestureDetector(
+                                onTap: () {
+                                  final cats = List<String>.from(
+                                      settings.sponsorBlockCategories);
+                                  if (isSelected) {
+                                    cats.remove(cat);
+                                  } else {
+                                    cats.add(cat);
+                                  }
+                                  saveSettings(
+                                      {'sponsorBlockCategories': cats});
+                                },
+                                child: AnimatedContainer(
+                                  duration: const Duration(milliseconds: 180),
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 12, vertical: 7),
+                                  decoration: BoxDecoration(
+                                    color: isSelected
+                                        ? cs.primary.withValues(alpha: 0.25)
+                                        : Colors.white.withValues(alpha: 0.06),
+                                    borderRadius: BorderRadius.circular(20),
+                                    border: Border.all(
+                                      color: isSelected
+                                          ? cs.primary
+                                          : Colors.white
+                                              .withValues(alpha: 0.12),
+                                      width: 1.5,
+                                    ),
+                                  ),
+                                  child: Text(
+                                    label,
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: isSelected
+                                          ? FontWeight.w600
+                                          : FontWeight.w400,
+                                      color: isSelected
+                                          ? Colors.white
+                                          : Colors.white
+                                              .withValues(alpha: 0.55),
+                                    ),
+                                  ),
+                                ),
+                              );
+                            }).toList(),
+                          ),
+                        ],
+                      ],
+                    ),
 
                   const SizedBox(height: 16),
 
                   // ── DATA MANAGEMENT ──────────────────────────────────────
                   if (showSection('data management cache history clear reset'))
-                  _SectionCard(
-                    title: 'DATA',
-                    icon: Icons.storage_rounded,
-                    isDark: isDark,
-                    cs: cs,
-                    children: [
-                      _DangerButton(
-                        label: 'Clear Play History',
-                        icon: Icons.history_toggle_off_rounded,
-                        onTap: () async {
-                          final confirmed = await showDialog<bool>(
-                            context: context,
-                            builder: (_) => AlertDialog(
-                              title: const Text('Clear History?'),
-                              content: const Text(
-                                  'This will remove all play history.'),
-                              actions: [
-                                TextButton(
-                                    onPressed: () =>
-                                        Navigator.pop(context, false),
-                                    child: const Text('Cancel')),
-                                TextButton(
-                                    onPressed: () =>
-                                        Navigator.pop(context, true),
-                                    child: const Text('Clear',
-                                        style: TextStyle(
-                                            color: Colors.redAccent))),
-                              ],
-                            ),
-                          );
-                          if (confirmed == true) {
-                            await ref
-                                .read(localStoreProvider.notifier)
-                                .clearHistory();
-                            if (context.mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                      content: Text('History cleared')));
+                    _SectionCard(
+                      title: 'DATA',
+                      icon: Icons.storage_rounded,
+                      isDark: isDark,
+                      cs: cs,
+                      children: [
+                        _DangerButton(
+                          label: 'Clear Play History',
+                          icon: Icons.history_toggle_off_rounded,
+                          onTap: () async {
+                            final confirmed = await showDialog<bool>(
+                              context: context,
+                              builder: (_) => AlertDialog(
+                                title: const Text('Clear History?'),
+                                content: const Text(
+                                    'This will remove all play history.'),
+                                actions: [
+                                  TextButton(
+                                      onPressed: () =>
+                                          Navigator.pop(context, false),
+                                      child: const Text('Cancel')),
+                                  TextButton(
+                                      onPressed: () =>
+                                          Navigator.pop(context, true),
+                                      child: const Text('Clear',
+                                          style: TextStyle(
+                                              color: Colors.redAccent))),
+                                ],
+                              ),
+                            );
+                            if (confirmed == true) {
+                              await ref
+                                  .read(localStoreProvider.notifier)
+                                  .clearHistory();
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                        content: Text('History cleared')));
+                              }
                             }
-                          }
-                        },
-                      ),
-                    ],
-                  ),
+                          },
+                        ),
+                      ],
+                    ),
 
                   const SizedBox(height: 16),
 
@@ -1747,8 +1859,8 @@ class _StyledTextField extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.06),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-            color: Colors.white.withValues(alpha: 0.1), width: 0.5),
+        border:
+            Border.all(color: Colors.white.withValues(alpha: 0.1), width: 0.5),
       ),
       child: TextField(
         controller: controller,
@@ -1757,8 +1869,8 @@ class _StyledTextField extends StatelessWidget {
         style: const TextStyle(color: Colors.white, fontSize: 14),
         decoration: InputDecoration(
           hintText: hint,
-          hintStyle:
-              TextStyle(color: Colors.white.withValues(alpha: 0.3), fontSize: 13),
+          hintStyle: TextStyle(
+              color: Colors.white.withValues(alpha: 0.3), fontSize: 13),
           border: InputBorder.none,
           contentPadding:
               const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -1792,8 +1904,7 @@ class _SyncButton extends StatelessWidget {
         decoration: BoxDecoration(
           color: color.withValues(alpha: 0.15),
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-              color: color.withValues(alpha: 0.3), width: 0.5),
+          border: Border.all(color: color.withValues(alpha: 0.3), width: 0.5),
         ),
         child: Row(
           children: [
@@ -1801,8 +1912,7 @@ class _SyncButton extends StatelessWidget {
               SizedBox(
                 width: 14,
                 height: 14,
-                child: CircularProgressIndicator(
-                    strokeWidth: 2, color: color),
+                child: CircularProgressIndicator(strokeWidth: 2, color: color),
               )
             else
               Icon(icon, size: 16, color: color),
@@ -1842,8 +1952,7 @@ class _DangerButton extends StatelessWidget {
       onTap: onTap,
       child: Container(
         width: double.infinity,
-        padding:
-            const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         decoration: BoxDecoration(
           color: Colors.redAccent.withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(12),
@@ -2031,8 +2140,7 @@ class _InvidiousPlaylistPreview extends HookConsumerWidget {
       builder: (_, ctrl) => Container(
         decoration: BoxDecoration(
           color: cs.surface,
-          borderRadius:
-              const BorderRadius.vertical(top: Radius.circular(24)),
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
         ),
         child: Column(
           children: [
@@ -2046,8 +2154,7 @@ class _InvidiousPlaylistPreview extends HookConsumerWidget {
               ),
             ),
             Padding(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
               child: Row(
                 children: [
                   Expanded(
@@ -2097,15 +2204,13 @@ class _InvidiousPlaylistPreview extends HookConsumerWidget {
                       : ListView.builder(
                           controller: ctrl,
                           padding: const EdgeInsets.symmetric(vertical: 8),
-                          itemCount:
-                              (playlist.value!.videos as List).length,
+                          itemCount: (playlist.value!.videos as List).length,
                           itemBuilder: (_, i) {
                             final t = playlist.value!.videos[i];
                             return ListTile(
                               leading: t.artwork != null
                                   ? ClipRRect(
-                                      borderRadius:
-                                          BorderRadius.circular(6),
+                                      borderRadius: BorderRadius.circular(6),
                                       child: Image.network(t.artwork!,
                                           width: 40,
                                           height: 40,
@@ -2132,4 +2237,3 @@ class _InvidiousPlaylistPreview extends HookConsumerWidget {
     );
   }
 }
-

@@ -31,8 +31,8 @@ const _navItems = [
   _NavItem('/library', Icons.library_music_outlined,
       Icons.library_music_rounded, 'Library'),
   _NavItem('/remote', Icons.cast_outlined, Icons.cast_rounded, 'Remote'),
-  _NavItem('/settings', Icons.settings_outlined, Icons.settings_rounded,
-      'Settings'),
+  _NavItem(
+      '/settings', Icons.settings_outlined, Icons.settings_rounded, 'Settings'),
 ];
 
 /// Bottom offset for the floating mini-player: clears nav/tab chrome (~72–80)
@@ -42,7 +42,8 @@ double _miniPlayerBottomOffset(BuildContext context) {
 }
 
 /// Fades the mini-player in/out so Remote / overlay toggles don’t pop harshly.
-Widget _shellMiniPlayerOverlay({required bool hideMini, required double bottom}) {
+Widget _shellMiniPlayerOverlay(
+    {required bool hideMini, required double bottom}) {
   return Positioned(
     left: 0,
     right: 0,
@@ -137,8 +138,7 @@ class ShellScaffold extends HookConsumerWidget {
       return null;
     }, [settings.remoteServerEnabled]);
 
-    final isIOS =
-        !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS;
+    final isIOS = !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS;
     final width = MediaQuery.sizeOf(context).width;
     final isTablet = width >= 600;
 
@@ -208,7 +208,9 @@ class _AndroidTabletShell extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final cs = Theme.of(context).colorScheme;
-    final extended = width >= 1000;
+    final settings = ref.watch(settingsProvider);
+    final isManuallyCollapsed = settings.ipadSidebarCollapsed;
+    final extended = (width >= 1000) && !isManuallyCollapsed;
     final hideMini = ref.watch(remoteScreenCoversShellProvider) ||
         shell.currentIndex == kRemoteShellTabIndex;
 
@@ -222,9 +224,26 @@ class _AndroidTabletShell extends ConsumerWidget {
             backgroundColor: cs.surfaceContainer,
             minWidth: 72,
             minExtendedWidth: 180,
-            leading: Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: FireballLogo(size: extended ? 44 : 36),
+            leading: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                IconButton(
+                  tooltip: extended ? 'Collapse sidebar' : 'Expand sidebar',
+                  onPressed: () {
+                    ref.read(localStoreProvider.notifier).updateSettings({
+                      'ipadSidebarCollapsed': !isManuallyCollapsed,
+                    });
+                  },
+                  icon: Icon(
+                    extended ? Icons.menu_open_rounded : Icons.menu_rounded,
+                    color: cs.primary,
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12, top: 8),
+                  child: FireballLogo(size: extended ? 44 : 36),
+                ),
+              ],
             ),
             labelType: extended
                 ? NavigationRailLabelType.none
@@ -252,8 +271,7 @@ class _AndroidTabletShell extends ConsumerWidget {
                 shell,
                 _shellMiniPlayerOverlay(
                   hideMini: hideMini,
-                  bottom:
-                      16 + MediaQuery.viewPaddingOf(context).bottom,
+                  bottom: 16 + MediaQuery.viewPaddingOf(context).bottom,
                 ),
               ],
             ),
@@ -312,8 +330,7 @@ class _IPadShell extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final cs = Theme.of(context).colorScheme;
-    final sidebarWidth =
-        sidebarCollapsed ? _widthCollapsed : _widthExpanded;
+    final sidebarWidth = sidebarCollapsed ? _widthCollapsed : _widthExpanded;
     final hideMini = ref.watch(remoteScreenCoversShellProvider) ||
         shell.currentIndex == kRemoteShellTabIndex;
 
@@ -545,9 +562,8 @@ class _SidebarItem extends StatelessWidget {
                           curve: Curves.easeOutCubic,
                           style: TextStyle(
                             fontSize: 15,
-                            fontWeight: selected
-                                ? FontWeight.w700
-                                : FontWeight.w500,
+                            fontWeight:
+                                selected ? FontWeight.w700 : FontWeight.w500,
                             color: selected
                                 ? cs.primary
                                 : (isDark
@@ -647,9 +663,8 @@ class _GlassTabBar extends StatelessWidget {
                             duration: const Duration(milliseconds: 200),
                             style: TextStyle(
                               fontSize: 10,
-                              fontWeight: selected
-                                  ? FontWeight.w600
-                                  : FontWeight.w400,
+                              fontWeight:
+                                  selected ? FontWeight.w600 : FontWeight.w400,
                               color: selected
                                   ? cs.primary
                                   : (isDark

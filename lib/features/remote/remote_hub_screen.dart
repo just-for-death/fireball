@@ -28,7 +28,8 @@ class RemoteHubScreen extends HookConsumerWidget {
         await fn();
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Paired — both devices can control each other')),
+            const SnackBar(
+                content: Text('Paired — both devices can control each other')),
           );
         }
       } catch (e) {
@@ -43,11 +44,11 @@ class RemoteHubScreen extends HookConsumerWidget {
     }
 
     final localIp = RemoteServer.localIp;
-    final serverUrl = localIp != null
-        ? 'http://$localIp:${RemoteServer.port}'
+    final serverUrl =
+        localIp != null ? 'http://$localIp:${RemoteServer.port}' : null;
+    final pairingCode = localIp != null
+        ? encodeRemotePairing(localIp, RemoteServer.port)
         : null;
-    final pairingCode =
-        localIp != null ? encodeRemotePairing(localIp, RemoteServer.port) : null;
 
     return Scaffold(
       appBar: AppBar(
@@ -165,7 +166,8 @@ class RemoteHubScreen extends HookConsumerWidget {
                 child: FilledButton.tonalIcon(
                   style: FilledButton.styleFrom(
                     minimumSize: const Size(0, 48),
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 10, vertical: 10),
                   ),
                   onPressed: busy.value
                       ? null
@@ -196,12 +198,13 @@ class RemoteHubScreen extends HookConsumerWidget {
                 child: OutlinedButton.icon(
                   style: OutlinedButton.styleFrom(
                     minimumSize: const Size(0, 48),
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 10, vertical: 10),
                   ),
                   onPressed: busy.value
                       ? null
-                      : () => Navigator.of(context, rootNavigator: true)
-                              .push<void>(
+                      : () =>
+                          Navigator.of(context, rootNavigator: true).push<void>(
                             MaterialPageRoute<void>(
                               fullscreenDialog: true,
                               builder: (_) => const RemoteScreen(),
@@ -312,7 +315,8 @@ class RemoteHubScreen extends HookConsumerWidget {
                               ),
                             );
                           },
-                    icon: const Icon(Icons.play_circle_outline_rounded, size: 22),
+                    icon:
+                        const Icon(Icons.play_circle_outline_rounded, size: 22),
                     label: const Text(
                       'Control remote',
                       maxLines: 1,

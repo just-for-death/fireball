@@ -28,7 +28,9 @@ class Track {
         artist: j['artist']?.toString() ?? '—',
         artwork: normalizeHttpUrl(j['artwork']?.toString()),
         url: j['url']?.toString(),
-        duration: j['duration'] is int ? j['duration'] : int.tryParse(j['duration']?.toString() ?? ''),
+        duration: j['duration'] is int
+            ? j['duration']
+            : int.tryParse(j['duration']?.toString() ?? ''),
         album: j['album']?.toString(),
       );
 

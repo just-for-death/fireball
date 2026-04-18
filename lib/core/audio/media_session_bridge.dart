@@ -134,8 +134,9 @@ class MediaSessionBridge {
       errorCode: errorCode,
       errorMessage: errorMessage,
       repeatMode: _repeat(s.repeatMode),
-      shuffleMode:
-          s.shuffled ? AudioServiceShuffleMode.all : AudioServiceShuffleMode.none,
+      shuffleMode: s.shuffled
+          ? AudioServiceShuffleMode.all
+          : AudioServiceShuffleMode.none,
       queueIndex: s.currentIndex >= 0 ? s.currentIndex : null,
     ));
   }

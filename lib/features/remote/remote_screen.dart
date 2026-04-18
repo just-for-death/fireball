@@ -104,88 +104,88 @@ class _HostMode extends HookWidget {
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-              if (serverUrl != null && pairingCode != null) ...[
-                Text(
-                  'Scan this code',
-                  style: Theme.of(context).textTheme.titleSmall,
-                ),
-                const SizedBox(height: 8),
-                QrImageView(
-                  data: serverUrl,
-                  version: QrVersions.auto,
-                  size: 220,
-                  backgroundColor: Colors.white,
-                  padding: const EdgeInsets.all(12),
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  'Pairing code',
-                  style: Theme.of(context).textTheme.titleSmall,
-                ),
-                const SizedBox(height: 6),
-                SelectableText(
-                  formatPairingCodeDisplay(pairingCode),
-                  style: Theme.of(context)
-                      .textTheme
-                      .headlineSmall
-                      ?.copyWith(
-                        fontFamily: 'monospace',
-                        letterSpacing: 2,
+                    if (serverUrl != null && pairingCode != null) ...[
+                      Text(
+                        'Scan this code',
+                        style: Theme.of(context).textTheme.titleSmall,
                       ),
-                ),
-                const SizedBox(height: 8),
-                OutlinedButton.icon(
-                  onPressed: () {
-                    Clipboard.setData(ClipboardData(text: pairingCode));
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Pairing code copied')),
-                    );
-                  },
-                  icon: const Icon(Icons.copy_rounded, size: 16),
-                  label: const Text('Copy code'),
-                ),
-                const SizedBox(height: 20),
-                Text(
-                  serverUrl,
-                  style: Theme.of(context)
-                      .textTheme
-                      .bodyMedium
-                      ?.copyWith(fontFamily: 'monospace'),
-                ),
-                const SizedBox(height: 8),
-                OutlinedButton.icon(
-                  onPressed: () {
-                    Clipboard.setData(ClipboardData(text: serverUrl));
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('URL copied')),
-                    );
-                  },
-                  icon: const Icon(Icons.link_rounded, size: 16),
-                  label: const Text('Copy URL'),
-                ),
-              ] else if (waitingForStart.value) ...[
-                const CircularProgressIndicator(),
-                const SizedBox(height: 16),
-                Text(
-                  'Starting server…',
-                  style: TextStyle(color: cs.onSurfaceVariant),
-                ),
-              ] else ...[
-                Icon(Icons.wifi_off_rounded, size: 64, color: cs.outline),
-                const SizedBox(height: 16),
-                Text(
-                  'Remote server is not running.\nEnable it in the Remote tab or Settings.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: cs.onSurfaceVariant),
-                ),
-              ],
-              const SizedBox(height: 24),
-              Text(
-                'On the other device: open the Remote tab, scan this QR or enter the pairing code. Both devices should enable the remote server.',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13),
-              ),
-            ],
+                      const SizedBox(height: 8),
+                      QrImageView(
+                        data: serverUrl,
+                        version: QrVersions.auto,
+                        size: 220,
+                        backgroundColor: Colors.white,
+                        padding: const EdgeInsets.all(12),
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        'Pairing code',
+                        style: Theme.of(context).textTheme.titleSmall,
+                      ),
+                      const SizedBox(height: 6),
+                      SelectableText(
+                        formatPairingCodeDisplay(pairingCode),
+                        style:
+                            Theme.of(context).textTheme.headlineSmall?.copyWith(
+                                  fontFamily: 'monospace',
+                                  letterSpacing: 2,
+                                ),
+                      ),
+                      const SizedBox(height: 8),
+                      OutlinedButton.icon(
+                        onPressed: () {
+                          Clipboard.setData(ClipboardData(text: pairingCode));
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                                content: Text('Pairing code copied')),
+                          );
+                        },
+                        icon: const Icon(Icons.copy_rounded, size: 16),
+                        label: const Text('Copy code'),
+                      ),
+                      const SizedBox(height: 20),
+                      Text(
+                        serverUrl,
+                        style: Theme.of(context)
+                            .textTheme
+                            .bodyMedium
+                            ?.copyWith(fontFamily: 'monospace'),
+                      ),
+                      const SizedBox(height: 8),
+                      OutlinedButton.icon(
+                        onPressed: () {
+                          Clipboard.setData(ClipboardData(text: serverUrl));
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('URL copied')),
+                          );
+                        },
+                        icon: const Icon(Icons.link_rounded, size: 16),
+                        label: const Text('Copy URL'),
+                      ),
+                    ] else if (waitingForStart.value) ...[
+                      const CircularProgressIndicator(),
+                      const SizedBox(height: 16),
+                      Text(
+                        'Starting server…',
+                        style: TextStyle(color: cs.onSurfaceVariant),
+                      ),
+                    ] else ...[
+                      Icon(Icons.wifi_off_rounded, size: 64, color: cs.outline),
+                      const SizedBox(height: 16),
+                      Text(
+                        'Remote server is not running.\nEnable it in the Remote tab or Settings.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: cs.onSurfaceVariant),
+                      ),
+                    ],
+                    const SizedBox(height: 24),
+                    Text(
+                      'On the other device: open the Remote tab, scan this QR or enter the pairing code. Both devices should enable the remote server.',
+                      textAlign: TextAlign.center,
+                      style:
+                          TextStyle(color: cs.onSurfaceVariant, fontSize: 13),
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -269,8 +269,7 @@ class _ControlMode extends HookWidget {
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(Icons.wifi_off_rounded,
-                            size: 16, color: cs.error),
+                        Icon(Icons.wifi_off_rounded, size: 16, color: cs.error),
                         const SizedBox(width: 6),
                         Expanded(
                           child: Text(
@@ -290,17 +289,17 @@ class _ControlMode extends HookWidget {
                     padding: const EdgeInsets.symmetric(vertical: 24),
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(16),
-                      child: s.trackArtwork != null &&
-                              s.trackArtwork!.isNotEmpty
-                          ? CachedNetworkImage(
-                              imageUrl: s.trackArtwork!,
-                              width: 200,
-                              height: 200,
-                              fit: BoxFit.cover,
-                              errorWidget: (_, __, ___) =>
-                                  _artPlaceholder(cs, size: 200),
-                            )
-                          : _artPlaceholder(cs, size: 200),
+                      child:
+                          s.trackArtwork != null && s.trackArtwork!.isNotEmpty
+                              ? CachedNetworkImage(
+                                  imageUrl: s.trackArtwork!,
+                                  width: 200,
+                                  height: 200,
+                                  fit: BoxFit.cover,
+                                  errorWidget: (_, __, ___) =>
+                                      _artPlaceholder(cs, size: 200),
+                                )
+                              : _artPlaceholder(cs, size: 200),
                     ),
                   ),
                   // Title + artist
@@ -343,21 +342,24 @@ class _ControlMode extends HookWidget {
                                       .clamp(0, s.durationMs)
                                       .toDouble()
                                   : 0),
-                          max: s.durationMs > 0
-                              ? s.durationMs.toDouble()
-                              : 1,
+                          max: s.durationMs > 0 ? s.durationMs.toDouble() : 1,
                           // Disable all interactions when duration is unknown
                           // to prevent sending semantically wrong seek values.
-                          onChangeStart:
-                              s.durationMs > 0 ? (_) => seeking.value = true : null,
-                          onChanged:
-                              s.durationMs > 0 ? (v) => seekValue.value = v : null,
+                          onChangeStart: s.durationMs > 0
+                              ? (_) => seeking.value = true
+                              : null,
+                          onChanged: s.durationMs > 0
+                              ? (v) => seekValue.value = v
+                              : null,
                           onChangeEnd: s.durationMs > 0
                               ? (v) async {
                                   // Send seek first; clear seeking flag after so
                                   // the slider doesn't snap back prematurely.
-                                  await _send(context, cs,
-                                      () => client.sendCommand('seek', value: v));
+                                  await _send(
+                                      context,
+                                      cs,
+                                      () =>
+                                          client.sendCommand('seek', value: v));
                                   seeking.value = false;
                                 }
                               : null,
@@ -382,14 +384,14 @@ class _ControlMode extends HookWidget {
                     children: [
                       IconButton(
                         iconSize: 40,
-                        onPressed: () => _send(context, cs,
-                            () => client.sendCommand('prev')),
+                        onPressed: () => _send(
+                            context, cs, () => client.sendCommand('prev')),
                         icon: const Icon(Icons.skip_previous_rounded),
                       ),
                       const SizedBox(width: 8),
                       GestureDetector(
-                        onTap: () => _send(context, cs,
-                            () => client.sendCommand('toggle')),
+                        onTap: () => _send(
+                            context, cs, () => client.sendCommand('toggle')),
                         child: Container(
                           width: 64,
                           height: 64,
@@ -409,8 +411,8 @@ class _ControlMode extends HookWidget {
                       const SizedBox(width: 8),
                       IconButton(
                         iconSize: 40,
-                        onPressed: () => _send(context, cs,
-                            () => client.sendCommand('next')),
+                        onPressed: () => _send(
+                            context, cs, () => client.sendCommand('next')),
                         icon: const Icon(Icons.skip_next_rounded),
                       ),
                     ],
