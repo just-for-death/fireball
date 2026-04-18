@@ -57,8 +57,8 @@ class ScrobblingSettings {
     this.listenBrainzToken = '',
     this.listenBrainzUsername = '',
     this.listenBrainzPlayingNow = false,
-    this.scrobblePercent = 50,
-    this.scrobbleMaxSeconds = 240,
+    this.scrobblePercent = 25,
+    this.scrobbleMaxSeconds = 40,
     this.lastFmApiKey = '',
   });
 }
@@ -288,8 +288,8 @@ class FireballSettings {
     this.analytics = false,
     this.listenBrainzEnabled = false,
     this.listenBrainzPlayingNow = false,
-    this.listenBrainzScrobblePercent = 50,
-    this.listenBrainzScrobbleMaxSeconds = 240,
+    this.listenBrainzScrobblePercent = 25,
+    this.listenBrainzScrobbleMaxSeconds = 40,
     this.invidiousPlaylistPrivacy = 'private',
     this.invidiousAutoPush = false,
     this.invidiousPlaylistMappings = const {},
