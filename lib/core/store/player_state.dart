@@ -11,7 +11,6 @@ class PlayerState {
   final bool shuffled;
   final ElysiumRepeatMode repeatMode;
   final List<Track> favorites;
-  final bool videoMode;
   final String? playbackError;
   final DateTime? sleepTimerEnd;
   final bool sleepAfterCurrentTrack;
@@ -25,14 +24,14 @@ class PlayerState {
     this.shuffled = false,
     this.repeatMode = ElysiumRepeatMode.off,
     this.favorites = const [],
-    this.videoMode = false,
     this.playbackError,
     this.sleepTimerEnd,
     this.sleepAfterCurrentTrack = false,
   });
 
-  Track? get currentTrack =>
-      currentIndex >= 0 && currentIndex < queue.length ? queue[currentIndex] : null;
+  Track? get currentTrack => currentIndex >= 0 && currentIndex < queue.length
+      ? queue[currentIndex]
+      : null;
 
   bool isFavorite(String id) => favorites.any((f) => (f.videoId ?? f.id) == id);
 
@@ -45,7 +44,6 @@ class PlayerState {
     bool? shuffled,
     ElysiumRepeatMode? repeatMode,
     List<Track>? favorites,
-    bool? videoMode,
     String? playbackError,
     bool clearError = false,
     DateTime? sleepTimerEnd,
@@ -62,8 +60,8 @@ class PlayerState {
         shuffled: shuffled ?? this.shuffled,
         repeatMode: repeatMode ?? this.repeatMode,
         favorites: favorites ?? this.favorites,
-        videoMode: videoMode ?? this.videoMode,
-        playbackError: clearError ? null : (playbackError ?? this.playbackError),
+        playbackError:
+            clearError ? null : (playbackError ?? this.playbackError),
         sleepTimerEnd:
             clearSleepTimerEnd ? null : (sleepTimerEnd ?? this.sleepTimerEnd),
         sleepAfterCurrentTrack: clearSleepAfterTrack

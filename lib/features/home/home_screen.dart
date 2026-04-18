@@ -12,6 +12,7 @@ import '../../core/ui/shell_content_insets.dart';
 import '../../core/utils.dart';
 import '../../core/widgets/empty_state.dart';
 import '../../core/widgets/glass_widgets.dart';
+import '../../core/widgets/track_options_sheet.dart';
 
 const _lbRanges = [
   ('week', 'Week'),
@@ -31,12 +32,12 @@ class HomeScreen extends HookConsumerWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     // ── Core state ─────────────────────────────────────────────────────────
-    final country      = useState('us');
-    final trending     = useState<List<Map<String, dynamic>>>([]);
-    final lbRecent     = useState<List<dynamic>>([]);
-    final lbTop        = useState<List<dynamic>>([]);
-    final lbRange      = useState('month');
-    final loading      = useState(true);
+    final country = useState('us');
+    final trending = useState<List<Map<String, dynamic>>>([]);
+    final lbRecent = useState<List<dynamic>>([]);
+    final lbTop = useState<List<dynamic>>([]);
+    final lbRange = useState('month');
+    final loading = useState(true);
     final lbTopLoading = useState(false);
 
     // ── Visible countries (filtered by settings, fallback to defaults) ──────
@@ -52,7 +53,7 @@ class HomeScreen extends HookConsumerWidget {
         settings.listenBrainzUsername.isNotEmpty &&
         settings.listenBrainzToken.isNotEmpty;
     final lbUsername = settings.listenBrainzUsername;
-    final lbToken    = settings.listenBrainzToken;
+    final lbToken = settings.listenBrainzToken;
 
     // Library rows come from the store (watched) so they appear after async disk
     // load — a one-shot read inside load() can race and stay empty forever.
@@ -64,8 +65,9 @@ class HomeScreen extends HookConsumerWidget {
     Future<void> load() async {
       loading.value = true;
       try {
-        final trendingFuture =
-            api.itunesTopSongs(country.value, limit: 20).catchError((_) => null);
+        final trendingFuture = api
+            .itunesTopSongs(country.value, limit: 20)
+            .catchError((_) => null);
 
         final rss = await trendingFuture;
         final entries = FireballApi.appleRssFeedEntries(rss);
@@ -235,7 +237,8 @@ class HomeScreen extends HookConsumerWidget {
                       ),
                     ),
                     const Spacer(),
-                    Icon(Icons.trending_up_rounded, color: cs.primary, size: 20),
+                    Icon(Icons.trending_up_rounded,
+                        color: cs.primary, size: 20),
                   ],
                 ),
               ),
@@ -257,12 +260,11 @@ class HomeScreen extends HookConsumerWidget {
               SliverPadding(
                 padding: EdgeInsets.symmetric(horizontal: hPad),
                 sliver: SliverGrid(
-                  gridDelegate:
-                      const SliverGridDelegateWithMaxCrossAxisExtent(
-                    maxCrossAxisExtent: 200,
-                    mainAxisSpacing: 16,
-                    crossAxisSpacing: 16,
-                    childAspectRatio: 0.72,
+                  gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                    maxCrossAxisExtent: 180,
+                    mainAxisSpacing: 12,
+                    crossAxisSpacing: 12,
+                    mainAxisExtent: 176,
                   ),
                   delegate: SliverChildBuilderDelegate(
                     (context, i) {
@@ -278,19 +280,19 @@ class HomeScreen extends HookConsumerWidget {
                               .addHistory(trendingTracks[i]);
                         },
                         child: GlassCard(
-                          padding: const EdgeInsets.all(10),
+                          padding: const EdgeInsets.fromLTRB(8, 8, 8, 10),
                           opacity: 0.1,
-                          borderRadius: BorderRadius.circular(20),
+                          borderRadius: BorderRadius.circular(16),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               ClipRRect(
-                                borderRadius: BorderRadius.circular(12),
+                                borderRadius: BorderRadius.circular(10),
                                 child: item['artwork'] != null
                                     ? CachedNetworkImage(
                                         imageUrl: item['artwork']!,
                                         width: double.infinity,
-                                        height: 120,
+                                        height: 108,
                                         fit: BoxFit.cover,
                                         errorWidget: (_, __, ___) =>
                                             _TrendingGridPlaceholder(cs: cs),
@@ -342,6 +344,7 @@ class HomeScreen extends HookConsumerWidget {
                         .read(localStoreProvider.notifier)
                         .addHistory(trendingTracks[idx]);
                   },
+                  onLongPress: (track) => showTrackOptions(context, ref, track),
                 ),
               ),
 
@@ -384,6 +387,8 @@ class HomeScreen extends HookConsumerWidget {
                                 .setQueue(historyRows.sublist(index));
                             ref.read(playerProvider.notifier).playIndex(0);
                           },
+                          onLongPress: () =>
+                              showTrackOptions(context, ref, track),
                         ),
                       ),
                     );
@@ -428,6 +433,7 @@ class HomeScreen extends HookConsumerWidget {
                         .setQueue(favoritesRows.sublist(idx));
                     ref.read(playerProvider.notifier).playIndex(0);
                   },
+                  onLongPress: (track) => showTrackOptions(context, ref, track),
                 ),
               ),
             ],
@@ -463,7 +469,8 @@ class HomeScreen extends HookConsumerWidget {
                     if (rawListen is! Map) return const SizedBox.shrink();
                     final listen = rawListen;
                     final rawMeta = listen['track_metadata'];
-                    final meta = rawMeta is Map ? rawMeta : const <String, dynamic>{};
+                    final meta =
+                        rawMeta is Map ? rawMeta : const <String, dynamic>{};
                     final mbidMapping = meta['mbid_mapping'] as Map?;
                     final caaMbid = mbidMapping?['caa_release_mbid'] as String?;
                     final listenedAt = listen['listened_at'] as int?;
@@ -490,8 +497,7 @@ class HomeScreen extends HookConsumerWidget {
                                   date,
                                   style: TextStyle(
                                     fontSize: 11,
-                                    color:
-                                        Colors.white.withValues(alpha: 0.4),
+                                    color: Colors.white.withValues(alpha: 0.4),
                                   ),
                                 )
                               : null,
@@ -499,12 +505,17 @@ class HomeScreen extends HookConsumerWidget {
                             final t = Track(
                               id: meta['track_name']?.toString() ?? '',
                               title: meta['track_name']?.toString() ?? '—',
-                              artist:
-                                  meta['artist_name']?.toString() ?? '—',
+                              artist: meta['artist_name']?.toString() ?? '—',
                             );
-                            ref
-                                .read(playerProvider.notifier)
-                                .playTrackNow(t);
+                            ref.read(playerProvider.notifier).playTrackNow(t);
+                          },
+                          onLongPress: () {
+                            final t = Track(
+                              id: meta['track_name']?.toString() ?? '',
+                              title: meta['track_name']?.toString() ?? '—',
+                              artist: meta['artist_name']?.toString() ?? '—',
+                            );
+                            showTrackOptions(context, ref, t);
                           },
                         ),
                       ),
@@ -590,12 +601,17 @@ class HomeScreen extends HookConsumerWidget {
                               final t = Track(
                                 id: rec['track_name']?.toString() ?? '',
                                 title: rec['track_name']?.toString() ?? '—',
-                                artist:
-                                    rec['artist_name']?.toString() ?? '—',
+                                artist: rec['artist_name']?.toString() ?? '—',
                               );
-                              ref
-                                  .read(playerProvider.notifier)
-                                  .playTrackNow(t);
+                              ref.read(playerProvider.notifier).playTrackNow(t);
+                            },
+                            onLongPress: () {
+                              final t = Track(
+                                id: rec['track_name']?.toString() ?? '',
+                                title: rec['track_name']?.toString() ?? '—',
+                                artist: rec['artist_name']?.toString() ?? '—',
+                              );
+                              showTrackOptions(context, ref, t);
                             },
                           ),
                         ),
@@ -627,10 +643,9 @@ String _fmtDate(DateTime dt) {
   return '${dt.day}/${dt.month}';
 }
 
-String? _caaUrl(String? mbid) =>
-    mbid != null && mbid.isNotEmpty
-        ? 'https://coverartarchive.org/release/$mbid/front-250'
-        : null;
+String? _caaUrl(String? mbid) => mbid != null && mbid.isNotEmpty
+    ? 'https://coverartarchive.org/release/$mbid/front-250'
+    : null;
 
 class _LbLogo extends StatelessWidget {
   const _LbLogo();
@@ -730,6 +745,7 @@ class _LBTrackTile extends StatelessWidget {
     required this.cs,
     required this.isDark,
     required this.onTap,
+    this.onLongPress,
     this.caaMbid,
     this.rank,
     this.right,
@@ -743,11 +759,13 @@ class _LBTrackTile extends StatelessWidget {
   final ColorScheme cs;
   final bool isDark;
   final VoidCallback onTap;
+  final VoidCallback? onLongPress;
 
   @override
   Widget build(BuildContext context) {
     return InkWell(
       onTap: onTap,
+      onLongPress: onLongPress,
       borderRadius: BorderRadius.circular(16),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -836,11 +854,13 @@ class _FavoritesRow extends StatelessWidget {
     required this.cs,
     required this.isDark,
     required this.onTap,
+    this.onLongPress,
   });
   final List<Track> favorites;
   final ColorScheme cs;
   final bool isDark;
   final void Function(int) onTap;
+  final void Function(Track)? onLongPress;
 
   @override
   Widget build(BuildContext context) {
@@ -855,6 +875,7 @@ class _FavoritesRow extends StatelessWidget {
           final track = favorites[i];
           return GestureDetector(
             onTap: () => onTap(i),
+            onLongPress: onLongPress != null ? () => onLongPress!(track) : null,
             child: GlassCard(
               padding: const EdgeInsets.all(10),
               opacity: 0.08,
@@ -893,8 +914,7 @@ class _FavoritesRow extends StatelessWidget {
                     Row(
                       children: [
                         Icon(Icons.favorite_rounded,
-                            size: 10,
-                            color: cs.primary.withValues(alpha: 0.7)),
+                            size: 10, color: cs.primary.withValues(alpha: 0.7)),
                         const SizedBox(width: 4),
                         Expanded(
                           child: Text(
@@ -935,11 +955,13 @@ class _TrendingRow extends StatelessWidget {
     required this.cs,
     required this.isDark,
     required this.onTap,
+    this.onLongPress,
   });
   final List<Map<String, dynamic>> items;
   final ColorScheme cs;
   final bool isDark;
   final void Function(int) onTap;
+  final void Function(Track)? onLongPress;
 
   @override
   Widget build(BuildContext context) {
@@ -952,8 +974,16 @@ class _TrendingRow extends StatelessWidget {
         separatorBuilder: (_, __) => const SizedBox(width: 16),
         itemBuilder: (context, i) {
           final item = items[i];
+          final track = Track(
+            id: item['id'] ?? '',
+            title: item['title'] ?? '—',
+            artist: item['artist'] ?? '—',
+            artwork: item['artwork'],
+            url: item['url'] ?? '',
+          );
           return GestureDetector(
             onTap: () => onTap(i),
+            onLongPress: onLongPress != null ? () => onLongPress!(track) : null,
             child: GlassCard(
               padding: const EdgeInsets.all(10),
               opacity: 0.1,
@@ -1023,16 +1053,19 @@ class _HistoryTile extends StatelessWidget {
     required this.cs,
     required this.isDark,
     required this.onTap,
+    this.onLongPress,
   });
   final Track track;
   final ColorScheme cs;
   final bool isDark;
   final VoidCallback onTap;
+  final VoidCallback? onLongPress;
 
   @override
   Widget build(BuildContext context) {
     return InkWell(
       onTap: onTap,
+      onLongPress: onLongPress,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
         child: Row(
@@ -1078,7 +1111,8 @@ class _HistoryTile extends StatelessWidget {
                 ],
               ),
             ),
-            Icon(Icons.play_circle_outline_rounded, size: 28, color: cs.primary),
+            Icon(Icons.play_circle_outline_rounded,
+                size: 28, color: cs.primary),
           ],
         ),
       ),
@@ -1108,8 +1142,7 @@ class _TrendingShimmer extends StatelessWidget {
         itemCount: 6,
         separatorBuilder: (_, __) => const SizedBox(width: 12),
         itemBuilder: (_, __) => Shimmer.fromColors(
-          baseColor:
-              isDark ? const Color(0xFF1E1E1E) : const Color(0xFFE0E0E0),
+          baseColor: isDark ? const Color(0xFF1E1E1E) : const Color(0xFFE0E0E0),
           highlightColor:
               isDark ? const Color(0xFF2A2A2A) : const Color(0xFFEEEEEE),
           child: Column(

@@ -9,6 +9,7 @@ import 'package:path_provider/path_provider.dart';
 import '../api/fireball_api.dart';
 import '../models/models.dart';
 import '../models/track.dart';
+import '../ui/messenger_service.dart';
 import 'library_data.dart';
 import 'library_merge.dart';
 
@@ -117,7 +118,8 @@ class LocalStoreNotifier extends StateNotifier<LibraryData> {
   Future<void> _save() async {
     // Mark ready immediately when a mutation occurs so _init cannot overwrite
     if (!_ready.isCompleted) _ready.complete();
-    await _ready.future; // ensures any in-flight init has finished before we write
+    await _ready
+        .future; // ensures any in-flight init has finished before we write
     // Chain onto the previous write so concurrent saves are serialized.
     // The closure captures `state` lazily (at execution time), so each write
     // always persists the latest state — never an older one.
@@ -141,9 +143,10 @@ class LocalStoreNotifier extends StateNotifier<LibraryData> {
 
   // ── History ───────────────────────────────────────────────────────────────────
   Future<void> addHistory(Track track) async {
-    final list = [track, ...state.history.where((t) => t.effectiveId != track.effectiveId)]
-        .take(200)
-        .toList();
+    final list = [
+      track,
+      ...state.history.where((t) => t.effectiveId != track.effectiveId)
+    ].take(200).toList();
     state = state.copyWith(history: list);
     await _save();
   }
@@ -207,7 +210,8 @@ class LocalStoreNotifier extends StateNotifier<LibraryData> {
     if (idx < 0) return;
     final pl = state.playlists[idx];
     if (pl.videos.any((t) => t.effectiveId == track.effectiveId)) return;
-    final updated = Playlist(id: pl.id, title: pl.title, videos: [...pl.videos, track]);
+    final updated =
+        Playlist(id: pl.id, title: pl.title, videos: [...pl.videos, track]);
     final list = List<Playlist>.from(state.playlists);
     list[idx] = updated;
     state = state.copyWith(playlists: list);
@@ -222,18 +226,22 @@ class LocalStoreNotifier extends StateNotifier<LibraryData> {
     if (invPlaylistId == null) return;
     const FireballApi()
         .pushPlaylistToInvidious(
-          Playlist(id: playlistId, title: '', videos: [track]),
-          instanceUrl: s.invidiousInstance,
-          sid: s.invidiousSid,
-          existingInvidiousId: invPlaylistId,
-        )
+      Playlist(id: playlistId, title: '', videos: [track]),
+      instanceUrl: s.invidiousInstance,
+      sid: s.invidiousSid,
+      existingInvidiousId: invPlaylistId,
+    )
         .catchError((Object e) {
       dev.log('Auto-push track to Invidious failed: $e');
+      MessengerService.instance.showError(
+        'Invidious sync failed: ${e.toString().replaceAll('Exception: ', '')}',
+      );
       return '';
     });
   }
 
-  Future<void> removeTrackFromPlaylist(String playlistId, String trackId) async {
+  Future<void> removeTrackFromPlaylist(
+      String playlistId, String trackId) async {
     final idx = state.playlists.indexWhere((p) => p.id == playlistId);
     if (idx < 0) return;
     final pl = state.playlists[idx];

@@ -1,6 +1,7 @@
 import 'package:go_router/go_router.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
+import '../features/artist/artist_screen.dart';
 import '../features/home/home_screen.dart';
 import '../features/library/library_screen.dart';
 import '../features/player/player_screen.dart';
@@ -23,7 +24,8 @@ final routerProvider = Provider<GoRouter>((ref) {
             GoRoute(path: '/search', builder: (_, __) => const SearchScreen()),
           ]),
           StatefulShellBranch(routes: [
-            GoRoute(path: '/library', builder: (_, __) => const LibraryScreen()),
+            GoRoute(
+                path: '/library', builder: (_, __) => const LibraryScreen()),
           ]),
           StatefulShellBranch(routes: [
             GoRoute(
@@ -39,6 +41,14 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/player',
         builder: (_, __) => const PlayerScreen(),
       ),
+      GoRoute(
+        path: '/artist',
+        builder: (_, state) {
+          final name = state.uri.queryParameters['name'] ?? '';
+          return ArtistScreen(artistName: name);
+        },
+      ),
     ],
   );
 });
+

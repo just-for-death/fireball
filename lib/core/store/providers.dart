@@ -11,12 +11,14 @@ import '../api/fireball_api.dart';
 import '../audio/media_session_bridge.dart';
 import '../audio/media_session_player.dart';
 import '../models/models.dart';
+import '../models/sponsor_segment.dart';
 import '../models/track.dart';
 import '../../remote/remote_server.dart';
 import 'local_store.dart';
 import 'player_state.dart';
 
-export 'local_store.dart' show localStoreProvider, LibraryData, LocalStoreNotifier;
+export 'local_store.dart'
+    show localStoreProvider, LibraryData, LocalStoreNotifier;
 export 'player_state.dart' show PlayerState, ElysiumRepeatMode;
 
 // ── Settings convenience provider ────────────────────────────────────────────
@@ -29,7 +31,8 @@ final settingsProvider = Provider<FireballSettings>((ref) {
 final remoteScreenCoversShellProvider = StateProvider<bool>((ref) => false);
 
 // ── Player Notifier ───────────────────────────────────────────────────────────
-final playerProvider = StateNotifierProvider<PlayerNotifier, PlayerState>((ref) {
+final playerProvider =
+    StateNotifierProvider<PlayerNotifier, PlayerState>((ref) {
   return PlayerNotifier(ref);
 });
 
@@ -42,6 +45,10 @@ class PlayerNotifier extends StateNotifier<PlayerState>
   int _playVersion = 0;
   bool _scrobbled = false;
   Timer? _mediaSessionTicker;
+
+  // ── SponsorBlock state (reset per-track) ──────────────────────────────────
+  List<SponsorSegment> _sponsorSegments = [];
+  final Set<String> _skippedSegmentUuids = {};
 
   PlayerNotifier(this._ref) : super(const PlayerState()) {
     void schedule() {
@@ -106,6 +113,7 @@ class PlayerNotifier extends StateNotifier<PlayerState>
       state = state.copyWith(position: pos);
       _checkScrobble(pos);
       _checkSleepTimer();
+      _checkSponsorBlock(pos);
     });
     pl.stream.duration.listen((dur) {
       state = state.copyWith(duration: dur);
@@ -137,19 +145,7 @@ class PlayerNotifier extends StateNotifier<PlayerState>
     }
   }
 
-  Future<void> fetchSettings() async {
-    final s = _ref.read(settingsProvider);
-    state = state.copyWith(videoMode: s.videoMode);
-  }
-
-  Future<void> toggleVideoMode() async {
-    final newMode = !state.videoMode;
-    state = state.copyWith(videoMode: newMode);
-    await _ref.read(localStoreProvider.notifier).updateSettings({'videoMode': newMode});
-    if (state.currentIndex != -1) {
-      await playIndex(state.currentIndex);
-    }
-  }
+  Future<void> fetchSettings() async {}
 
   void playTrackNow(Track track) {
     state = state.copyWith(queue: [track], currentIndex: 0);
@@ -218,7 +214,6 @@ class PlayerNotifier extends StateNotifier<PlayerState>
       String? playUrl = track.url;
       if (version != _playVersion) return;
 
-      state = state.copyWith(videoMode: settings.videoMode);
       final api = _api;
       final instance = settings.invidiousInstance.isNotEmpty
           ? settings.invidiousInstance
@@ -229,31 +224,16 @@ class PlayerNotifier extends StateNotifier<PlayerState>
             'No Invidious instance configured. Please set one in Settings.');
       }
 
-      // ── Stream Resolution Logic ──────────────────────────────────────────
       if (track.videoId != null) {
         final details = await api.getVideoDetails(track.videoId!,
             instanceUrl: instance, sid: settings.invidiousSid);
         if (version != _playVersion) return;
 
         final formats = (details['adaptiveFormats'] as List<dynamic>? ?? []);
-        dynamic bestFormat;
-
-        if (state.videoMode) {
-          bestFormat = formats.firstWhere(
-            (f) =>
-                (f['type']?.toString().contains('video/') ?? false) &&
-                f['videoOnly'] != true,
-            orElse: () => formats.firstWhere(
-              (f) => f['type']?.toString().contains('video/') ?? false,
-              orElse: () => formats.isEmpty ? null : formats.first,
-            ),
-          );
-        } else {
-          bestFormat = formats.firstWhere(
-            (f) => f['type']?.toString().startsWith('audio/') ?? false,
-            orElse: () => formats.isEmpty ? null : formats.first,
-          );
-        }
+        final bestFormat = formats.firstWhere(
+          (f) => f['type']?.toString().startsWith('audio/') ?? false,
+          orElse: () => formats.isEmpty ? null : formats.first,
+        );
 
         if (bestFormat != null && bestFormat['url'] != null) {
           playUrl = _proxyStreamUrl(bestFormat['url'] as String, instance);
@@ -261,7 +241,8 @@ class PlayerNotifier extends StateNotifier<PlayerState>
       } else if (playUrl != null &&
           (playUrl.contains('apple.com') || playUrl.contains('itunes'))) {
         if (instance.isEmpty) {
-          throw Exception('Invidious instance required to play Apple Music tracks');
+          throw Exception(
+              'Invidious instance required to play Apple Music tracks');
         }
         final results = await api.invidiousSearch(
             '${track.artist} ${track.title} official audio',
@@ -295,10 +276,8 @@ class PlayerNotifier extends StateNotifier<PlayerState>
 
         if (results.isNotEmpty) {
           final match = results.first;
-          final details = await api.getVideoDetails(
-              match.videoId ?? match.id,
-              instanceUrl: instance,
-              sid: settings.invidiousSid);
+          final details = await api.getVideoDetails(match.videoId ?? match.id,
+              instanceUrl: instance, sid: settings.invidiousSid);
           if (version != _playVersion) return;
 
           final formats = (details['adaptiveFormats'] as List<dynamic>? ?? []);
@@ -314,6 +293,10 @@ class PlayerNotifier extends StateNotifier<PlayerState>
 
       if (playUrl != null && playUrl.isNotEmpty && version == _playVersion) {
         await _p.open(Media(playUrl));
+        // SponsorBlock: fetch segments async after opening (only for YouTube)
+        if (version == _playVersion && track.videoId != null) {
+          _fetchSponsorSegments(track.videoId!, version);
+        }
       } else if (playUrl == null || playUrl.isEmpty) {
         throw Exception('No playable URL found for this track');
       }
@@ -329,6 +312,50 @@ class PlayerNotifier extends StateNotifier<PlayerState>
       }
       state = state.copyWith(playbackError: errMsg);
       _syncMediaSession();
+    }
+  }
+
+  // ── SponsorBlock helpers ──────────────────────────────────────────────────
+
+  /// Fetches SponsorBlock segments for [videoId] in the background.
+  /// [version] is the play-version at the time of opening, used to discard
+  /// stale results if the user skips to another track before fetch completes.
+  void _fetchSponsorSegments(String videoId, int version) {
+    final settings = _settings;
+    if (!settings.sponsorBlock) return;
+    _sponsorSegments = [];
+    _skippedSegmentUuids.clear();
+
+    final cats = settings.sponsorBlockCategories;
+    _api.sponsorBlockSegments(videoId, categories: cats).then((raw) {
+      if (version != _playVersion) return; // Track changed — discard.
+      _sponsorSegments = raw
+          .whereType<Map<String, dynamic>>()
+          .map(SponsorSegment.fromJson)
+          .toList();
+      dev.log('SponsorBlock: ${_sponsorSegments.length} segments for $videoId');
+    }).catchError((Object e) {
+      dev.log('SponsorBlock fetch error: $e');
+    });
+  }
+
+  /// Called every second from the position listener.
+  /// Seeks past any SponsorBlock segment the playhead enters.
+  void _checkSponsorBlock(Duration pos) {
+    if (_sponsorSegments.isEmpty) return;
+    final sec = pos.inMilliseconds / 1000.0;
+    for (final seg in _sponsorSegments) {
+      if (_skippedSegmentUuids.contains(seg.uuid)) continue;
+      if (sec >= seg.start && sec < seg.end) {
+        _skippedSegmentUuids.add(seg.uuid);
+        final skipTo = Duration(milliseconds: (seg.end * 1000).ceil());
+        _p.seek(skipTo);
+        dev.log(
+            'SponsorBlock: skipped [${seg.category}] ${seg.start}–${seg.end}');
+        // Report the view to SponsorBlock (best-effort)
+        _api.sponsorBlockMarkViewed(seg.uuid).ignore();
+        break;
+      }
     }
   }
 
@@ -402,7 +429,6 @@ class PlayerNotifier extends StateNotifier<PlayerState>
     _syncMediaSession();
   }
 
-
   @override
   void toggleShuffle() {
     state = state.copyWith(shuffled: !state.shuffled);
@@ -442,7 +468,8 @@ class PlayerNotifier extends StateNotifier<PlayerState>
   }
 
   void clearSleepTimer() {
-    state = state.copyWith(clearSleepTimerEnd: true, clearSleepAfterTrack: true);
+    state =
+        state.copyWith(clearSleepTimerEnd: true, clearSleepAfterTrack: true);
   }
 
   void _checkSleepTimer() {
@@ -523,7 +550,8 @@ class PlayerNotifier extends StateNotifier<PlayerState>
 
   void removeFavorite(String id) {
     state = state.copyWith(
-      favorites: state.favorites.where((f) => (f.videoId ?? f.id) != id).toList(),
+      favorites:
+          state.favorites.where((f) => (f.videoId ?? f.id) != id).toList(),
     );
   }
 
@@ -538,8 +566,7 @@ class PlayerNotifier extends StateNotifier<PlayerState>
       if (!uri.host.contains('googlevideo.com')) return url;
       final base = instance.replaceAll(RegExp(r'/+$'), '');
       // Proxy format: instance/videoplayback?...&host=original-host
-      final newUri = Uri.parse('$base/videoplayback')
-          .replace(queryParameters: {
+      final newUri = Uri.parse('$base/videoplayback').replace(queryParameters: {
         ...uri.queryParameters,
         'host': uri.host,
       });

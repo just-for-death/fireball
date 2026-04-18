@@ -8,7 +8,8 @@ import '../../remote/remote_server.dart';
 /// Saves [peer] locally and notifies them of this device's address so both
 /// sides can open **Control** without re-entering IPs (LAN only; both should
 /// enable the remote server).
-Future<void> completeBidirectionalPairing(WidgetRef ref, RemoteEndpoint peer) async {
+Future<void> completeBidirectionalPairing(
+    WidgetRef ref, RemoteEndpoint peer) async {
   final store = ref.read(localStoreProvider.notifier);
   await store.updateSettings({
     'remoteHostIp': peer.host,

@@ -47,18 +47,21 @@ class FireballApi {
       switch (upper) {
         case 'POST':
           res = await http
-              .post(uri, headers: requestHeaders,
+              .post(uri,
+                  headers: requestHeaders,
                   body: body != null ? json.encode(body) : null)
               .timeout(timeout);
           break;
         case 'PUT':
           res = await http
-              .put(uri, headers: requestHeaders,
+              .put(uri,
+                  headers: requestHeaders,
                   body: body != null ? json.encode(body) : null)
               .timeout(timeout);
           break;
         case 'DELETE':
-          res = await http.delete(uri, headers: requestHeaders).timeout(timeout);
+          res =
+              await http.delete(uri, headers: requestHeaders).timeout(timeout);
           break;
         default:
           res = await http.get(uri, headers: requestHeaders).timeout(timeout);
@@ -105,6 +108,64 @@ class FireballApi {
     return _get(
       '$_itunesBase/search?term=${Uri.encodeComponent(term)}&entity=song&limit=$limit',
     );
+  }
+
+  /// Search for an artist by name and return the first matching iTunes artist.
+  Future<Map<String, dynamic>?> itunesFindArtist(String artistName) async {
+    try {
+      final data = await _get(
+        '$_itunesBase/search?term=${Uri.encodeComponent(artistName)}&entity=musicArtist&limit=5',
+      );
+      final results = (data['results'] as List<dynamic>? ?? []);
+      if (results.isEmpty) return null;
+      // Prefer exact name match
+      final lower = artistName.toLowerCase();
+      for (final r in results) {
+        final name = (r['artistName'] as String? ?? '').toLowerCase();
+        if (name == lower) return r as Map<String, dynamic>;
+      }
+      return results.first as Map<String, dynamic>;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Fetch the top songs for an iTunes artist by their numeric [artistId].
+  Future<List<Map<String, dynamic>>> itunesArtistTopSongs(
+    int artistId, {
+    int limit = 20,
+  }) async {
+    try {
+      final data = await _get(
+        '$_itunesBase/lookup?id=$artistId&entity=song&limit=$limit&sort=popular',
+      );
+      final results = (data['results'] as List<dynamic>? ?? []);
+      return results
+          .where((r) => r['wrapperType'] == 'track')
+          .cast<Map<String, dynamic>>()
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  /// Fetch the studio albums for an iTunes artist by their numeric [artistId].
+  Future<List<Map<String, dynamic>>> itunesArtistAlbums(
+    int artistId, {
+    int limit = 20,
+  }) async {
+    try {
+      final data = await _get(
+        '$_itunesBase/lookup?id=$artistId&entity=album&limit=$limit&sort=recent',
+      );
+      final results = (data['results'] as List<dynamic>? ?? []);
+      return results
+          .where((r) => r['wrapperType'] == 'collection')
+          .cast<Map<String, dynamic>>()
+          .toList();
+    } catch (_) {
+      return [];
+    }
   }
 
   Future<dynamic> itunesTopSongs(String cc, {int limit = 30}) async {
@@ -172,8 +233,9 @@ class FireballApi {
       if (album != null) 'album_name': album,
       if (duration != null) 'duration': '$duration',
     };
-    final qs =
-        params.entries.map((e) => '${e.key}=${Uri.encodeComponent(e.value)}').join('&');
+    final qs = params.entries
+        .map((e) => '${e.key}=${Uri.encodeComponent(e.value)}')
+        .join('&');
     return _get('$_lrclibBase/get?$qs', headers: _lrclibHeaders);
   }
 
@@ -183,7 +245,8 @@ class FireballApi {
   }
 
   /// Structured field search — more precise than a combined [query] string.
-  Future<dynamic> lrclibSearchByFields(String trackName, String artistName) async {
+  Future<dynamic> lrclibSearchByFields(
+      String trackName, String artistName) async {
     final qs =
         'track_name=${Uri.encodeComponent(trackName)}&artist_name=${Uri.encodeComponent(artistName)}';
     return _get('$_lrclibBase/search?$qs', headers: _lrclibHeaders);
@@ -285,10 +348,9 @@ class FireballApi {
     Future<({String sid, int status})> tryLogin(String body) async {
       final req = await httpClient.postUrl(loginUri);
       req.followRedirects = false;
-      req.headers.set(HttpHeaders.contentTypeHeader,
-          'application/x-www-form-urlencoded');
       req.headers.set(
-          HttpHeaders.userAgentHeader,
+          HttpHeaders.contentTypeHeader, 'application/x-www-form-urlencoded');
+      req.headers.set(HttpHeaders.userAgentHeader,
           'Mozilla/5.0 (compatible; Fireball/1.0; +https://github.com/fireball)');
       req.headers.set(HttpHeaders.refererHeader, '$base/login');
       req.headers.set('origin', originHeader);
@@ -325,8 +387,7 @@ class FireballApi {
 
       // Older form UIs send `action=signin` — retry if the minimal body failed.
       if (result.sid.isEmpty) {
-        body =
-            '$body&action=${Uri.encodeComponent('signin')}';
+        body = '$body&action=${Uri.encodeComponent('signin')}';
         result = await tryLogin(body);
       }
 
@@ -393,7 +454,8 @@ class FireballApi {
             title: v['title']?.toString() ?? '',
             artist: v['author']?.toString() ?? '',
             artwork: normalizeHttpUrl(artwork),
-            duration: v['lengthSeconds'] is int ? v['lengthSeconds'] as int : null,
+            duration:
+                v['lengthSeconds'] is int ? v['lengthSeconds'] as int : null,
           );
         })
         .whereType<Track>()
@@ -438,14 +500,16 @@ class FireballApi {
         {'title': local.title, 'privacy': privacy},
         headers: headers,
       );
-      invId = (created as Map<String, dynamic>?)?['playlistId']?.toString() ?? '';
+      invId =
+          (created as Map<String, dynamic>?)?['playlistId']?.toString() ?? '';
       if (invId.isEmpty) {
         throw Exception('Failed to create playlist on Invidious');
       }
     }
 
     for (final track in local.videos) {
-      final videoId = track.videoId?.isNotEmpty == true ? track.videoId! : track.id;
+      final videoId =
+          track.videoId?.isNotEmpty == true ? track.videoId! : track.id;
       if (videoId.isEmpty) continue;
       try {
         await _post(
@@ -581,6 +645,64 @@ class FireballApi {
       'messages': messages,
       'stream': false,
     });
+  }
+
+  // ── SponsorBlock ──────────────────────────────────────────────────────────
+  static const _sponsorBlockBase = 'https://sponsor.ajay.app';
+
+  /// Fetches crowd-sourced skip segments for [videoId] from SponsorBlock.
+  ///
+  /// [categories] defaults to all standard categories when empty.
+  /// Returns an empty list when the video has no segments (404).
+  /// Anonymous / read-only — no userID is sent.
+  Future<List<dynamic>> sponsorBlockSegments(
+    String videoId, {
+    List<String> categories = const [],
+  }) async {
+    if (videoId.isEmpty) return [];
+    final cats = categories.isEmpty
+        ? [
+            'sponsor',
+            'selfpromo',
+            'interaction',
+            'intro',
+            'outro',
+            'preview',
+            'music_offtopic',
+            'filler',
+          ]
+        : categories;
+
+    // Build ?categories[]=sponsor&categories[]=intro&… query string
+    final catQs =
+        cats.map((c) => 'categories[]=${Uri.encodeComponent(c)}').join('&');
+    final url =
+        '$_sponsorBlockBase/api/skipSegments?videoID=${Uri.encodeComponent(videoId)}&$catQs';
+
+    try {
+      final data = await _get(url);
+      if (data is List) return data;
+      return [];
+    } catch (e) {
+      // 404 means no segments exist for this video — not an error.
+      final msg = e.toString();
+      if (msg.contains('404') || msg.contains('Not Found')) return [];
+      rethrow;
+    }
+  }
+
+  /// Reports a segment view to SponsorBlock (best-effort, fire-and-forget).
+  /// Called after auto-skipping a segment so the community stats stay accurate.
+  Future<void> sponsorBlockMarkViewed(String segmentUuid) async {
+    if (segmentUuid.isEmpty) return;
+    try {
+      await _request(
+        'POST',
+        '$_sponsorBlockBase/api/viewedVideoSponsorTime?UUID=${Uri.encodeComponent(segmentUuid)}',
+      );
+    } catch (_) {
+      // Best-effort — ignore all errors.
+    }
   }
 
   // ── AI Queue ──────────────────────────────────────────────────────────────

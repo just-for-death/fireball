@@ -9,6 +9,7 @@ class FireballEmptyState extends StatelessWidget {
     this.icon = Icons.inbox_outlined,
     this.actionLabel,
     this.onAction,
+
     /// Use light text/icons on dark glass / PremiumBackground screens.
     this.onDarkGlass = false,
   });

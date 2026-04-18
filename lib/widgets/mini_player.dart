@@ -16,6 +16,7 @@ void showMiniPlayerOverflowMenu({
   showModalBottomSheet<void>(
     context: context,
     showDragHandle: true,
+    useRootNavigator: true,
     backgroundColor: Theme.of(context).colorScheme.surfaceContainerHigh,
     builder: (ctx) => SafeArea(
       child: Column(
@@ -126,9 +127,9 @@ class _MiniPlayerCard extends StatelessWidget {
         }
       },
       onLongPress: () => showMiniPlayerOverflowMenu(
-            context: context,
-            track: track,
-          ),
+        context: context,
+        track: track,
+      ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(18),
         child: BackdropFilter(
@@ -177,15 +178,13 @@ class _MiniPlayerCard extends StatelessWidget {
                   ),
                 ),
                 Padding(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 12, vertical: 10),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                   child: Row(
                     children: [
                       // Artwork with playing indicator overlay
                       _ArtworkTile(
-                          track: track,
-                          isPlaying: player.isPlaying,
-                          cs: cs),
+                          track: track, isPlaying: player.isPlaying, cs: cs),
                       const SizedBox(width: 12),
                       // Title + artist
                       Expanded(
@@ -226,9 +225,8 @@ class _MiniPlayerCard extends StatelessWidget {
                               color: player.shuffled
                                   ? cs.primary
                                   : cs.onSurfaceVariant),
-                          onPressed: () => ref
-                              .read(playerProvider.notifier)
-                              .toggleShuffle(),
+                          onPressed: () =>
+                              ref.read(playerProvider.notifier).toggleShuffle(),
                         ),
                         IconButton(
                           icon: Icon(
@@ -240,9 +238,8 @@ class _MiniPlayerCard extends StatelessWidget {
                                 ? cs.primary
                                 : cs.onSurfaceVariant,
                           ),
-                          onPressed: () => ref
-                              .read(playerProvider.notifier)
-                              .cycleRepeat(),
+                          onPressed: () =>
+                              ref.read(playerProvider.notifier).cycleRepeat(),
                         ),
                       ],
                       // Play / Pause
@@ -254,9 +251,8 @@ class _MiniPlayerCard extends StatelessWidget {
                           size: 28,
                           color: cs.onSurface,
                         ),
-                        onPressed: () => ref
-                            .read(playerProvider.notifier)
-                            .togglePlayPause(),
+                        onPressed: () =>
+                            ref.read(playerProvider.notifier).togglePlayPause(),
                       ),
                       IconButton(
                         icon: Icon(Icons.skip_next_rounded,
@@ -300,9 +296,9 @@ class _NarrowRailMiniPlayer extends StatelessWidget {
         child: GestureDetector(
           onTap: () => context.push('/player'),
           onLongPress: () => showMiniPlayerOverflowMenu(
-                context: context,
-                track: track,
-              ),
+            context: context,
+            track: track,
+          ),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(12),
             child: BackdropFilter(
@@ -385,9 +381,9 @@ class _CompactMiniPlayer extends StatelessWidget {
     return GestureDetector(
       onTap: () => context.push('/player'),
       onLongPress: () => showMiniPlayerOverflowMenu(
-            context: context,
-            track: track,
-          ),
+        context: context,
+        track: track,
+      ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(14),
         child: BackdropFilter(
@@ -427,16 +423,14 @@ class _CompactMiniPlayer extends StatelessWidget {
                           style: TextStyle(
                             fontWeight: FontWeight.w600,
                             fontSize: 13,
-                            color: player.isPlaying
-                                ? cs.primary
-                                : cs.onSurface,
+                            color: player.isPlaying ? cs.primary : cs.onSurface,
                           ),
                         ),
                       ),
                       IconButton(
                         padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints(
-                            minWidth: 32, minHeight: 32),
+                        constraints:
+                            const BoxConstraints(minWidth: 32, minHeight: 32),
                         icon: Icon(
                           player.isPlaying
                               ? Icons.pause_rounded
@@ -444,9 +438,8 @@ class _CompactMiniPlayer extends StatelessWidget {
                           size: 24,
                           color: cs.onSurface,
                         ),
-                        onPressed: () => ref
-                            .read(playerProvider.notifier)
-                            .togglePlayPause(),
+                        onPressed: () =>
+                            ref.read(playerProvider.notifier).togglePlayPause(),
                       ),
                     ],
                   ),
@@ -556,14 +549,18 @@ class _PlayingIndicatorState extends State<_PlayingIndicator>
 
     for (int i = 0; i < _controllers.length; i++) {
       Future.delayed(Duration(milliseconds: i * 100), () {
-        if (mounted) { _controllers[i].repeat(reverse: true); }
+        if (mounted) {
+          _controllers[i].repeat(reverse: true);
+        }
       });
     }
   }
 
   @override
   void dispose() {
-    for (final c in _controllers) { c.dispose(); }
+    for (final c in _controllers) {
+      c.dispose();
+    }
     super.dispose();
   }
 

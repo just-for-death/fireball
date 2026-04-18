@@ -17,6 +17,7 @@ import 'core/audio/fireball_audio_handler.dart';
 import 'core/audio/media_session_bridge.dart';
 import 'core/store/providers.dart';
 import 'core/theme/app_theme.dart';
+import 'core/ui/messenger_service.dart';
 import 'routes/router.dart';
 
 Future<void> _initAudioSession() async {
@@ -145,8 +146,8 @@ class FireballApp extends ConsumerWidget {
 
     return DynamicColorBuilder(
       builder: (ColorScheme? lightDynamic, ColorScheme? darkDynamic) {
-        final lightTheme =
-            _withDynamic(baseLight, harmonizeDynamic ? lightDynamic : null, false);
+        final lightTheme = _withDynamic(
+            baseLight, harmonizeDynamic ? lightDynamic : null, false);
         final darkTheme =
             _withDynamic(baseDark, harmonizeDynamic ? darkDynamic : null, true);
 
@@ -160,6 +161,10 @@ class FireballApp extends ConsumerWidget {
           themeAnimationCurve: Curves.easeOutCubic,
           routerConfig: router,
           scrollBehavior: _FireballScrollBehavior(),
+          builder: (ctx, child) {
+            MessengerService.instance.attach(ScaffoldMessenger.of(ctx));
+            return child ?? const SizedBox.shrink();
+          },
         );
       },
     );

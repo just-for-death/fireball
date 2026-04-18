@@ -127,7 +127,8 @@ RemoteEndpoint? parseRemoteConnectionString(String raw) {
   }
 
   // Pairing code (8+ chars base64url)
-  if (RegExp(r'^[A-Za-z0-9_-]+$').hasMatch(s.replaceAll(RegExp(r'[\s\-]'), '')) &&
+  if (RegExp(r'^[A-Za-z0-9_-]+$')
+          .hasMatch(s.replaceAll(RegExp(r'[\s\-]'), '')) &&
       s.replaceAll(RegExp(r'[\s\-]'), '').length >= 6) {
     try {
       return decodeRemotePairing(s);
@@ -156,6 +157,7 @@ bool _isIpv4(String s) {
 /// mDNS / LAN names like `music.local` (not IPv6 — those need a full URL).
 bool _isSimpleHostname(String s) {
   if (s.isEmpty || s.length > 253) return false;
-  return RegExp(r'^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$')
+  return RegExp(
+          r'^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$')
       .hasMatch(s);
 }

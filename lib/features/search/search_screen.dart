@@ -13,10 +13,18 @@ import '../../core/utils.dart';
 import '../../core/widgets/empty_state.dart';
 import '../../core/widgets/glass_widgets.dart';
 import '../../core/widgets/overflow_safe_text.dart';
+import '../../core/widgets/track_options_sheet.dart';
 
 const _genres = [
-  'Pop', 'Hip-Hop', 'R&B', 'Rock', 'Electronic',
-  'Jazz', 'Classical', 'K-Pop', 'Indie',
+  'Pop',
+  'Hip-Hop',
+  'R&B',
+  'Rock',
+  'Electronic',
+  'Jazz',
+  'Classical',
+  'K-Pop',
+  'Indie',
 ];
 
 class SearchScreen extends HookConsumerWidget {
@@ -66,7 +74,7 @@ class SearchScreen extends HookConsumerWidget {
       // Capture a request id at the time the effect fires.
       // The async callback checks whether a newer effect has already replaced it.
       final capturedQuery = query.value;
-      final capturedMode  = searchMode.value;
+      final capturedMode = searchMode.value;
 
       final timer = Timer(const Duration(milliseconds: 450), () async {
         // Bail out if the query changed while we were waiting.
@@ -90,8 +98,8 @@ class SearchScreen extends HookConsumerWidget {
               return;
             }
 
-            final tracks = await api.invidiousSearch(capturedQuery,
-                instanceUrl: instance);
+            final tracks =
+                await api.invidiousSearch(capturedQuery, instanceUrl: instance);
             // Guard again: user may have typed more while we awaited the network
             if (query.value != capturedQuery) return;
             results.value = tracks
@@ -109,15 +117,15 @@ class SearchScreen extends HookConsumerWidget {
             final data = await api.itunesSearch(capturedQuery);
             if (query.value != capturedQuery) return;
             results.value = ((data['results'] as List<dynamic>? ?? [])
-                  .map((t) => {
-                        'id': t['trackId']?.toString() ?? '',
-                        'title': t['trackName'] ?? '—',
-                        'artist': t['artistName'] ?? '—',
-                        'artwork': (t['artworkUrl100'] as String?)
-                            ?.replaceAll('100x100bb', '400x400bb'),
-                        'url': t['previewUrl'],
-                      })
-                  .toList())
+                    .map((t) => {
+                          'id': t['trackId']?.toString() ?? '',
+                          'title': t['trackName'] ?? '—',
+                          'artist': t['artistName'] ?? '—',
+                          'artwork': (t['artworkUrl100'] as String?)
+                              ?.replaceAll('100x100bb', '400x400bb'),
+                          'url': t['previewUrl'],
+                        })
+                    .toList())
                 .cast();
           }
         } catch (e) {
@@ -142,15 +150,15 @@ class SearchScreen extends HookConsumerWidget {
       try {
         final data = await api.itunesSearch('$genre music', limit: 30);
         results.value = ((data['results'] as List<dynamic>? ?? [])
-              .map((t) => {
-                    'id': t['trackId']?.toString() ?? '',
-                    'title': t['trackName'] ?? '—',
-                    'artist': t['artistName'] ?? '—',
-                    'artwork': (t['artworkUrl100'] as String?)
-                        ?.replaceAll('100x100bb', '400x400bb'),
-                    'url': t['previewUrl'],
-                  })
-              .toList())
+                .map((t) => {
+                      'id': t['trackId']?.toString() ?? '',
+                      'title': t['trackName'] ?? '—',
+                      'artist': t['artistName'] ?? '—',
+                      'artwork': (t['artworkUrl100'] as String?)
+                          ?.replaceAll('100x100bb', '400x400bb'),
+                      'url': t['previewUrl'],
+                    })
+                .toList())
             .cast();
       } finally {
         loading.value = false;
@@ -236,8 +244,7 @@ class SearchScreen extends HookConsumerWidget {
                               decoration: InputDecoration(
                                 hintText: 'Songs, artists, albums...',
                                 hintStyle: TextStyle(
-                                    color:
-                                        Colors.white.withValues(alpha: 0.3)),
+                                    color: Colors.white.withValues(alpha: 0.3)),
                                 border: InputBorder.none,
                                 isDense: true,
                               ),
@@ -247,8 +254,7 @@ class SearchScreen extends HookConsumerWidget {
                             IconButton(
                               icon: Icon(Icons.cancel_rounded,
                                   size: 18,
-                                  color:
-                                      Colors.white.withValues(alpha: 0.5)),
+                                  color: Colors.white.withValues(alpha: 0.5)),
                               onPressed: () {
                                 controller.clear();
                                 query.value = '';
@@ -263,7 +269,6 @@ class SearchScreen extends HookConsumerWidget {
                 ],
               ),
             ),
-
             if (!isSearching) ...[
               Padding(
                 padding: const EdgeInsets.only(left: 24, bottom: 12),
@@ -307,11 +312,9 @@ class SearchScreen extends HookConsumerWidget {
                 ),
               ),
             ],
-
             Expanded(
               child: loading.value
-                  ? Center(
-                      child: CircularProgressIndicator(color: cs.primary))
+                  ? Center(child: CircularProgressIndicator(color: cs.primary))
                   : displayList.isEmpty && isSearching
                       ? const FireballEmptyState(
                           onDarkGlass: true,
@@ -335,9 +338,8 @@ class SearchScreen extends HookConsumerWidget {
                                 opacity: 0.04,
                                 borderRadius: BorderRadius.circular(16),
                                 child: ListTile(
-                                  contentPadding:
-                                      const EdgeInsets.symmetric(
-                                          horizontal: 12, vertical: 2),
+                                  contentPadding: const EdgeInsets.symmetric(
+                                      horizontal: 12, vertical: 2),
                                   leading: ClipRRect(
                                     borderRadius: BorderRadius.circular(8),
                                     child: item['artwork'] != null
@@ -370,12 +372,21 @@ class SearchScreen extends HookConsumerWidget {
                                         color: Colors.white
                                             .withValues(alpha: 0.5)),
                                   ),
-                                  trailing: Icon(
-                                      Icons.play_circle_fill_rounded,
-                                      color: cs.primary,
-                                      size: 28),
-                                  onTap: () =>
-                                      playResult(displayList, index),
+                                  trailing: Icon(Icons.play_circle_fill_rounded,
+                                      color: cs.primary, size: 28),
+                                  onTap: () => playResult(displayList, index),
+                                  onLongPress: () {
+                                    final t = Track(
+                                      id: item['id'] ?? '',
+                                      videoId: item['videoId'],
+                                      title: item['title'] ?? '—',
+                                      artist: item['artist'] ?? '—',
+                                      artwork: item['artwork'],
+                                      url: item['url'] ?? '',
+                                      duration: item['duration'],
+                                    );
+                                    showTrackOptions(context, ref, t);
+                                  },
                                 ),
                               ),
                             );
