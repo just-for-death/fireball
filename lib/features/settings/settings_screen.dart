@@ -4,18 +4,18 @@ import 'package:flutter/foundation.dart'
     show defaultTargetPlatform, kIsWeb, TargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
+import 'package:go_router/go_router.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 import '../../core/api/fireball_api.dart';
 import '../../core/countries.dart';
 import '../../core/store/providers.dart';
+import '../../core/ui/shell_content_insets.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/fireball_logo.dart';
 import '../../core/widgets/glass_widgets.dart';
-import '../../features/remote/remote_scan_screen.dart';
-import '../../features/remote/remote_screen.dart';
-import '../../remote/remote_pairing.dart';
 import '../../sync/gdrive_sync.dart';
 import '../../sync/webdav_sync.dart';
 
@@ -24,6 +24,9 @@ class SettingsScreen extends HookConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final packageInfo = useFuture(
+      useMemoized(() => PackageInfo.fromPlatform(), const []),
+    );
     final settings = ref.watch(settingsProvider);
     const api = FireballApi();
     final cs = Theme.of(context).colorScheme;
@@ -54,8 +57,6 @@ class SettingsScreen extends HookConsumerWidget {
     final webDavUrlCtrl = useTextEditingController();
     final webDavUserCtrl = useTextEditingController();
     final webDavPassCtrl = useTextEditingController();
-    final remoteHostCtrl = useTextEditingController();
-
     // Testing states
     final testingLB = useState(false);
     final testingLastFm = useState(false);
@@ -86,7 +87,6 @@ class SettingsScreen extends HookConsumerWidget {
       webDavUrlCtrl.text = settings.webDavUrl;
       webDavUserCtrl.text = settings.webDavUsername;
       webDavPassCtrl.text = settings.webDavPassword;
-      remoteHostCtrl.text = settings.remoteHostIp;
       return null;
     }, [settings]);
 
@@ -531,7 +531,12 @@ class SettingsScreen extends HookConsumerWidget {
 
             Expanded(
               child: ListView(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 160),
+                padding: EdgeInsets.fromLTRB(
+                  16,
+                  0,
+                  16,
+                  shellScrollBottomPadding(context),
+                ),
                 children: [
                   Padding(
                     padding: const EdgeInsets.only(bottom: 8),
@@ -550,7 +555,7 @@ class SettingsScreen extends HookConsumerWidget {
                           ),
                         ),
                         subtitle: Text(
-                          'Host QR or control another device on your network',
+                          'Pairing, QR, and control — same Wi‑Fi',
                           style: TextStyle(
                             color: Colors.white.withValues(alpha: 0.45),
                             fontSize: 12,
@@ -558,11 +563,7 @@ class SettingsScreen extends HookConsumerWidget {
                         ),
                         trailing: Icon(Icons.chevron_right_rounded,
                             color: Colors.white.withValues(alpha: 0.35)),
-                        onTap: () => Navigator.of(context).push(
-                          MaterialPageRoute<void>(
-                            builder: (_) => const RemoteScreen(),
-                          ),
-                        ),
+                        onTap: () => context.go('/remote'),
                       ),
                     ),
                   ),
@@ -1562,141 +1563,6 @@ class SettingsScreen extends HookConsumerWidget {
 
                   const SizedBox(height: 16),
 
-                  // ── REMOTE CONTROL ────────────────────────────────────────
-                  if (showSection(
-                      'remote control cast network qr server host client'))
-                  _SectionCard(
-                    title: 'REMOTE CONTROL',
-                    icon: Icons.cast_rounded,
-                    isDark: isDark,
-                    cs: cs,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text('Enable Remote Server',
-                                  style: TextStyle(
-                                      color: Colors.white, fontSize: 14)),
-                              Text(
-                                'This device can be controlled remotely',
-                                style: TextStyle(
-                                    fontSize: 11,
-                                    color:
-                                        Colors.white.withValues(alpha: 0.4)),
-                              ),
-                            ],
-                          ),
-                          Switch(
-                            value: settings.remoteServerEnabled,
-                            onChanged: (v) =>
-                                saveSettings({'remoteServerEnabled': v}),
-                            activeThumbColor: cs.primary,
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      _SettingsLabel('CONNECT TO REMOTE'),
-                      _StyledTextField(
-                        controller: remoteHostCtrl,
-                        hint: 'IP, URL, or pairing code',
-                        onChanged: (_) {},
-                      ),
-                      const SizedBox(height: 8),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: _SyncButton(
-                              label: 'Show Host QR',
-                              icon: Icons.qr_code_rounded,
-                              color: const Color(0xFF7C3AED),
-                              onTap: () {
-                                Navigator.of(context).push(
-                                  MaterialPageRoute(
-                                    builder: (_) => const _RemoteHostSheet(),
-                                  ),
-                                );
-                              },
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          if (remoteQrScanSupported)
-                            Material(
-                              color: cs.surfaceContainerHighest,
-                              borderRadius: BorderRadius.circular(12),
-                              child: IconButton(
-                                tooltip: 'Scan QR code',
-                                icon: const Icon(Icons.qr_code_scanner_rounded),
-                                onPressed: () async {
-                                  final ep =
-                                      await Navigator.of(context).push<RemoteEndpoint>(
-                                    MaterialPageRoute(
-                                      fullscreenDialog: true,
-                                      builder: (_) => const RemoteScanScreen(),
-                                    ),
-                                  );
-                                  if (ep == null || !context.mounted) return;
-                                  remoteHostCtrl.text =
-                                      '${ep.host}:${ep.port}';
-                                  await saveSettings({'remoteHostIp': ep.host});
-                                  if (!context.mounted) return;
-                                  Navigator.of(context).push(
-                                    MaterialPageRoute(
-                                      builder: (_) =>
-                                          _RemoteControlSheet(endpoint: ep),
-                                    ),
-                                  );
-                                },
-                              ),
-                            ),
-                          if (remoteQrScanSupported) const SizedBox(width: 8),
-                          Expanded(
-                            child: _SyncButton(
-                              label: 'Control Remote',
-                              icon: Icons.play_circle_outline_rounded,
-                              color: cs.primary,
-                              onTap: () async {
-                                final raw = remoteHostCtrl.text.trim();
-                                if (raw.isEmpty) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text(
-                                        'Enter IP, URL, or pairing code — or scan a QR',
-                                      ),
-                                    ),
-                                  );
-                                  return;
-                                }
-                                final ep = parseRemoteConnectionString(raw);
-                                if (ep == null) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text(
-                                        'Could not parse. Use 192.168.x.x, http://…, or the pairing code.',
-                                      ),
-                                    ),
-                                  );
-                                  return;
-                                }
-                                await saveSettings({'remoteHostIp': ep.host});
-                                if (context.mounted) {
-                                  Navigator.of(context).push(
-                                    MaterialPageRoute(
-                                      builder: (_) =>
-                                          _RemoteControlSheet(endpoint: ep),
-                                    ),
-                                  );
-                                }
-                              },
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-
                   const SizedBox(height: 16),
 
                   // ── DATA MANAGEMENT ──────────────────────────────────────
@@ -1756,7 +1622,9 @@ class SettingsScreen extends HookConsumerWidget {
                         const FireballLogo(size: 56),
                         const SizedBox(height: 10),
                         Text(
-                          'Fireball v1.0.0',
+                          packageInfo.hasData
+                              ? 'Fireball v${packageInfo.data!.version} (${packageInfo.data!.buildNumber})'
+                              : 'Fireball',
                           style: TextStyle(
                               color: Colors.white.withValues(alpha: 0.2),
                               fontSize: 12),
@@ -2236,24 +2104,3 @@ class _InvidiousPlaylistPreview extends HookConsumerWidget {
   }
 }
 
-// ── Remote host sheet ─────────────────────────────────────────────────────────
-
-class _RemoteHostSheet extends StatelessWidget {
-  const _RemoteHostSheet();
-
-  @override
-  Widget build(BuildContext context) => const RemoteScreen();
-}
-
-// ── Remote control sheet ──────────────────────────────────────────────────────
-
-class _RemoteControlSheet extends StatelessWidget {
-  const _RemoteControlSheet({required this.endpoint});
-  final RemoteEndpoint endpoint;
-
-  @override
-  Widget build(BuildContext context) => RemoteScreen(
-        remoteIp: endpoint.host,
-        remotePort: endpoint.port,
-      );
-}

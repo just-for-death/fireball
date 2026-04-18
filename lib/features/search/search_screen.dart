@@ -8,6 +8,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import '../../core/api/fireball_api.dart';
 import '../../core/models/track.dart';
 import '../../core/store/providers.dart';
+import '../../core/ui/shell_content_insets.dart';
 import '../../core/utils.dart';
 import '../../core/widgets/empty_state.dart';
 import '../../core/widgets/glass_widgets.dart';
@@ -316,8 +317,12 @@ class SearchScreen extends HookConsumerWidget {
                           icon: Icons.music_off_rounded,
                         )
                       : ListView.builder(
-                          padding:
-                              const EdgeInsets.fromLTRB(16, 0, 16, 160),
+                          padding: EdgeInsets.fromLTRB(
+                            16,
+                            0,
+                            16,
+                            shellScrollBottomPadding(context),
+                          ),
                           itemCount: displayList.length,
                           itemBuilder: (context, index) {
                             final item = displayList[index];

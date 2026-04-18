@@ -9,9 +9,14 @@ import 'dart:io';
 ///   GET  /state   → JSON snapshot of current PlayerState
 ///   POST /command → JSON body with "action" (play/pause/toggle/next/prev/seek)
 ///                   and optional "value" (seek position in ms)
+///   POST /pair    → JSON `{"host","port"}` so this device stores the peer for
+///                   bidirectional control (no cloud; LAN only).
 class RemoteServer {
   static HttpServer? _server;
   static String? _cachedIp;
+
+  /// Called when a remote device POSTs its address to `/pair`.
+  static Future<void> Function(String host, int port)? onPeerRegistered;
 
   /// The local IPv4 address shown to the user (for QR code / manual entry).
   static String? get localIp => _cachedIp;
@@ -21,7 +26,11 @@ class RemoteServer {
 
   /// Starts the embedded HTTP server and wires [player] as the command target.
   /// A second call while already running is a no-op.
-  static Future<void> start(RemotePlayerProxy player) async {
+  static Future<void> start(
+    RemotePlayerProxy player, {
+    Future<void> Function(String host, int port)? peerCallback,
+  }) async {
+    onPeerRegistered = peerCallback;
     if (_server != null) return;
     try {
       // Bind first; only set _cachedIp on success so the QR code / host URL
@@ -45,6 +54,7 @@ class RemoteServer {
     await _server?.close(force: true);
     _server = null;
     _cachedIp = null;
+    onPeerRegistered = null;
   }
 
   static Future<void> _handle(HttpRequest req, RemotePlayerProxy player) async {
@@ -62,6 +72,22 @@ class RemoteServer {
       if (req.uri.path == '/state' && req.method == 'GET') {
         final snapshot = player.stateSnapshot();
         req.response.write(jsonEncode(snapshot));
+      } else if (req.uri.path == '/pair' && req.method == 'POST') {
+        final body = await utf8.decoder.bind(req).join();
+        final Map<String, dynamic> j =
+            body.isNotEmpty ? jsonDecode(body) as Map<String, dynamic> : {};
+        final host = j['host']?.toString().trim();
+        final port = (j['port'] as num?)?.toInt() ?? RemoteServer.port;
+        if (host == null || host.isEmpty) {
+          req.response.statusCode = 400;
+          req.response.write(jsonEncode({'error': 'host required'}));
+        } else if (port < 1 || port > 65535) {
+          req.response.statusCode = 400;
+          req.response.write(jsonEncode({'error': 'invalid port'}));
+        } else {
+          await onPeerRegistered?.call(host, port);
+          req.response.write('{"ok":true}');
+        }
       } else if (req.uri.path == '/command' && req.method == 'POST') {
         final body = await utf8.decoder.bind(req).join();
         final Map<String, dynamic> cmd =

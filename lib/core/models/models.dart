@@ -122,7 +122,10 @@ class FireballSettings {
   final bool webDavLiveSync;
   // Remote Control
   final bool remoteServerEnabled;
+  /// Paired device host (IP or hostname) for LAN remote control.
   final String remoteHostIp;
+  /// Port for [remoteHostIp] (default 7771).
+  final int remotePeerPort;
   // Home
   final List<String> homeCountries;
   /// When true, synced lyrics auto-scroll to the active line while playing.
@@ -175,6 +178,7 @@ class FireballSettings {
     this.webDavLiveSync = false,
     this.remoteServerEnabled = false,
     this.remoteHostIp = '',
+    this.remotePeerPort = 7771,
     this.homeCountries = const [],
     this.lyricsAutoScroll = true,
     this.lyricsReducedMotion = false,
@@ -245,6 +249,9 @@ class FireballSettings {
       webDavLiveSync: toBool(j['webDavLiveSync'], false),
       remoteServerEnabled: toBool(j['remoteServerEnabled'], false),
       remoteHostIp: j['remoteHostIp']?.toString() ?? '',
+      remotePeerPort: j['remotePeerPort'] is num
+          ? (j['remotePeerPort'] as num).toInt()
+          : int.tryParse(j['remotePeerPort']?.toString() ?? '') ?? 7771,
       homeCountries: toStringList(j['homeCountries']),
       lyricsAutoScroll: toBool(j['lyricsAutoScroll'], true),
       lyricsReducedMotion: toBool(j['lyricsReducedMotion'], false),
@@ -294,6 +301,7 @@ class FireballSettings {
         'webDavLiveSync': webDavLiveSync,
         'remoteServerEnabled': remoteServerEnabled,
         'remoteHostIp': remoteHostIp,
+        'remotePeerPort': remotePeerPort,
         'homeCountries': homeCountries,
         'lyricsAutoScroll': lyricsAutoScroll,
         'lyricsReducedMotion': lyricsReducedMotion,
@@ -339,6 +347,7 @@ class FireballSettings {
     bool? webDavLiveSync,
     bool? remoteServerEnabled,
     String? remoteHostIp,
+    int? remotePeerPort,
     List<String>? homeCountries,
     bool? lyricsAutoScroll,
     bool? lyricsReducedMotion,
@@ -385,6 +394,7 @@ class FireballSettings {
         webDavLiveSync: webDavLiveSync ?? this.webDavLiveSync,
         remoteServerEnabled: remoteServerEnabled ?? this.remoteServerEnabled,
         remoteHostIp: remoteHostIp ?? this.remoteHostIp,
+        remotePeerPort: remotePeerPort ?? this.remotePeerPort,
         homeCountries: homeCountries ?? this.homeCountries,
         lyricsAutoScroll: lyricsAutoScroll ?? this.lyricsAutoScroll,
         lyricsReducedMotion: lyricsReducedMotion ?? this.lyricsReducedMotion,

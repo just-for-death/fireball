@@ -22,11 +22,15 @@ class _NavItem {
   const _NavItem(this.path, this.icon, this.activeIcon, this.label);
 }
 
+/// Index of the **Remote** tab (full-screen pairing; hide mini-player overlay).
+const int kRemoteShellTabIndex = 3;
+
 const _navItems = [
   _NavItem('/home', Icons.home_outlined, Icons.home_rounded, 'Home'),
   _NavItem('/search', Icons.search_outlined, Icons.search_rounded, 'Search'),
   _NavItem('/library', Icons.library_music_outlined,
       Icons.library_music_rounded, 'Library'),
+  _NavItem('/remote', Icons.cast_outlined, Icons.cast_rounded, 'Remote'),
   _NavItem('/settings', Icons.settings_outlined, Icons.settings_rounded,
       'Settings'),
 ];
@@ -132,27 +136,30 @@ class ShellScaffold extends HookConsumerWidget {
 }
 
 // ── Android phone — Material You NavigationBar ────────────────────────────────
-class _AndroidShell extends StatelessWidget {
+class _AndroidShell extends ConsumerWidget {
   const _AndroidShell({required this.shell, required this.onTap});
   final StatefulNavigationShell shell;
   final void Function(int) onTap;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final cs = Theme.of(context).colorScheme;
     final bottomPad = !kIsWeb && defaultTargetPlatform == TargetPlatform.android
         ? MediaQuery.viewPaddingOf(context).bottom
         : 0.0;
+    final hideMini = ref.watch(remoteScreenCoversShellProvider) ||
+        shell.currentIndex == kRemoteShellTabIndex;
     return Scaffold(
       body: Stack(
         children: [
           shell,
-          Positioned(
-            left: 0,
-            right: 0,
-            bottom: 80 + bottomPad,
-            child: const MiniPlayer(),
-          ),
+          if (!hideMini)
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 80 + bottomPad,
+              child: const MiniPlayer(),
+            ),
         ],
       ),
       bottomNavigationBar: NavigationBar(
@@ -174,7 +181,7 @@ class _AndroidShell extends StatelessWidget {
 }
 
 // ── Android tablet — NavigationRail ──────────────────────────────────────────
-class _AndroidTabletShell extends StatelessWidget {
+class _AndroidTabletShell extends ConsumerWidget {
   const _AndroidTabletShell(
       {required this.shell, required this.onTap, required this.width});
   final StatefulNavigationShell shell;
@@ -182,12 +189,14 @@ class _AndroidTabletShell extends StatelessWidget {
   final double width;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final cs = Theme.of(context).colorScheme;
     final extended = width >= 1000;
     final bottomPad = !kIsWeb && defaultTargetPlatform == TargetPlatform.android
         ? MediaQuery.viewPaddingOf(context).bottom
         : 0.0;
+    final hideMini = ref.watch(remoteScreenCoversShellProvider) ||
+        shell.currentIndex == kRemoteShellTabIndex;
 
     return Scaffold(
       body: Row(
@@ -223,12 +232,13 @@ class _AndroidTabletShell extends StatelessWidget {
             child: Stack(
               children: [
                 shell,
-                Positioned(
-                  left: 0,
-                  right: 0,
-                  bottom: 16 + bottomPad,
-                  child: const MiniPlayer(),
-                ),
+                if (!hideMini)
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    bottom: 16 + bottomPad,
+                    child: const MiniPlayer(),
+                  ),
               ],
             ),
           ),
@@ -239,25 +249,28 @@ class _AndroidTabletShell extends StatelessWidget {
 }
 
 // ── iOS phone — glass frosted tab bar ────────────────────────────────────────
-class _IPhoneShell extends StatelessWidget {
+class _IPhoneShell extends ConsumerWidget {
   const _IPhoneShell({required this.shell, required this.onTap});
   final StatefulNavigationShell shell;
   final void Function(int) onTap;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final hideMini = ref.watch(remoteScreenCoversShellProvider) ||
+        shell.currentIndex == kRemoteShellTabIndex;
     return Scaffold(
       backgroundColor: Colors.transparent,
       extendBody: true,
       body: Stack(
         children: [
           shell,
-          const Positioned(
-            left: 0,
-            right: 0,
-            bottom: 80,
-            child: MiniPlayer(),
-          ),
+          if (!hideMini)
+            const Positioned(
+              left: 0,
+              right: 0,
+              bottom: 80,
+              child: MiniPlayer(),
+            ),
         ],
       ),
       bottomNavigationBar: _GlassTabBar(
@@ -288,6 +301,8 @@ class _IPadShell extends ConsumerWidget {
     final cs = Theme.of(context).colorScheme;
     final sidebarWidth =
         sidebarCollapsed ? _widthCollapsed : _widthExpanded;
+    final hideMini = ref.watch(remoteScreenCoversShellProvider) ||
+        shell.currentIndex == kRemoteShellTabIndex;
 
     Future<void> toggleCollapsed() async {
       await ref.read(localStoreProvider.notifier).updateSettings({
@@ -409,9 +424,11 @@ class _IPadShell extends ConsumerWidget {
                           sidebarCollapsed ? 6 : 12,
                           16,
                         ),
-                        child: _SidebarMiniPlayer(
-                          sidebarCollapsed: sidebarCollapsed,
-                        ),
+                        child: hideMini
+                            ? const SizedBox.shrink()
+                            : _SidebarMiniPlayer(
+                                sidebarCollapsed: sidebarCollapsed,
+                              ),
                       ),
                     ],
                   ),

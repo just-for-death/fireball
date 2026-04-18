@@ -21,7 +21,7 @@ Fireball streams music through [Invidious](https://invidious.io), discovers lyri
 | **Scrobbling** | Direct ListenBrainz scrobbling · Last.fm API key validation |
 | **Backup & Sync** | Google Drive (`appDataFolder`) backup/restore · WebDAV / Nextcloud backup/restore · optional **live sync** with merge across devices |
 | **Tablet UI** | iPad glass sidebar · Android NavigationRail · two-pane player and library on large screens |
-| **Remote** | LAN HTTP remote control (optional) · QR / pairing code · in-app scanner on mobile |
+| **Remote** | Dedicated **Remote** tab · single QR · bidirectional LAN pairing (`/pair`) · control without re-entering IPs |
 | **Theming** | Material 3 · FlexColorScheme · dynamic color (Android 12+) · true-black dark mode option |
 
 ---
@@ -32,7 +32,7 @@ Official binaries are published on **[GitHub Releases](https://github.com/just-f
 
 | Version | Android | iOS |
 |--------|---------|-----|
-| **v1.5.0** (current) | `Fireball-1.5.0-android.apk` | `Fireball-1.5.0-ios-unsigned.ipa` — **unsigned** |
+| **v1.6.0** (current) | `Fireball-1.6.0-android.apk` | `Fireball-1.6.0-ios-unsigned.ipa` — **unsigned** |
 | **v1.0.0** | `Fireball-1.0.0-android.apk` | `Fireball-1.0.0-ios-unsigned.ipa` — **unsigned** |
 
 - **Android**: Open the APK on device, or `adb install …`. You may need to allow installs from your file manager or developer options.

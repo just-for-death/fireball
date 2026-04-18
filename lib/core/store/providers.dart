@@ -24,6 +24,10 @@ final settingsProvider = Provider<FireballSettings>((ref) {
   return ref.watch(localStoreProvider).settings;
 });
 
+/// True while [RemoteScreen] is on the navigation stack (host or control mode),
+/// so the shell mini-player does not cover remote UI.
+final remoteScreenCoversShellProvider = StateProvider<bool>((ref) => false);
+
 // ── Player Notifier ───────────────────────────────────────────────────────────
 final playerProvider = StateNotifierProvider<PlayerNotifier, PlayerState>((ref) {
   return PlayerNotifier(ref);
@@ -611,7 +615,15 @@ class PlayerNotifier extends StateNotifier<PlayerState>
 
   // ── Remote server control ─────────────────────────────────────────────────
 
-  Future<void> startRemoteServer() async => RemoteServer.start(this);
+  Future<void> startRemoteServer() async => RemoteServer.start(
+        this,
+        peerCallback: (host, port) async {
+          await _ref.read(localStoreProvider.notifier).updateSettings({
+            'remoteHostIp': host,
+            'remotePeerPort': port,
+          });
+        },
+      );
   Future<void> stopRemoteServer() async => RemoteServer.stop();
 
   @override

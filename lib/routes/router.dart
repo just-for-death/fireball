@@ -4,6 +4,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import '../features/home/home_screen.dart';
 import '../features/library/library_screen.dart';
 import '../features/player/player_screen.dart';
+import '../features/remote/remote_hub_screen.dart';
 import '../features/search/search_screen.dart';
 import '../features/settings/settings_screen.dart';
 import '../widgets/shell_scaffold.dart';
@@ -23,6 +24,10 @@ final routerProvider = Provider<GoRouter>((ref) {
           ]),
           StatefulShellBranch(routes: [
             GoRoute(path: '/library', builder: (_, __) => const LibraryScreen()),
+          ]),
+          StatefulShellBranch(routes: [
+            GoRoute(
+                path: '/remote', builder: (_, __) => const RemoteHubScreen()),
           ]),
           StatefulShellBranch(routes: [
             GoRoute(

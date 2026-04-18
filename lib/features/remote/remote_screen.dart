@@ -4,8 +4,10 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
+import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
+import '../../core/store/providers.dart';
 import '../../remote/remote_client.dart';
 import '../../remote/remote_pairing.dart';
 import '../../remote/remote_server.dart';
@@ -18,7 +20,7 @@ import '../../remote/remote_server.dart';
 /// **Control mode** (when [remoteIp] is provided):
 ///   Polls the remote `/state` endpoint about once per second; shows play/pause,
 ///   next/prev, and seek.
-class RemoteScreen extends StatelessWidget {
+class RemoteScreen extends HookConsumerWidget {
   const RemoteScreen({super.key, this.remoteIp, this.remotePort});
 
   /// When set, the screen operates in control mode pointing at this host.
@@ -28,7 +30,13 @@ class RemoteScreen extends StatelessWidget {
   final int? remotePort;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    useEffect(() {
+      ref.read(remoteScreenCoversShellProvider.notifier).state = true;
+      return () {
+        ref.read(remoteScreenCoversShellProvider.notifier).state = false;
+      };
+    }, const []);
     final isControlMode = remoteIp != null && remoteIp!.isNotEmpty;
     return isControlMode
         ? _ControlMode(
@@ -80,9 +88,6 @@ class _HostMode extends HookWidget {
     final pairingCode = localIp.value != null
         ? encodeRemotePairing(localIp.value!, RemoteServer.port)
         : null;
-    final deepLink = pairingCode != null
-        ? 'fbremote://pair?c=${Uri.encodeComponent(pairingCode)}'
-        : null;
 
     return Scaffold(
       appBar: AppBar(
@@ -99,29 +104,16 @@ class _HostMode extends HookWidget {
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-              if (serverUrl != null && pairingCode != null && deepLink != null) ...[
+              if (serverUrl != null && pairingCode != null) ...[
                 Text(
-                  'Scan with Fireball',
-                  style: Theme.of(context).textTheme.titleSmall,
-                ),
-                const SizedBox(height: 8),
-                QrImageView(
-                  data: deepLink,
-                  version: QrVersions.auto,
-                  size: 200,
-                  backgroundColor: Colors.white,
-                  padding: const EdgeInsets.all(12),
-                ),
-                const SizedBox(height: 20),
-                Text(
-                  'Or scan with any app',
+                  'Scan this code',
                   style: Theme.of(context).textTheme.titleSmall,
                 ),
                 const SizedBox(height: 8),
                 QrImageView(
                   data: serverUrl,
                   version: QrVersions.auto,
-                  size: 200,
+                  size: 220,
                   backgroundColor: Colors.white,
                   padding: const EdgeInsets.all(12),
                 ),
@@ -182,14 +174,14 @@ class _HostMode extends HookWidget {
                 Icon(Icons.wifi_off_rounded, size: 64, color: cs.outline),
                 const SizedBox(height: 16),
                 Text(
-                  'Remote server is not running.\nEnable it in Settings → Remote Control.',
+                  'Remote server is not running.\nEnable it in the Remote tab or Settings.',
                   textAlign: TextAlign.center,
                   style: TextStyle(color: cs.onSurfaceVariant),
                 ),
               ],
               const SizedBox(height: 24),
               Text(
-                'On the other device: open Remote Control, scan a QR, or type the pairing code.',
+                'On the other device: open the Remote tab, scan this QR or enter the pairing code. Both devices should enable the remote server.',
                 textAlign: TextAlign.center,
                 style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13),
               ),

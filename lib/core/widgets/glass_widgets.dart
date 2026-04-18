@@ -106,6 +106,9 @@ class GlassPill extends StatelessWidget {
         ),
         child: Text(
           label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          textAlign: TextAlign.center,
           style: TextStyle(
             fontSize: 13,
             fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
