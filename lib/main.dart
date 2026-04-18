@@ -8,7 +8,6 @@ import 'package:audio_service/audio_service.dart';
 import 'package:audio_service_mpris/audio_service_mpris.dart';
 import 'package:audio_session/audio_session.dart';
 import 'package:dynamic_color/dynamic_color.dart';
-import 'package:flex_color_scheme/flex_color_scheme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -16,6 +15,8 @@ import 'package:media_kit/media_kit.dart';
 
 import 'core/audio/fireball_audio_handler.dart';
 import 'core/audio/media_session_bridge.dart';
+import 'core/store/providers.dart';
+import 'core/theme/app_theme.dart';
 import 'routes/router.dart';
 
 Future<void> _initAudioSession() async {
@@ -135,35 +136,28 @@ class FireballApp extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final router = ref.watch(routerProvider);
+    final settings = ref.watch(settingsProvider);
 
-    final baseLight = FlexThemeData.light(
-      scheme: FlexScheme.deepPurple,
-      useMaterial3: true,
-      useMaterial3ErrorColors: true,
-    ).copyWith(
-      tabBarTheme: const TabBarThemeData(tabAlignment: TabAlignment.center),
-    );
-
-    final baseDark = FlexThemeData.dark(
-      scheme: FlexScheme.deepPurple,
-      useMaterial3: true,
-      useMaterial3ErrorColors: true,
-      darkIsTrueBlack: true,
-    ).copyWith(
-      tabBarTheme: const TabBarThemeData(tabAlignment: TabAlignment.center),
-    );
+    final baseLight = buildFireballLightTheme(settings);
+    final baseDark = buildFireballDarkTheme(settings);
+    final harmonizeDynamic = settings.useDynamicColorWhenAvailable &&
+        settings.accentSeedColor == null;
 
     return DynamicColorBuilder(
       builder: (ColorScheme? lightDynamic, ColorScheme? darkDynamic) {
-        final lightTheme = _withDynamic(baseLight, lightDynamic, false);
-        final darkTheme = _withDynamic(baseDark, darkDynamic, true);
+        final lightTheme =
+            _withDynamic(baseLight, harmonizeDynamic ? lightDynamic : null, false);
+        final darkTheme =
+            _withDynamic(baseDark, harmonizeDynamic ? darkDynamic : null, true);
 
         return MaterialApp.router(
           title: 'Fireball',
           debugShowCheckedModeBanner: false,
           theme: lightTheme,
           darkTheme: darkTheme,
-          themeMode: ThemeMode.system,
+          themeMode: themeModeFromSettings(settings),
+          themeAnimationDuration: const Duration(milliseconds: 350),
+          themeAnimationCurve: Curves.easeOutCubic,
           routerConfig: router,
           scrollBehavior: _FireballScrollBehavior(),
         );

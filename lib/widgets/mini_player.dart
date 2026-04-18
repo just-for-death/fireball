@@ -53,8 +53,14 @@ void showMiniPlayerOverflowMenu({
 
 class MiniPlayer extends ConsumerWidget {
   /// [compact] = true renders a small sidebar strip (iPad glass sidebar).
-  const MiniPlayer({super.key, this.compact = false});
+  /// [sidebarIconOnly] = true when the iPad sidebar is collapsed to a narrow rail.
+  const MiniPlayer({
+    super.key,
+    this.compact = false,
+    this.sidebarIconOnly = false,
+  });
   final bool compact;
+  final bool sidebarIconOnly;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -62,6 +68,9 @@ class MiniPlayer extends ConsumerWidget {
     final track = player.currentTrack;
     if (track == null) return const SizedBox.shrink();
 
+    if (compact && sidebarIconOnly) {
+      return _NarrowRailMiniPlayer(player: player, track: track);
+    }
     if (compact) return _CompactMiniPlayer(player: player, track: track);
 
     final width = MediaQuery.sizeOf(context).width;
@@ -264,6 +273,96 @@ class _MiniPlayerCard extends StatelessWidget {
                   ),
                 ),
               ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ── Icon-only rail (collapsed iPad sidebar ~72px) ────────────────────────────
+class _NarrowRailMiniPlayer extends StatelessWidget {
+  const _NarrowRailMiniPlayer({required this.player, required this.track});
+  final PlayerState player;
+  final Track track;
+
+  @override
+  Widget build(BuildContext context) {
+    final ref = ProviderScope.containerOf(context);
+    final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final progress = player.duration.inMilliseconds > 0
+        ? (player.position.inMilliseconds / player.duration.inMilliseconds)
+            .clamp(0.0, 1.0)
+        : 0.0;
+
+    return Tooltip(
+      message: '${track.title} — tap for full player',
+      child: Semantics(
+        label: 'Now playing: ${track.title}',
+        button: true,
+        child: GestureDetector(
+          onTap: () => context.push('/player'),
+          onLongPress: () => showMiniPlayerOverflowMenu(
+                context: context,
+                track: track,
+              ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+              child: Container(
+                width: double.infinity,
+                decoration: BoxDecoration(
+                  color: isDark
+                      ? cs.surfaceContainer.withValues(alpha: 0.85)
+                      : cs.surfaceContainerHigh.withValues(alpha: 0.9),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: isDark
+                        ? Colors.white.withValues(alpha: 0.08)
+                        : Colors.black.withValues(alpha: 0.06),
+                    width: 0.5,
+                  ),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      child: _ArtworkTile(
+                        track: track,
+                        isPlaying: player.isPlaying,
+                        cs: cs,
+                        size: 44,
+                      ),
+                    ),
+                    IconButton(
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(
+                        minWidth: 40,
+                        minHeight: 36,
+                      ),
+                      icon: Icon(
+                        player.isPlaying
+                            ? Icons.pause_rounded
+                            : Icons.play_arrow_rounded,
+                        size: 26,
+                        color: cs.primary,
+                      ),
+                      onPressed: () =>
+                          ref.read(playerProvider.notifier).togglePlayPause(),
+                    ),
+                    LinearProgressIndicator(
+                      value: progress,
+                      minHeight: 2,
+                      backgroundColor: Colors.transparent,
+                      color: cs.primary.withValues(alpha: 0.5),
+                    ),
+                  ],
+                ),
+              ),
             ),
           ),
         ),

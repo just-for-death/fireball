@@ -124,6 +124,17 @@ class FireballSettings {
   final bool lyricsReducedMotion;
   /// Prefer lyrics in English or Hindi (Latin / Devanagari) when LRCLIB has several variants.
   final bool lyricsPreferEnglishHindi;
+  // Appearance
+  /// `system` | `light` | `dark`
+  final String themeMode;
+  /// [FlexScheme.name] key, e.g. `deepPurple`, `tealM3`.
+  final String flexScheme;
+  /// When true, harmonize with Android 12+ dynamic colors when available.
+  final bool useDynamicColorWhenAvailable;
+  /// ARGB; when set, seeds [ColorScheme.fromSeed] over the Flex scheme primaries.
+  final int? accentSeedColor;
+  /// iPad glass sidebar: narrow icon-only rail vs expanded.
+  final bool ipadSidebarCollapsed;
 
   const FireballSettings({
     this.ollamaEnabled = false,
@@ -161,6 +172,11 @@ class FireballSettings {
     this.lyricsAutoScroll = true,
     this.lyricsReducedMotion = false,
     this.lyricsPreferEnglishHindi = true,
+    this.themeMode = 'system',
+    this.flexScheme = 'deepPurple',
+    this.useDynamicColorWhenAvailable = true,
+    this.accentSeedColor,
+    this.ipadSidebarCollapsed = false,
   });
 
   factory FireballSettings.fromJson(Map<String, dynamic> j) {
@@ -226,6 +242,16 @@ class FireballSettings {
       lyricsAutoScroll: toBool(j['lyricsAutoScroll'], true),
       lyricsReducedMotion: toBool(j['lyricsReducedMotion'], false),
       lyricsPreferEnglishHindi: toBool(j['lyricsPreferEnglishHindi'], true),
+      themeMode: j['themeMode']?.toString() ?? 'system',
+      flexScheme: j['flexScheme']?.toString() ?? 'deepPurple',
+      useDynamicColorWhenAvailable:
+          toBool(j['useDynamicColorWhenAvailable'], true),
+      accentSeedColor: j['accentSeedColor'] == null
+          ? null
+          : (j['accentSeedColor'] is num
+              ? (j['accentSeedColor'] as num).toInt()
+              : int.tryParse(j['accentSeedColor']?.toString() ?? '')),
+      ipadSidebarCollapsed: toBool(j['ipadSidebarCollapsed'], false),
     );
   }
 
@@ -265,6 +291,11 @@ class FireballSettings {
         'lyricsAutoScroll': lyricsAutoScroll,
         'lyricsReducedMotion': lyricsReducedMotion,
         'lyricsPreferEnglishHindi': lyricsPreferEnglishHindi,
+        'themeMode': themeMode,
+        'flexScheme': flexScheme,
+        'useDynamicColorWhenAvailable': useDynamicColorWhenAvailable,
+        if (accentSeedColor != null) 'accentSeedColor': accentSeedColor,
+        'ipadSidebarCollapsed': ipadSidebarCollapsed,
       };
 
   FireballSettings copyWith({
@@ -305,6 +336,12 @@ class FireballSettings {
     bool? lyricsAutoScroll,
     bool? lyricsReducedMotion,
     bool? lyricsPreferEnglishHindi,
+    String? themeMode,
+    String? flexScheme,
+    bool? useDynamicColorWhenAvailable,
+    int? accentSeedColor,
+    bool clearAccentSeedColor = false,
+    bool? ipadSidebarCollapsed,
   }) =>
       FireballSettings(
         ollamaEnabled: ollamaEnabled ?? this.ollamaEnabled,
@@ -346,5 +383,12 @@ class FireballSettings {
         lyricsReducedMotion: lyricsReducedMotion ?? this.lyricsReducedMotion,
         lyricsPreferEnglishHindi:
             lyricsPreferEnglishHindi ?? this.lyricsPreferEnglishHindi,
+        themeMode: themeMode ?? this.themeMode,
+        flexScheme: flexScheme ?? this.flexScheme,
+        useDynamicColorWhenAvailable:
+            useDynamicColorWhenAvailable ?? this.useDynamicColorWhenAvailable,
+        accentSeedColor:
+            clearAccentSeedColor ? null : (accentSeedColor ?? this.accentSeedColor),
+        ipadSidebarCollapsed: ipadSidebarCollapsed ?? this.ipadSidebarCollapsed,
       );
 }

@@ -27,18 +27,23 @@ class FireballApi {
     dynamic body,
   }) async {
     final uri = Uri.parse(url);
-    final requestHeaders = {
-      'Content-Type': 'application/json',
+    final upper = method.toUpperCase();
+    // Do not send Content-Type on GET/HEAD/DELETE — some CDNs and mobile stacks
+    // mishandle it; iTunes RSS/top charts must use a plain GET.
+    final requestHeaders = <String, String>{
       'Accept': 'application/json',
       'User-Agent': 'Fireball/1.0 (https://github.com/fireball)',
       ...?headers,
     };
+    if (upper == 'POST' || upper == 'PUT') {
+      requestHeaders['Content-Type'] = 'application/json';
+    }
 
     try {
       final http.Response res;
       const timeout = Duration(seconds: 15);
 
-      switch (method.toUpperCase()) {
+      switch (upper) {
         case 'POST':
           res = await http
               .post(uri, headers: requestHeaders,
@@ -105,6 +110,20 @@ class FireballApi {
     return _get(
       '$_itunesBase/$cc/rss/topsongs/limit=$limit/json',
     );
+  }
+
+  /// Apple RSS JSON uses `feed.entry` as a [List] for multiple items but a
+  /// single [Map] when there is exactly one entry (e.g. limit=1). Normalize
+  /// so callers always iterate a list.
+  static List<dynamic> appleRssFeedEntries(dynamic data) {
+    if (data is! Map) return [];
+    final feed = data['feed'];
+    if (feed is! Map) return [];
+    final entry = feed['entry'];
+    if (entry == null) return [];
+    if (entry is List) return entry;
+    if (entry is Map) return [entry];
+    return [];
   }
 
   /// Album art from iTunes Search when Invidious (or other sources) have none.
@@ -229,68 +248,101 @@ class FireballApi {
         as Map<String, dynamic>;
   }
 
-  /// Logs into an Invidious instance by form-posting to /login (the web UI
-  /// endpoint), then extracting the SID from the Set-Cookie response header.
-  /// This matches how elysium-server handles login and works on instances that
-  /// have the JSON API /api/v1/auth/signin endpoint disabled.
+  /// Extracts Invidious session id from Set-Cookie. SID values are Base64url and
+  /// often end with `=` — regex must allow `=` inside the value (do not use
+  /// `[^;,\s]+`, which truncates at the first `=`).
+  static String _sidFromSetCookieLines(Iterable<String> lines) {
+    for (final line in lines) {
+      final m = RegExp(r'SID=([^;]+)', caseSensitive: false).firstMatch(line);
+      if (m != null) {
+        final v = m.group(1)!.trim();
+        if (v.isNotEmpty) return v;
+      }
+    }
+    return '';
+  }
+
+  /// Logs into an Invidious instance by form-posting to `/login` (web UI), then
+  /// reading the `SID` cookie from the redirect response. Matches upstream
+  /// [invidious login.cr](https://github.com/iv-org/invidious): body uses
+  /// `email` + `password`; query defaults to `type=invidious`.
   Future<Map<String, dynamic>> invidiousLogin(
     String instanceUrl,
     String username,
     String password,
   ) async {
     final base = instanceUrl.replaceAll(RegExp(r'/+$'), '');
-    final uri = Uri.parse('$base/login');
+    final loginUri = Uri.parse('$base/login?type=invidious');
+    final originHeader = Uri.parse(base).origin;
 
-    // Use dart:io HttpClient so we can disable redirect-following
-    // and read the Set-Cookie from the 302 response directly.
+    // Use dart:io HttpClient so we can disable redirect-following and read the
+    // Set-Cookie on the 302 from `env.redirect referer` after successful login.
     final httpClient = HttpClient()
       ..connectionTimeout = const Duration(seconds: 15)
       ..autoUncompress = true;
 
-    try {
-      final body =
-          'email=${Uri.encodeComponent(username)}'
-          '&password=${Uri.encodeComponent(password)}'
-          '&action=signin';
-
-      final req = await httpClient.postUrl(uri);
-      req.followRedirects = false; // read SID from the 302 Set-Cookie directly
+    Future<({String sid, int status})> tryLogin(String body) async {
+      final req = await httpClient.postUrl(loginUri);
+      req.followRedirects = false;
       req.headers.set(HttpHeaders.contentTypeHeader,
           'application/x-www-form-urlencoded');
-      req.headers.set(HttpHeaders.userAgentHeader, 'Fireball/1.0');
+      req.headers.set(
+          HttpHeaders.userAgentHeader,
+          'Mozilla/5.0 (compatible; Fireball/1.0; +https://github.com/fireball)');
+      req.headers.set(HttpHeaders.refererHeader, '$base/login');
+      req.headers.set('origin', originHeader);
+      req.headers.set(HttpHeaders.acceptHeader, '*/*');
       req.write(body);
 
       final resp = await req.close().timeout(const Duration(seconds: 15));
       await resp.drain<void>();
 
-      // Try structured cookie objects first
-      String sid = '';
+      var sid = '';
       for (final cookie in resp.cookies) {
-        if (cookie.name.toUpperCase() == 'SID') {
+        if (cookie.name.toUpperCase() == 'SID' && cookie.value.isNotEmpty) {
           sid = cookie.value;
           break;
         }
       }
 
-      // Fallback: scan raw Set-Cookie header strings
       if (sid.isEmpty) {
-        final rawHeaders = resp.headers[HttpHeaders.setCookieHeader] ?? [];
-        final joined = rawHeaders.join('; ');
-        final m =
-            RegExp(r'SID=([^;,\s]+)', caseSensitive: false).firstMatch(joined);
-        if (m != null) sid = m.group(1)!;
+        final raw = resp.headers[HttpHeaders.setCookieHeader] ?? const [];
+        sid = _sidFromSetCookieLines(raw);
+        if (sid.isEmpty && raw.isNotEmpty) {
+          sid = _sidFromSetCookieLines([raw.join(', ')]);
+        }
       }
 
-      if (sid.isEmpty) {
-        final code = resp.statusCode;
+      return (sid: sid, status: resp.statusCode);
+    }
+
+    try {
+      // Upstream Invidious reads `email` and `password` (see login.cr).
+      var body =
+          'email=${Uri.encodeComponent(username)}&password=${Uri.encodeComponent(password)}';
+      var result = await tryLogin(body);
+
+      // Older form UIs send `action=signin` — retry if the minimal body failed.
+      if (result.sid.isEmpty) {
+        body =
+            '$body&action=${Uri.encodeComponent('signin')}';
+        result = await tryLogin(body);
+      }
+
+      if (result.sid.isEmpty) {
+        final code = result.status;
         if (code == 401 || code == 403) {
           throw Exception('Wrong credentials.');
         }
         throw Exception(
-            'Login failed — wrong credentials or login is disabled on this instance.');
+            'Login failed — wrong credentials, captcha required, or login disabled on this instance.');
       }
 
-      return {'sid': sid, 'username': username, 'instanceUrl': base};
+      return {'sid': result.sid, 'username': username, 'instanceUrl': base};
+    } on Exception {
+      rethrow;
+    } catch (e) {
+      throw Exception('Could not reach Invidious: $e');
     } finally {
       httpClient.close(force: true);
     }
