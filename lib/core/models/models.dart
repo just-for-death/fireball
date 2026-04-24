@@ -214,6 +214,8 @@ class FireballSettings {
   final bool sponsorBlock;
   final List<String> sponsorBlockCategories;
   final bool analytics;
+  // Downloads
+  final String? customDownloadPath;
   // ListenBrainz
   final bool listenBrainzEnabled;
   final bool listenBrainzPlayingNow;
@@ -286,6 +288,7 @@ class FireballSettings {
     this.sponsorBlock = false,
     this.sponsorBlockCategories = const [],
     this.analytics = false,
+    this.customDownloadPath,
     this.listenBrainzEnabled = false,
     this.listenBrainzPlayingNow = false,
     this.listenBrainzScrobblePercent = 25,
@@ -355,6 +358,7 @@ class FireballSettings {
       sponsorBlock: toBool(j['sponsorBlock'], false),
       sponsorBlockCategories: toStringList(j['sponsorBlockCategories']),
       analytics: toBool(j['analytics'], false),
+      customDownloadPath: j['customDownloadPath']?.toString(),
       listenBrainzEnabled: toBool(j['listenBrainzEnabled'], false),
       listenBrainzPlayingNow: toBool(j['listenBrainzPlayingNow'], false),
       listenBrainzScrobblePercent: j['listenBrainzScrobblePercent'] is num
@@ -414,6 +418,7 @@ class FireballSettings {
         'sponsorBlock': sponsorBlock,
         'sponsorBlockCategories': sponsorBlockCategories,
         'analytics': analytics,
+        if (customDownloadPath != null) 'customDownloadPath': customDownloadPath,
         'listenBrainzEnabled': listenBrainzEnabled,
         'listenBrainzPlayingNow': listenBrainzPlayingNow,
         'listenBrainzScrobblePercent': listenBrainzScrobblePercent,
@@ -463,6 +468,8 @@ class FireballSettings {
     bool? sponsorBlock,
     List<String>? sponsorBlockCategories,
     bool? analytics,
+    String? customDownloadPath,
+    bool clearCustomDownloadPath = false,
     bool? listenBrainzEnabled,
     bool? listenBrainzPlayingNow,
     int? listenBrainzScrobblePercent,
@@ -513,6 +520,9 @@ class FireballSettings {
         sponsorBlockCategories:
             sponsorBlockCategories ?? this.sponsorBlockCategories,
         analytics: analytics ?? this.analytics,
+        customDownloadPath: clearCustomDownloadPath
+            ? null
+            : (customDownloadPath ?? this.customDownloadPath),
         listenBrainzEnabled: listenBrainzEnabled ?? this.listenBrainzEnabled,
         listenBrainzPlayingNow:
             listenBrainzPlayingNow ?? this.listenBrainzPlayingNow,
