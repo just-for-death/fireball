@@ -19,6 +19,7 @@ import '../../core/widgets/empty_state.dart';
 import '../../core/widgets/fireball_logo.dart';
 import '../../core/widgets/track_options_sheet.dart';
 import '../../core/store/providers.dart';
+import '../../core/audio/download_manager.dart';
 
 enum _PlayerTab { cover, lyrics, queue }
 
@@ -135,6 +136,7 @@ class PlayerScreen extends HookConsumerWidget {
     final cs = Theme.of(context).colorScheme;
 
     final track = player.currentTrack;
+    final downloadState = ref.watch(downloadManagerProvider);
     final tab = useState(_PlayerTab.cover);
     final lyrics = useState<List<({double time, String text})>>([]);
     final lyricsPlain = useState<List<String>>([]);
@@ -324,6 +326,7 @@ class PlayerScreen extends HookConsumerWidget {
                         seekBarKey,
                         aiLoading,
                         cs,
+                        downloadState,
                       );
                     }
                     return _buildPhoneLayout(
@@ -348,6 +351,7 @@ class PlayerScreen extends HookConsumerWidget {
                       seekBarKey,
                       aiLoading,
                       cs,
+                      downloadState,
                     );
                   },
                 ),
@@ -369,6 +373,7 @@ class PlayerScreen extends HookConsumerWidget {
     FireballSettings settings,
     FireballApi api,
     ColorScheme cs,
+    DownloadState downloadState,
   ) {
     String? sleepHint;
     final end = player.sleepTimerEnd;
@@ -384,7 +389,13 @@ class PlayerScreen extends HookConsumerWidget {
     }
 
     final library = ref.watch(localStoreProvider);
-    final isFollowingArtist = track != null && library.artists.any((a) => a.name.toLowerCase() == track.artist.toLowerCase());
+    final isDownloaded = track != null &&
+        downloadState.downloadedIds.contains(track.effectiveId);
+    final isDownloading = track != null &&
+        downloadState.activeDownloads.contains(track.effectiveId);
+    final isFollowingArtist = track != null &&
+        library.artists
+            .any((a) => a.name.toLowerCase() == track.artist.toLowerCase());
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -450,23 +461,32 @@ class PlayerScreen extends HookConsumerWidget {
                 case 'follow':
                   if (track != null) {
                     if (isFollowingArtist) {
-                      final a = library.artists.firstWhere((a) => a.name.toLowerCase() == track.artist.toLowerCase());
-                      await ref.read(localStoreProvider.notifier).deleteArtist(a.artistId);
+                      final a = library.artists.firstWhere((a) =>
+                          a.name.toLowerCase() == track.artist.toLowerCase());
+                      await ref
+                          .read(localStoreProvider.notifier)
+                          .deleteArtist(a.artistId);
                     } else {
                       if (context.mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('Following ${track.artist}...'), duration: const Duration(seconds: 1)),
+                          SnackBar(
+                              content: Text('Following ${track.artist}...'),
+                              duration: const Duration(seconds: 1)),
                         );
                       }
                       final data = await api.itunesFindArtist(track.artist);
                       if (data != null) {
                         final newArtist = Artist(
-                          artistId: data['artistId']?.toString() ?? track.artist,
+                          artistId:
+                              data['artistId']?.toString() ?? track.artist,
                           name: data['artistName']?.toString() ?? track.artist,
                         );
-                        await ref.read(localStoreProvider.notifier).addArtist(newArtist);
+                        await ref
+                            .read(localStoreProvider.notifier)
+                            .addArtist(newArtist);
                       } else {
-                        await ref.read(localStoreProvider.notifier).addArtist(Artist(artistId: track.artist, name: track.artist));
+                        await ref.read(localStoreProvider.notifier).addArtist(
+                            Artist(artistId: track.artist, name: track.artist));
                       }
                     }
                   }
@@ -474,6 +494,53 @@ class PlayerScreen extends HookConsumerWidget {
                   if (track != null) {
                     await Share.share('${track.title} — ${track.artist}',
                         subject: track.title);
+                  }
+                case 'download':
+                  if (track != null) {
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                            content: Text('Downloading...'),
+                            duration: const Duration(seconds: 1)),
+                      );
+                    }
+                    try {
+                      await ref
+                          .read(downloadManagerProvider.notifier)
+                          .downloadTrack(
+                            track,
+                            api,
+                            settings,
+                          );
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                              content: Text('Downloaded successfully'),
+                              duration: const Duration(seconds: 2)),
+                        );
+                      }
+                    } catch (e) {
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                              content: Text('Download failed'),
+                              duration: const Duration(seconds: 2)),
+                        );
+                      }
+                    }
+                  }
+                case 'removeDownload':
+                  if (track != null) {
+                    await ref
+                        .read(downloadManagerProvider.notifier)
+                        .removeDownload(track.effectiveId);
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                            content: Text('Removed from downloads'),
+                            duration: const Duration(seconds: 1)),
+                      );
+                    }
                   }
                 case 'open':
                   final u = _invidiousWatchUrl(settings, track);
@@ -522,11 +589,51 @@ class PlayerScreen extends HookConsumerWidget {
                         color: Colors.white70,
                       ),
                       const SizedBox(width: 8),
-                      Text(isFollowingArtist ? 'Unfollow Artist' : 'Follow Artist'),
+                      Text(isFollowingArtist
+                          ? 'Unfollow Artist'
+                          : 'Follow Artist'),
                     ],
                   ),
                 ),
               const PopupMenuItem(value: 'share', child: Text('Share track')),
+              if (track != null && isDownloading)
+                PopupMenuItem(
+                  enabled: false,
+                  child: Row(
+                    children: [
+                      Icon(Icons.downloading_rounded,
+                          size: 20, color: cs.primary),
+                      const SizedBox(width: 8),
+                      Text('Downloading...',
+                          style: TextStyle(color: cs.primary)),
+                    ],
+                  ),
+                )
+              else if (track != null && isDownloaded)
+                PopupMenuItem(
+                  value: 'removeDownload',
+                  child: Row(
+                    children: [
+                      const Icon(Icons.offline_pin_rounded,
+                          size: 20, color: Colors.redAccent),
+                      const SizedBox(width: 8),
+                      const Text('Remove Download',
+                          style: TextStyle(color: Colors.redAccent)),
+                    ],
+                  ),
+                )
+              else if (track != null)
+                PopupMenuItem(
+                  value: 'download',
+                  child: Row(
+                    children: [
+                      const Icon(Icons.download_rounded,
+                          size: 20, color: Colors.white70),
+                      const SizedBox(width: 8),
+                      const Text('Download'),
+                    ],
+                  ),
+                ),
               if (_invidiousWatchUrl(settings, track) != null)
                 const PopupMenuItem(
                     value: 'open', child: Text('Open in Invidious')),
@@ -646,8 +753,7 @@ class PlayerScreen extends HookConsumerWidget {
                       if (track != null) ...[
                         const SizedBox(width: 4),
                         Icon(Icons.chevron_right_rounded,
-                            size: 16,
-                            color: cs.primary.withValues(alpha: 0.6)),
+                            size: 16, color: cs.primary.withValues(alpha: 0.6)),
                       ],
                     ],
                   ),
@@ -851,10 +957,12 @@ class PlayerScreen extends HookConsumerWidget {
     GlobalKey seekBarKey,
     ValueNotifier<bool> aiLoading,
     ColorScheme cs,
+    DownloadState downloadState,
   ) {
     return Column(
       children: [
-        _buildHeader(context, ref, track, player, aiLoading, settings, api, cs),
+        _buildHeader(context, ref, track, player, aiLoading, settings, api, cs,
+            downloadState),
         _buildTabPills(tab),
         const SizedBox(height: 8),
         Expanded(
@@ -908,6 +1016,7 @@ class PlayerScreen extends HookConsumerWidget {
     GlobalKey seekBarKey,
     ValueNotifier<bool> aiLoading,
     ColorScheme cs,
+    DownloadState downloadState,
   ) {
     return Row(
       children: [
@@ -920,8 +1029,8 @@ class PlayerScreen extends HookConsumerWidget {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 // Back + AI header for left pane on tablet
-                _buildHeader(
-                    context, ref, track, player, aiLoading, settings, api, cs),
+                _buildHeader(context, ref, track, player, aiLoading, settings,
+                    api, cs, downloadState),
                 const SizedBox(height: 16),
                 // Rotating album art
                 Expanded(
@@ -1002,7 +1111,8 @@ class PlayerScreen extends HookConsumerWidget {
           flex: 6,
           child: Column(
             children: [
-              _buildTabPills(tab, tabs: const [_PlayerTab.lyrics, _PlayerTab.queue]),
+              _buildTabPills(tab,
+                  tabs: const [_PlayerTab.lyrics, _PlayerTab.queue]),
               const SizedBox(height: 8),
               Expanded(
                 child: _buildTabContent(
