@@ -16,7 +16,7 @@ import '../../core/models/sponsor_segment.dart';
 import '../../core/store/providers.dart';
 import '../../core/ui/shell_content_insets.dart';
 import '../../core/theme/app_theme.dart';
-import '../../core/widgets/empty_state.dart';
+
 import 'package:file_picker/file_picker.dart';
 import '../../core/widgets/fireball_logo.dart';
 import '../../core/widgets/glass_widgets.dart';
@@ -722,8 +722,9 @@ class SettingsScreen extends HookConsumerWidget {
                                                       fullscreenDialog: true,
                                                       builder: (_) =>
                                                           const RemoteScanScreen()));
-                                          if (ep == null || !context.mounted)
+                                          if (ep == null || !context.mounted) {
                                             return;
+                                          }
                                           await runPairing(() =>
                                               completeBidirectionalPairing(
                                                   ref, ep));

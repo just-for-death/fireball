@@ -469,26 +469,53 @@ class PlayerScreen extends HookConsumerWidget {
                           .read(localStoreProvider.notifier)
                           .deleteArtist(a.artistId);
                     } else {
+                      // Resolve real artist id + best artwork before saving
+                      String finalId = track.artist;
+                      String finalName = track.artist;
+                      // Use track artwork as initial candidate
+                      String? artwork = track.artwork;
+
+                      try {
+                        final data = await api.itunesFindArtist(track.artist);
+                        if (data != null) {
+                          finalId =
+                              data['artistId']?.toString() ?? track.artist;
+                          finalName =
+                              data['artistName']?.toString() ?? track.artist;
+
+                          // Try to upgrade to a better artist/album image
+                          final id = data['artistId'] as int?;
+                          if (id != null) {
+                            final albumResults = await api
+                                .itunesArtistAlbums(id, limit: 1);
+                            if (albumResults.isNotEmpty) {
+                              final url = albumResults.first[
+                                  'artworkUrl100'] as String?;
+                              if (url != null && url.isNotEmpty) {
+                                artwork = url.replaceAll(
+                                    '100x100bb', '600x600bb');
+                              }
+                            }
+                          }
+                        }
+                      } catch (_) {}
+
                       if (context.mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                              content: Text('Following ${track.artist}...'),
-                              duration: const Duration(seconds: 1)),
-                        );
-                      }
-                      final data = await api.itunesFindArtist(track.artist);
-                      if (data != null) {
-                        final newArtist = Artist(
-                          artistId:
-                              data['artistId']?.toString() ?? track.artist,
-                          name: data['artistName']?.toString() ?? track.artist,
-                        );
                         await ref
                             .read(localStoreProvider.notifier)
-                            .addArtist(newArtist);
-                      } else {
-                        await ref.read(localStoreProvider.notifier).addArtist(
-                            Artist(artistId: track.artist, name: track.artist));
+                            .addArtist(Artist(
+                              artistId: finalId,
+                              name: finalName,
+                              artwork: artwork,
+                            ));
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('Following $finalName'),
+                              duration: const Duration(seconds: 1),
+                            ),
+                          );
+                        }
                       }
                     }
                   }
