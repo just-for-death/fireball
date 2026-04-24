@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:developer' as dev;
 import 'dart:io';
 
@@ -14,26 +15,32 @@ import '../store/providers.dart';
 
 final downloadManagerProvider =
     StateNotifierProvider<DownloadManager, DownloadState>((ref) {
-  final customPath = ref.watch(settingsProvider.select((s) => s.customDownloadPath));
+  final customPath =
+      ref.watch(settingsProvider.select((s) => s.customDownloadPath));
   return DownloadManager(customPath);
 });
 
 class DownloadState {
   final Set<String> downloadedIds;
   final Set<String> activeDownloads;
+  /// Full track metadata for every completed download.
+  final Map<String, Track> downloadedTracks;
 
   const DownloadState({
     this.downloadedIds = const {},
     this.activeDownloads = const {},
+    this.downloadedTracks = const {},
   });
 
   DownloadState copyWith({
     Set<String>? downloadedIds,
     Set<String>? activeDownloads,
+    Map<String, Track>? downloadedTracks,
   }) {
     return DownloadState(
       downloadedIds: downloadedIds ?? this.downloadedIds,
       activeDownloads: activeDownloads ?? this.activeDownloads,
+      downloadedTracks: downloadedTracks ?? this.downloadedTracks,
     );
   }
 }
@@ -61,13 +68,26 @@ class DownloadManager extends StateNotifier<DownloadState> {
 
       final files = _dir!.listSync();
       final downloaded = <String>{};
+      final tracks = <String, Track>{};
+
       for (final f in files) {
         if (f is File && f.path.endsWith('.media')) {
           final id = f.uri.pathSegments.last.replaceAll('.media', '');
           downloaded.add(id);
+          // Load sidecar metadata if present
+          final sidecar = File('${_dir!.path}/$id.json');
+          if (await sidecar.exists()) {
+            try {
+              final raw = jsonDecode(await sidecar.readAsString());
+              tracks[id] = Track.fromJson(raw as Map<String, dynamic>);
+            } catch (_) {}
+          }
         }
       }
-      state = state.copyWith(downloadedIds: downloaded);
+      state = state.copyWith(
+        downloadedIds: downloaded,
+        downloadedTracks: tracks,
+      );
     } catch (e) {
       dev.log('DownloadManager init error: $e');
     }
@@ -90,11 +110,16 @@ class DownloadManager extends StateNotifier<DownloadState> {
     if (_dir == null) return;
     try {
       final file = File('${_dir!.path}/$trackId.media');
-      if (await file.exists()) {
-        await file.delete();
-      }
+      if (await file.exists()) await file.delete();
+
+      final sidecar = File('${_dir!.path}/$trackId.json');
+      if (await sidecar.exists()) await sidecar.delete();
+
+      final newTracks = Map<String, Track>.from(state.downloadedTracks)
+        ..remove(trackId);
       state = state.copyWith(
         downloadedIds: {...state.downloadedIds}..remove(trackId),
+        downloadedTracks: newTracks,
       );
     } catch (e) {
       dev.log('DownloadManager remove error: $e');
@@ -205,8 +230,16 @@ class DownloadManager extends StateNotifier<DownloadState> {
       final file = File('${_dir!.path}/${track.effectiveId}.media');
       await file.writeAsBytes(response.bodyBytes);
 
+      // Write metadata sidecar so we can reconstruct track info on next launch
+      final sidecar = File('${_dir!.path}/${track.effectiveId}.json');
+      await sidecar.writeAsString(jsonEncode(track.toJson()));
+
+      final newTracks = Map<String, Track>.from(state.downloadedTracks)
+        ..[track.effectiveId] = track;
+
       state = state.copyWith(
         downloadedIds: {...state.downloadedIds, track.effectiveId},
+        downloadedTracks: newTracks,
       );
     } catch (e) {
       dev.log('Download error for ${track.effectiveId}: $e');

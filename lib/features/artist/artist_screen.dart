@@ -293,26 +293,66 @@ class _ArtistHero extends ConsumerWidget {
                   OutlinedButton.icon(
                     onPressed: () async {
                       if (isFollowing) {
-                        final a = library.artists.firstWhere((a) => a.name.toLowerCase() == artistName.toLowerCase());
-                        await ref.read(localStoreProvider.notifier).deleteArtist(a.artistId);
+                        final a = library.artists.firstWhere((a) =>
+                            a.name.toLowerCase() == artistName.toLowerCase());
+                        await ref
+                            .read(localStoreProvider.notifier)
+                            .deleteArtist(a.artistId);
                       } else {
-                        // Optimistic follow with basic id
-                        await ref.read(localStoreProvider.notifier).addArtist(Artist(artistId: artistName, name: artistName));
-                        if (context.mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text('Following $artistName...'), duration: const Duration(seconds: 1)),
-                          );
+                        // Resolve real artist data + artwork before saving —
+                        // avoids the thumbnail-less optimistic save.
+                        String finalId = artistName;
+                        String finalName = artistName;
+                        // Prefer already-loaded artwork (computed at build time)
+                        String? artwork = artworkUrl;
+
+                        try {
+                          final data = await const FireballApi()
+                              .itunesFindArtist(artistName);
+                          if (data != null) {
+                            finalId =
+                                data['artistId']?.toString() ?? artistName;
+                            finalName =
+                                data['artistName']?.toString() ?? artistName;
+
+                            // If artwork still null, fetch from first album
+                            if (artwork == null) {
+                              final id = data['artistId'] as int?;
+                              if (id != null) {
+                                final albumResults =
+                                    await const FireballApi()
+                                        .itunesArtistAlbums(id, limit: 1);
+                                if (albumResults.isNotEmpty) {
+                                  final url = albumResults.first[
+                                      'artworkUrl100'] as String?;
+                                  if (url != null && url.isNotEmpty) {
+                                    artwork = url.replaceAll(
+                                        '100x100bb', '600x600bb');
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        } catch (_) {
+                          // Network failure – save with whatever is available
                         }
-                        // Try to get real artist id in background
-                        final data = await const FireballApi().itunesFindArtist(artistName);
-                        if (data != null && context.mounted) {
-                          // Replace with real id
-                          await ref.read(localStoreProvider.notifier).deleteArtist(artistName);
-                          await ref.read(localStoreProvider.notifier).addArtist(Artist(
-                            artistId: data['artistId']?.toString() ?? artistName,
-                            name: data['artistName']?.toString() ?? artistName,
-                            artwork: artworkUrl,
-                          ));
+
+                        if (context.mounted) {
+                          await ref
+                              .read(localStoreProvider.notifier)
+                              .addArtist(Artist(
+                                artistId: finalId,
+                                name: finalName,
+                                artwork: artwork,
+                              ));
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('Following $finalName'),
+                                duration: const Duration(seconds: 1),
+                              ),
+                            );
+                          }
                         }
                       }
                     },
