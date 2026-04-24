@@ -175,7 +175,7 @@ class _AndroidShell extends ConsumerWidget {
           shell,
           _shellMiniPlayerOverlay(
             hideMini: hideMini,
-            bottom: _miniPlayerBottomOffset(context),
+            bottom: 12.0, // Floating just above the NavigationBar
           ),
         ],
       ),
