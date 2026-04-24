@@ -80,5 +80,9 @@
 		</dict>
 		<key>NSCameraUsageDescription</key>
 		<string>Fireball uses the camera to scan QR codes for remote control pairing.</string>
+		<key>UIFileSharingEnabled</key>
+		<true/>
+		<key>LSSupportsOpeningDocumentsInPlace</key>
+		<true/>
 	</dict>
 </plist>

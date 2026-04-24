@@ -16,6 +16,8 @@ import '../../core/models/sponsor_segment.dart';
 import '../../core/store/providers.dart';
 import '../../core/ui/shell_content_insets.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/widgets/empty_state.dart';
+import 'package:file_picker/file_picker.dart';
 import '../../core/widgets/fireball_logo.dart';
 import '../../core/widgets/glass_widgets.dart';
 import '../../sync/gdrive_sync.dart';
@@ -1196,6 +1198,64 @@ class SettingsScreen extends HookConsumerWidget {
                             ),
                           ],
                         ),
+                    ),
+
+                  const SizedBox(height: 16),
+
+                  // ── STORAGE & DOWNLOADS ──────────────────────────────────
+                  if (showSection('storage downloads location save custom path'))
+                    _SectionCard(
+                      title: 'STORAGE & DOWNLOADS',
+                      icon: Icons.folder_rounded,
+                      isDark: isDark,
+                      cs: cs,
+                      children: [
+                        const Text(
+                          'Download Location',
+                          style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600),
+                        ),
+                        const SizedBox(height: 4),
+                        if (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS)
+                          Text(
+                            'iOS restrictions prevent custom download directories. Your tracks are saved in the app Documents folder and are accessible via the native iOS Files app.',
+                            style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 13),
+                          )
+                        else ...[
+                          Text(
+                            settings.customDownloadPath?.isNotEmpty == true
+                                ? settings.customDownloadPath!
+                                : 'Default App Storage',
+                            style: TextStyle(color: Colors.white.withValues(alpha: 0.7), fontSize: 13),
+                          ),
+                          const SizedBox(height: 12),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: OutlinedButton.icon(
+                                  onPressed: () async {
+                                    final path = await FilePicker.platform.getDirectoryPath();
+                                    if (path != null) {
+                                      await saveSettings({'customDownloadPath': path});
+                                    }
+                                  },
+                                  icon: const Icon(Icons.folder_open_rounded, size: 18),
+                                  label: const Text('Change Location'),
+                                ),
+                              ),
+                              if (settings.customDownloadPath?.isNotEmpty == true) ...[
+                                const SizedBox(width: 8),
+                                IconButton(
+                                  tooltip: 'Reset to default',
+                                  icon: const Icon(Icons.restore_rounded, color: Colors.white70),
+                                  onPressed: () => saveSettings({'customDownloadPath': null}),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ],
                       ],
                     ),
 
