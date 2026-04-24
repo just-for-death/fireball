@@ -13,7 +13,7 @@ import '../../core/widgets/glass_widgets.dart';
 import '../../core/widgets/track_options_sheet.dart';
 import '../../core/audio/download_manager.dart';
 
-enum _LibTab { favorites, playlists, artists, albums }
+enum _LibTab { favorites, playlists, artists, albums, downloads }
 
 class LibraryScreen extends HookConsumerWidget {
   const LibraryScreen({super.key});
@@ -248,6 +248,8 @@ class LibraryScreen extends HookConsumerWidget {
         return '👤 Artists';
       case _LibTab.albums:
         return '💿 Albums';
+      case _LibTab.downloads:
+        return '💾 Downloads';
     }
   }
 
@@ -261,6 +263,8 @@ class LibraryScreen extends HookConsumerWidget {
         return 'Artists';
       case _LibTab.albums:
         return 'Albums';
+      case _LibTab.downloads:
+        return 'Downloads';
     }
   }
 
@@ -274,6 +278,8 @@ class LibraryScreen extends HookConsumerWidget {
         return Icons.person_rounded;
       case _LibTab.albums:
         return Icons.album_rounded;
+      case _LibTab.downloads:
+        return Icons.download_done_rounded;
     }
   }
 
@@ -309,6 +315,46 @@ class LibraryScreen extends HookConsumerWidget {
                   .read(playerProvider.notifier)
                   .removeFavorite(track.effectiveId);
             },
+          ),
+          onLongPress: (track) => showTrackOptions(context, ref, track),
+        );
+
+      case _LibTab.downloads:
+        final dlState = ref.watch(downloadManagerProvider);
+        final dlIds = dlState.downloadedIds;
+        
+        final Map<String, Track> allTracks = {};
+        for (var t in library.favorites) {
+          if (dlIds.contains(t.effectiveId)) allTracks[t.effectiveId] = t;
+        }
+        for (var pl in library.playlists) {
+          for (var t in pl.videos) {
+            if (dlIds.contains(t.effectiveId)) allTracks[t.effectiveId] = t;
+          }
+        }
+        for (var al in library.albums) {
+          if (al.tracks != null) {
+            for (var t in al.tracks!) {
+              if (dlIds.contains(t.effectiveId)) allTracks[t.effectiveId] = t;
+            }
+          }
+        }
+        
+        final dlList = allTracks.values.toList();
+        
+        return _TrackList(
+          tracks: dlList,
+          cs: cs,
+          isDark: isDark,
+          emptyMessage: 'No downloaded music yet.\nDownload tracks for offline playback.',
+          emptyIcon: Icons.download_rounded,
+          onTap: (index) {
+            ref.read(playerProvider.notifier).setQueue(dlList);
+            ref.read(playerProvider.notifier).playIndex(index);
+          },
+          trailing: (track) => IconButton(
+            icon: Icon(Icons.more_vert_rounded, color: Colors.white.withValues(alpha: 0.5)),
+            onPressed: () => showTrackOptions(context, ref, track),
           ),
           onLongPress: (track) => showTrackOptions(context, ref, track),
         );
