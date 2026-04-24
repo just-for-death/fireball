@@ -10,9 +10,12 @@ import '../api/fireball_api.dart';
 import '../models/models.dart';
 import '../models/track.dart';
 
+import '../store/providers.dart';
+
 final downloadManagerProvider =
     StateNotifierProvider<DownloadManager, DownloadState>((ref) {
-  return DownloadManager();
+  final customPath = ref.watch(settingsProvider.select((s) => s.customDownloadPath));
+  return DownloadManager(customPath);
 });
 
 class DownloadState {
@@ -36,7 +39,9 @@ class DownloadState {
 }
 
 class DownloadManager extends StateNotifier<DownloadState> {
-  DownloadManager() : super(const DownloadState()) {
+  final String? customPath;
+
+  DownloadManager(this.customPath) : super(const DownloadState()) {
     init();
   }
 
@@ -44,8 +49,12 @@ class DownloadManager extends StateNotifier<DownloadState> {
 
   Future<void> init() async {
     try {
-      final appDir = await getApplicationSupportDirectory();
-      _dir = Directory('${appDir.path}/downloads');
+      if (customPath != null && customPath!.isNotEmpty) {
+        _dir = Directory(customPath!);
+      } else {
+        final appDir = await getApplicationSupportDirectory();
+        _dir = Directory('${appDir.path}/downloads');
+      }
       if (!await _dir!.exists()) {
         await _dir!.create(recursive: true);
       }
