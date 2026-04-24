@@ -6,6 +6,7 @@ import '../api/fireball_api.dart';
 import '../models/models.dart';
 import '../models/track.dart';
 import '../store/providers.dart';
+import '../audio/download_manager.dart';
 
 /// Shows the track context-action bottom sheet.
 ///
@@ -35,8 +36,11 @@ class _TrackOptionsSheet extends ConsumerWidget {
     final cs = Theme.of(context).colorScheme;
     final player = watchRef.watch(playerProvider);
     final library = watchRef.watch(localStoreProvider);
+    final downloadState = watchRef.watch(downloadManagerProvider);
     final isFav = player.isFavorite(track.effectiveId);
     final isFollowingArtist = library.artists.any((a) => a.name.toLowerCase() == track.artist.toLowerCase());
+    final isDownloaded = downloadState.downloadedIds.contains(track.effectiveId);
+    final isDownloading = downloadState.activeDownloads.contains(track.effectiveId);
 
     return SafeArea(
       child: Container(
@@ -230,6 +234,62 @@ class _TrackOptionsSheet extends ConsumerWidget {
                 );
               },
             ),
+            if (isDownloading)
+              _ActionTile(
+                icon: Icons.downloading_rounded,
+                label: 'Downloading...',
+                cs: cs,
+                onTap: () {},
+                iconColor: cs.primary,
+              )
+            else if (isDownloaded)
+              _ActionTile(
+                icon: Icons.offline_pin_rounded,
+                label: 'Remove Download',
+                cs: cs,
+                onTap: () async {
+                  Navigator.pop(context);
+                  await watchRef.read(downloadManagerProvider.notifier).removeDownload(track.effectiveId);
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Removed from downloads'), duration: const Duration(seconds: 1)),
+                    );
+                  }
+                },
+                iconColor: Colors.redAccent,
+              )
+            else
+              _ActionTile(
+                icon: Icons.download_rounded,
+                label: 'Download',
+                cs: cs,
+                onTap: () async {
+                  Navigator.pop(context);
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Downloading...'), duration: const Duration(seconds: 1)),
+                    );
+                  }
+                  try {
+                    await watchRef.read(downloadManagerProvider.notifier).downloadTrack(
+                          track,
+                          const FireballApi(),
+                          library.settings,
+                        );
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('Downloaded successfully'), duration: const Duration(seconds: 2)),
+                      );
+                    }
+                  } catch (e) {
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('Download failed'), duration: const Duration(seconds: 2)),
+                      );
+                    }
+                  }
+                },
+              ),
 
             const SizedBox(height: 8),
           ],

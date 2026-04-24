@@ -11,6 +11,7 @@ import '../../core/ui/shell_content_insets.dart';
 import '../../core/widgets/empty_state.dart';
 import '../../core/widgets/glass_widgets.dart';
 import '../../core/widgets/track_options_sheet.dart';
+import '../../core/audio/download_manager.dart';
 
 enum _LibTab { favorites, playlists, artists, albums }
 
@@ -711,7 +712,7 @@ class LibraryScreen extends HookConsumerWidget {
   }
 }
 
-class _TrackList extends StatelessWidget {
+class _TrackList extends ConsumerWidget {
   const _TrackList({
     required this.tracks,
     required this.cs,
@@ -732,7 +733,9 @@ class _TrackList extends StatelessWidget {
   final void Function(Track)? onLongPress;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final downloadedIds = ref.watch(downloadManagerProvider).downloadedIds;
+    
     if (tracks.isEmpty) {
       final parts = emptyMessage.split('\n');
       return FireballEmptyState(
@@ -762,15 +765,27 @@ class _TrackList extends StatelessWidget {
                   )
                 : _placeholder(cs),
           ),
-          title: Text(
-            track.title,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontWeight: FontWeight.w700,
-              fontSize: 14,
-              color: isDark ? Colors.white : cs.onSurface,
-            ),
+          title: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  track.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 14,
+                    color: isDark ? Colors.white : cs.onSurface,
+                  ),
+                ),
+              ),
+              if (downloadedIds.contains(track.effectiveId))
+                Padding(
+                  padding: const EdgeInsets.only(left: 6),
+                  child: Icon(Icons.offline_pin_rounded,
+                      size: 14, color: cs.primary),
+                ),
+            ],
           ),
           subtitle: Text(
             track.artist,
