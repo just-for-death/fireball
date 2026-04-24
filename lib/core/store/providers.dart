@@ -14,8 +14,10 @@ import '../models/models.dart';
 import '../models/sponsor_segment.dart';
 import '../models/track.dart';
 import '../../remote/remote_server.dart';
+import '../audio/download_manager.dart';
 import 'local_store.dart';
 import 'player_state.dart';
+import 'dart:io';
 
 export 'local_store.dart'
     show localStoreProvider, LibraryData, LocalStoreNotifier;
@@ -214,44 +216,27 @@ class PlayerNotifier extends StateNotifier<PlayerState>
       String? playUrl = track.url;
       if (version != _playVersion) return;
 
+      final downloadManager = _ref.read(downloadManagerProvider.notifier);
+      if (downloadManager.isDownloaded(track.effectiveId)) {
+        final localPath = downloadManager.getLocalPath(track.effectiveId);
+        if (localPath != null && await File(localPath).exists()) {
+          playUrl = localPath;
+        }
+      }
+
       final api = _api;
       final instance = settings.invidiousInstance.isNotEmpty
           ? settings.invidiousInstance
           : '';
 
-      if (instance.isEmpty && track.videoId != null) {
-        throw Exception(
-            'No Invidious instance configured. Please set one in Settings.');
-      }
-
-      if (track.videoId != null) {
-        final details = await api.getVideoDetails(track.videoId!,
-            instanceUrl: instance, sid: settings.invidiousSid);
-        if (version != _playVersion) return;
-
-        final formats = (details['adaptiveFormats'] as List<dynamic>? ?? []);
-        final bestFormat = formats.firstWhere(
-          (f) => f['type']?.toString().startsWith('audio/') ?? false,
-          orElse: () => formats.isEmpty ? null : formats.first,
-        );
-
-        if (bestFormat != null && bestFormat['url'] != null) {
-          playUrl = _proxyStreamUrl(bestFormat['url'] as String, instance);
-        }
-      } else if (playUrl != null &&
-          (playUrl.contains('apple.com') || playUrl.contains('itunes'))) {
-        if (instance.isEmpty) {
+      if (playUrl == null || playUrl == track.url) {
+        if (instance.isEmpty && track.videoId != null) {
           throw Exception(
-              'Invidious instance required to play Apple Music tracks');
+              'No Invidious instance configured. Please set one in Settings.');
         }
-        final results = await api.invidiousSearch(
-            '${track.artist} ${track.title} official audio',
-            instanceUrl: instance);
-        if (version != _playVersion) return;
 
-        if (results.isNotEmpty) {
-          final match = results.first;
-          final details = await api.getVideoDetails(match.videoId ?? match.id,
+        if (track.videoId != null) {
+          final details = await api.getVideoDetails(track.videoId!,
               instanceUrl: instance, sid: settings.invidiousSid);
           if (version != _playVersion) return;
 
@@ -260,37 +245,65 @@ class PlayerNotifier extends StateNotifier<PlayerState>
             (f) => f['type']?.toString().startsWith('audio/') ?? false,
             orElse: () => formats.isEmpty ? null : formats.first,
           );
+
           if (bestFormat != null && bestFormat['url'] != null) {
             playUrl = _proxyStreamUrl(bestFormat['url'] as String, instance);
           }
-        }
-      } else if (playUrl == null || playUrl.isEmpty) {
-        if (instance.isEmpty) {
-          throw Exception(
-              'Invidious instance required to resolve this track. Please set one in Settings.');
-        }
-        final results = await api.invidiousSearch(
-            '${track.artist} ${track.title}',
-            instanceUrl: instance);
-        if (version != _playVersion) return;
-
-        if (results.isNotEmpty) {
-          final match = results.first;
-          final details = await api.getVideoDetails(match.videoId ?? match.id,
-              instanceUrl: instance, sid: settings.invidiousSid);
+        } else if (playUrl != null &&
+            (playUrl.contains('apple.com') || playUrl.contains('itunes'))) {
+          if (instance.isEmpty) {
+            throw Exception(
+                'Invidious instance required to play Apple Music tracks');
+          }
+          final results = await api.invidiousSearch(
+              '${track.artist} ${track.title} official audio',
+              instanceUrl: instance);
           if (version != _playVersion) return;
 
-          final formats = (details['adaptiveFormats'] as List<dynamic>? ?? []);
-          final bestFormat = formats.firstWhere(
-            (f) => f['type']?.toString().startsWith('audio/') ?? false,
-            orElse: () => formats.isEmpty ? null : formats.first,
-          );
-          if (bestFormat != null && bestFormat['url'] != null) {
-            playUrl = _proxyStreamUrl(bestFormat['url'] as String, instance);
+          if (results.isNotEmpty) {
+            final match = results.first;
+            final details = await api.getVideoDetails(match.videoId ?? match.id,
+                instanceUrl: instance, sid: settings.invidiousSid);
+            if (version != _playVersion) return;
+
+            final formats =
+                (details['adaptiveFormats'] as List<dynamic>? ?? []);
+            final bestFormat = formats.firstWhere(
+              (f) => f['type']?.toString().startsWith('audio/') ?? false,
+              orElse: () => formats.isEmpty ? null : formats.first,
+            );
+            if (bestFormat != null && bestFormat['url'] != null) {
+              playUrl = _proxyStreamUrl(bestFormat['url'] as String, instance);
+            }
+          }
+        } else if (playUrl == null || playUrl.isEmpty) {
+          if (instance.isEmpty) {
+            throw Exception(
+                'Invidious instance required to resolve this track. Please set one in Settings.');
+          }
+          final results = await api.invidiousSearch(
+              '${track.artist} ${track.title}',
+              instanceUrl: instance);
+          if (version != _playVersion) return;
+
+          if (results.isNotEmpty) {
+            final match = results.first;
+            final details = await api.getVideoDetails(match.videoId ?? match.id,
+                instanceUrl: instance, sid: settings.invidiousSid);
+            if (version != _playVersion) return;
+
+            final formats =
+                (details['adaptiveFormats'] as List<dynamic>? ?? []);
+            final bestFormat = formats.firstWhere(
+              (f) => f['type']?.toString().startsWith('audio/') ?? false,
+              orElse: () => formats.isEmpty ? null : formats.first,
+            );
+            if (bestFormat != null && bestFormat['url'] != null) {
+              playUrl = _proxyStreamUrl(bestFormat['url'] as String, instance);
+            }
           }
         }
       }
-
       if (playUrl != null && playUrl.isNotEmpty && version == _playVersion) {
         await _p.open(Media(playUrl));
         // SponsorBlock: fetch segments async after opening (only for YouTube)
