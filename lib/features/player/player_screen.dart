@@ -217,7 +217,9 @@ class PlayerScreen extends HookConsumerWidget {
         api,
         track,
         fetchId,
-        () => ref.read(playerProvider).currentTrack?.effectiveId ?? '',
+        () => context.mounted
+            ? ref.read(playerProvider).currentTrack?.effectiveId ?? ''
+            : '',
         lyrics,
         lyricsPlain,
         lyricError,
