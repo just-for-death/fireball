@@ -38,9 +38,12 @@ class _TrackOptionsSheet extends ConsumerWidget {
     final library = watchRef.watch(localStoreProvider);
     final downloadState = watchRef.watch(downloadManagerProvider);
     final isFav = player.isFavorite(track.effectiveId);
-    final isFollowingArtist = library.artists.any((a) => a.name.toLowerCase() == track.artist.toLowerCase());
-    final isDownloaded = downloadState.downloadedIds.contains(track.effectiveId);
-    final isDownloading = downloadState.activeDownloads.contains(track.effectiveId);
+    final isFollowingArtist = library.artists
+        .any((a) => a.name.toLowerCase() == track.artist.toLowerCase());
+    final isDownloaded =
+        downloadState.downloadedIds.contains(track.effectiveId);
+    final isDownloading =
+        downloadState.activeDownloads.contains(track.effectiveId);
 
     return SafeArea(
       child: Container(
@@ -126,171 +129,216 @@ class _TrackOptionsSheet extends ConsumerWidget {
             ),
 
             // ── Actions ────────────────────────────────────────────────────
-            _ActionTile(
-              icon: Icons.play_arrow_rounded,
-              label: 'Play Now',
-              cs: cs,
-              onTap: () {
-                Navigator.pop(context);
-                watchRef.read(playerProvider.notifier).playTrackNow(track);
-                watchRef.read(localStoreProvider.notifier).addHistory(track);
-              },
-            ),
-            _ActionTile(
-              icon: Icons.skip_next_rounded,
-              label: 'Play Next',
-              cs: cs,
-              onTap: () {
-                Navigator.pop(context);
-                watchRef.read(playerProvider.notifier).playNext(track);
-              },
-            ),
-            _ActionTile(
-              icon: Icons.add_rounded,
-              label: 'Add to Queue',
-              cs: cs,
-              onTap: () {
-                Navigator.pop(context);
-                watchRef.read(playerProvider.notifier).addToQueue(track);
-              },
-            ),
-            _ActionTile(
-              icon: isFav
-                  ? Icons.favorite_rounded
-                  : Icons.favorite_border_rounded,
-              label: isFav ? 'Remove from Favorites' : 'Add to Favorites',
-              iconColor: isFav ? Colors.redAccent : null,
-              cs: cs,
-              onTap: () async {
-                Navigator.pop(context);
-                if (isFav) {
-                  await watchRef
-                      .read(localStoreProvider.notifier)
-                      .deleteFavorite(track.effectiveId);
-                  watchRef
-                      .read(playerProvider.notifier)
-                      .removeFavorite(track.effectiveId);
-                } else {
-                  await watchRef
-                      .read(localStoreProvider.notifier)
-                      .addFavorite(track);
-                  watchRef.read(playerProvider.notifier).addFavorite(track);
-                }
-              },
-            ),
-            _ActionTile(
-              icon: isFollowingArtist
-                  ? Icons.person_remove_rounded
-                  : Icons.person_add_rounded,
-              label: isFollowingArtist ? 'Unfollow Artist' : 'Follow Artist',
-              cs: cs,
-              onTap: () async {
-                Navigator.pop(context);
-                if (isFollowingArtist) {
-                  final a = library.artists.firstWhere((a) => a.name.toLowerCase() == track.artist.toLowerCase());
-                  await watchRef.read(localStoreProvider.notifier).deleteArtist(a.artistId);
-                } else {
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('Following ${track.artist}...'), duration: const Duration(seconds: 1)),
-                    );
-                  }
-                  final data = await const FireballApi().itunesFindArtist(track.artist);
-                  if (data != null) {
-                    final newArtist = Artist(
-                      artistId: data['artistId']?.toString() ?? track.artist,
-                      name: data['artistName']?.toString() ?? track.artist,
-                      artwork: track.artwork,
-                    );
-                    await watchRef.read(localStoreProvider.notifier).addArtist(newArtist);
-                  } else {
-                    await watchRef.read(localStoreProvider.notifier).addArtist(Artist(
-                      artistId: track.artist,
-                      name: track.artist,
-                      artwork: track.artwork,
-                    ));
-                  }
-                }
-              },
-            ),
-            _ActionTile(
-              icon: Icons.playlist_add_rounded,
-              label: 'Add to Playlist…',
-              cs: cs,
-              onTap: () {
-                Navigator.pop(context);
-                _showAddToPlaylist(context, ref, track, library.playlists);
-              },
-            ),
-            _ActionTile(
-              icon: Icons.share_rounded,
-              label: 'Share',
-              cs: cs,
-              onTap: () {
-                Navigator.pop(context);
-                Share.share(
-                  '${track.title} — ${track.artist}',
-                  subject: track.title,
-                );
-              },
-            ),
-            if (isDownloading)
-              _ActionTile(
-                icon: Icons.downloading_rounded,
-                label: 'Downloading...',
-                cs: cs,
-                onTap: () {},
-                iconColor: cs.primary,
-              )
-            else if (isDownloaded)
-              _ActionTile(
-                icon: Icons.offline_pin_rounded,
-                label: 'Remove Download',
-                cs: cs,
-                onTap: () async {
-                  Navigator.pop(context);
-                  await watchRef.read(downloadManagerProvider.notifier).removeDownload(track.effectiveId);
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('Removed from downloads'), duration: const Duration(seconds: 1)),
-                    );
-                  }
-                },
-                iconColor: Colors.redAccent,
-              )
-            else
-              _ActionTile(
-                icon: Icons.download_rounded,
-                label: 'Download',
-                cs: cs,
-                onTap: () async {
-                  Navigator.pop(context);
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('Downloading...'), duration: const Duration(seconds: 1)),
-                    );
-                  }
-                  try {
-                    await watchRef.read(downloadManagerProvider.notifier).downloadTrack(
-                          track,
-                          const FireballApi(),
-                          library.settings,
+            Flexible(
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _ActionTile(
+                      icon: Icons.play_arrow_rounded,
+                      label: 'Play Now',
+                      cs: cs,
+                      onTap: () {
+                        Navigator.pop(context);
+                        watchRef
+                            .read(playerProvider.notifier)
+                            .playTrackNow(track);
+                        watchRef
+                            .read(localStoreProvider.notifier)
+                            .addHistory(track);
+                      },
+                    ),
+                    _ActionTile(
+                      icon: Icons.skip_next_rounded,
+                      label: 'Play Next',
+                      cs: cs,
+                      onTap: () {
+                        Navigator.pop(context);
+                        watchRef.read(playerProvider.notifier).playNext(track);
+                      },
+                    ),
+                    _ActionTile(
+                      icon: Icons.add_rounded,
+                      label: 'Add to Queue',
+                      cs: cs,
+                      onTap: () {
+                        Navigator.pop(context);
+                        watchRef
+                            .read(playerProvider.notifier)
+                            .addToQueue(track);
+                      },
+                    ),
+                    _ActionTile(
+                      icon: isFav
+                          ? Icons.favorite_rounded
+                          : Icons.favorite_border_rounded,
+                      label:
+                          isFav ? 'Remove from Favorites' : 'Add to Favorites',
+                      iconColor: isFav ? Colors.redAccent : null,
+                      cs: cs,
+                      onTap: () async {
+                        Navigator.pop(context);
+                        if (isFav) {
+                          await watchRef
+                              .read(localStoreProvider.notifier)
+                              .deleteFavorite(track.effectiveId);
+                          watchRef
+                              .read(playerProvider.notifier)
+                              .removeFavorite(track.effectiveId);
+                        } else {
+                          await watchRef
+                              .read(localStoreProvider.notifier)
+                              .addFavorite(track);
+                          watchRef
+                              .read(playerProvider.notifier)
+                              .addFavorite(track);
+                        }
+                      },
+                    ),
+                    _ActionTile(
+                      icon: isFollowingArtist
+                          ? Icons.person_remove_rounded
+                          : Icons.person_add_rounded,
+                      label: isFollowingArtist
+                          ? 'Unfollow Artist'
+                          : 'Follow Artist',
+                      cs: cs,
+                      onTap: () async {
+                        Navigator.pop(context);
+                        if (isFollowingArtist) {
+                          final a = library.artists.firstWhere((a) =>
+                              a.name.toLowerCase() ==
+                              track.artist.toLowerCase());
+                          await watchRef
+                              .read(localStoreProvider.notifier)
+                              .deleteArtist(a.artistId);
+                        } else {
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                  content: Text('Following ${track.artist}...'),
+                                  duration: const Duration(seconds: 1)),
+                            );
+                          }
+                          final data = await const FireballApi()
+                              .itunesFindArtist(track.artist);
+                          if (data != null) {
+                            final newArtist = Artist(
+                              artistId:
+                                  data['artistId']?.toString() ?? track.artist,
+                              name: data['artistName']?.toString() ??
+                                  track.artist,
+                              artwork: track.artwork,
+                            );
+                            await watchRef
+                                .read(localStoreProvider.notifier)
+                                .addArtist(newArtist);
+                          } else {
+                            await watchRef
+                                .read(localStoreProvider.notifier)
+                                .addArtist(Artist(
+                                  artistId: track.artist,
+                                  name: track.artist,
+                                  artwork: track.artwork,
+                                ));
+                          }
+                        }
+                      },
+                    ),
+                    _ActionTile(
+                      icon: Icons.playlist_add_rounded,
+                      label: 'Add to Playlist…',
+                      cs: cs,
+                      onTap: () {
+                        Navigator.pop(context);
+                        _showAddToPlaylist(
+                            context, ref, track, library.playlists);
+                      },
+                    ),
+                    _ActionTile(
+                      icon: Icons.share_rounded,
+                      label: 'Share',
+                      cs: cs,
+                      onTap: () {
+                        Navigator.pop(context);
+                        Share.share(
+                          '${track.title} — ${track.artist}',
+                          subject: track.title,
                         );
-                    if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('Downloaded successfully'), duration: const Duration(seconds: 2)),
-                      );
-                    }
-                  } catch (e) {
-                    if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('Download failed'), duration: const Duration(seconds: 2)),
-                      );
-                    }
-                  }
-                },
+                      },
+                    ),
+                    if (isDownloading)
+                      _ActionTile(
+                        icon: Icons.downloading_rounded,
+                        label: 'Downloading...',
+                        cs: cs,
+                        onTap: () {},
+                        iconColor: cs.primary,
+                      )
+                    else if (isDownloaded)
+                      _ActionTile(
+                        icon: Icons.offline_pin_rounded,
+                        label: 'Remove Download',
+                        cs: cs,
+                        onTap: () async {
+                          Navigator.pop(context);
+                          await watchRef
+                              .read(downloadManagerProvider.notifier)
+                              .removeDownload(track.effectiveId);
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                  content: Text('Removed from downloads'),
+                                  duration: const Duration(seconds: 1)),
+                            );
+                          }
+                        },
+                        iconColor: Colors.redAccent,
+                      )
+                    else
+                      _ActionTile(
+                        icon: Icons.download_rounded,
+                        label: 'Download',
+                        cs: cs,
+                        onTap: () async {
+                          Navigator.pop(context);
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                  content: Text('Downloading...'),
+                                  duration: const Duration(seconds: 1)),
+                            );
+                          }
+                          try {
+                            await watchRef
+                                .read(downloadManagerProvider.notifier)
+                                .downloadTrack(
+                                  track,
+                                  const FireballApi(),
+                                  library.settings,
+                                );
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                    content: Text('Downloaded successfully'),
+                                    duration: const Duration(seconds: 2)),
+                              );
+                            }
+                          } catch (e) {
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                    content: Text('Download failed'),
+                                    duration: const Duration(seconds: 2)),
+                              );
+                            }
+                          }
+                        },
+                      ),
+                  ],
+                ),
               ),
-
+            ),
             const SizedBox(height: 8),
           ],
         ),
