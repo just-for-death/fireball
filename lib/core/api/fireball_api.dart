@@ -763,4 +763,41 @@ class FireballApi {
       // Best-effort push notification
     }
   }
+
+  // ── lbdl Server ───────────────────────────────────────────────────────────
+  Map<String, String> _lbdlAuthHeader(String user, String pass) {
+    if (user.isEmpty && pass.isEmpty) return {};
+    final basic = base64Encode(utf8.encode('$user:$pass'));
+    return {'Authorization': 'Basic $basic'};
+  }
+
+  Future<Map<String, dynamic>> lbdlAuthStatus(
+      String url, String user, String pass) async {
+    final base = url.replaceAll(RegExp(r'/+$'), '');
+    final data = await _get('$base/api/auth/status',
+        headers: _lbdlAuthHeader(user, pass));
+    return data as Map<String, dynamic>;
+  }
+
+  Future<String> lbdlStartJob(String url, String user, String pass,
+      String playlistUrl, String invidiousInstance) async {
+    final base = url.replaceAll(RegExp(r'/+$'), '');
+    final data = await _post(
+      '$base/api/jobs',
+      {
+        'playlist_url': playlistUrl,
+        'invidious_instance': invidiousInstance,
+      },
+      headers: _lbdlAuthHeader(user, pass),
+    );
+    return (data as Map<String, dynamic>)['job_id']?.toString() ?? '';
+  }
+
+  Future<Map<String, dynamic>> lbdlGetJob(
+      String url, String user, String pass, String jobId) async {
+    final base = url.replaceAll(RegExp(r'/+$'), '');
+    final data = await _get('$base/api/jobs/$jobId',
+        headers: _lbdlAuthHeader(user, pass));
+    return data as Map<String, dynamic>;
+  }
 }

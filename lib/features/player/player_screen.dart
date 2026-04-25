@@ -1,4 +1,5 @@
 import 'dart:ui';
+import 'dart:io';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/foundation.dart'
@@ -215,6 +216,7 @@ class PlayerScreen extends HookConsumerWidget {
       // track, not the captured `track` object (which always equals fetchId).
       _doFetchLyrics(
         api,
+        ref.read(downloadManagerProvider.notifier),
         track,
         fetchId,
         () => context.mounted
@@ -1536,6 +1538,7 @@ class PlayerScreen extends HookConsumerWidget {
 
   Future<void> _doFetchLyrics(
     FireballApi api,
+    DownloadManager downloadManager,
     Track track,
     String fetchId,
     String Function() liveId,
@@ -1553,6 +1556,25 @@ class PlayerScreen extends HookConsumerWidget {
     final title = track.title;
 
     try {
+      // ── Phase 0: Local Offline Lyrics ──────────────────────────────────
+      final localLyricsPath = downloadManager.getLocalLyricsPath(track.effectiveId);
+      if (localLyricsPath != null) {
+        final localFile = File(localLyricsPath);
+        if (await localFile.exists()) {
+          final content = await localFile.readAsString();
+          if (content.trim().isNotEmpty) {
+            // Check if it's synced (contains timestamp like [00:00.00])
+            final isSynced = RegExp(r'\[\d{1,2}:\d{2}').hasMatch(content);
+            if (isSynced) {
+              lyrics.value = _parseLRC(content);
+            } else {
+              lyricsPlain.value = content.split('\n').where((l) => l.trim().isNotEmpty).toList();
+            }
+            lyricsLoading.value = false;
+            return;
+          }
+        }
+      }
       // ── Phase 1: LRCLIB exact + NetEase search run in parallel ───────────
       // Mirrors elysium-client's Promise.all approach for lower latency.
       final phase1 = await Future.wait([

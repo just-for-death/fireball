@@ -8,6 +8,7 @@ import '../features/player/player_screen.dart';
 import '../features/remote/remote_screen.dart';
 import '../features/search/search_screen.dart';
 import '../features/settings/settings_screen.dart';
+import '../features/lbdl/lbdl_job_screen.dart';
 import '../widgets/shell_scaffold.dart';
 
 final routerProvider = Provider<GoRouter>((ref) {
@@ -46,6 +47,13 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (_, state) {
           final name = state.uri.queryParameters['name'] ?? '';
           return ArtistScreen(artistName: name);
+        },
+      ),
+      GoRoute(
+        path: '/lbdl-job',
+        builder: (_, state) {
+          final url = state.uri.queryParameters['url'] ?? '';
+          return LbdlJobScreen(playlistUrl: url);
         },
       ),
     ],

@@ -12,6 +12,7 @@ import '../../core/widgets/empty_state.dart';
 import '../../core/widgets/glass_widgets.dart';
 import '../../core/widgets/track_options_sheet.dart';
 import '../../core/audio/download_manager.dart';
+import '../../core/api/fireball_api.dart';
 
 enum _LibTab { favorites, playlists, artists, albums, downloads }
 
@@ -684,6 +685,42 @@ class LibraryScreen extends HookConsumerWidget {
                       final reversed = pl.videos.reversed.toList();
                       for (final t in reversed) {
                         ref.read(playerProvider.notifier).playNext(t);
+                      }
+                    },
+                  ),
+                  _menuItem(
+                    ctx,
+                    icon: Icons.cloud_upload_rounded,
+                    label: 'Send to lbdl server',
+                    onTap: () async {
+                      Navigator.pop(ctx);
+                      final settings = ref.read(settingsProvider);
+                      if (settings.lbdlUrl.isEmpty) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Please configure lbdl in Settings first')),
+                        );
+                        return;
+                      }
+                      
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Preparing playlist for lbdl...')),
+                      );
+                      
+                      try {
+                        final invId = await const FireballApi().pushPlaylistToInvidious(
+                          pl,
+                          instanceUrl: settings.invidiousInstance,
+                          sid: settings.invidiousSid,
+                        );
+                        if (context.mounted) {
+                          context.push('/lbdl-job?url=https://youtube.com/playlist?list=$invId');
+                        }
+                      } catch (e) {
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('Failed to push playlist: $e')),
+                          );
+                        }
                       }
                     },
                   ),

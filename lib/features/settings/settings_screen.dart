@@ -70,8 +70,12 @@ class SettingsScreen extends HookConsumerWidget {
     final gotifyUrlCtrl = useTextEditingController();
     final gotifyTokenCtrl = useTextEditingController();
     final remotePairingCtrl = useTextEditingController();
+    final lbdlUrlCtrl = useTextEditingController();
+    final lbdlUserCtrl = useTextEditingController();
+    final lbdlPassCtrl = useTextEditingController();
 
     // Testing and busy states
+    final testingLbdl = useState(false);
     final testingLB = useState(false);
     final testingLastFm = useState(false);
     final testingOllama = useState(false);
@@ -104,6 +108,9 @@ class SettingsScreen extends HookConsumerWidget {
       webDavPassCtrl.text = settings.webDavPassword;
       gotifyUrlCtrl.text = settings.gotifyUrl;
       gotifyTokenCtrl.text = settings.gotifyToken;
+      lbdlUrlCtrl.text = settings.lbdlUrl;
+      lbdlUserCtrl.text = settings.lbdlUsername;
+      lbdlPassCtrl.text = settings.lbdlPassword;
       return null;
     }, [settings]);
 
@@ -140,6 +147,41 @@ class SettingsScreen extends HookConsumerWidget {
         }
       } finally {
         remotePairingBusy.value = false;
+      }
+    }
+
+    Future<void> testAndSaveLbdl() async {
+      final url = lbdlUrlCtrl.text.trim();
+      final user = lbdlUserCtrl.text.trim();
+      final pass = lbdlPassCtrl.text.trim();
+
+      if (url.isEmpty) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Please enter an lbdl URL')));
+        }
+        return;
+      }
+
+      testingLbdl.value = true;
+      try {
+        await api.lbdlAuthStatus(url, user, pass);
+        await saveSettings({
+          'lbdlUrl': url,
+          'lbdlUsername': user,
+          'lbdlPassword': pass,
+        });
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('lbdl connection successful!')));
+        }
+      } catch (e) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+              content: Text('lbdl connection failed: $e')));
+        }
+      } finally {
+        testingLbdl.value = false;
       }
     }
 
@@ -1331,6 +1373,52 @@ class SettingsScreen extends HookConsumerWidget {
                             ],
                           ),
                         ],
+                      ],
+                    ),
+
+                  const SizedBox(height: 16),
+
+                  // ── LBDL SERVER ─────────────────────────────────────────
+                  if (showSection('lbdl server downloader youtube dlp playlist'))
+                    _SectionCard(
+                      title: 'LBDL SERVER',
+                      icon: Icons.cloud_download_rounded,
+                      isDark: isDark,
+                      cs: cs,
+                      children: [
+                        const Text(
+                          'Connect to an lbdl server for high-quality, server-side YouTube downloads.',
+                          style: TextStyle(color: Colors.white70, fontSize: 13),
+                        ),
+                        const SizedBox(height: 12),
+                        _SettingsLabel('LBDL URL'),
+                        _StyledTextField(
+                          controller: lbdlUrlCtrl,
+                          hint: 'https://lbdl.example.com',
+                        ),
+                        const SizedBox(height: 8),
+                        _SettingsLabel('USERNAME (OPTIONAL)'),
+                        _StyledTextField(
+                          controller: lbdlUserCtrl,
+                          hint: 'Basic Auth Username',
+                        ),
+                        const SizedBox(height: 8),
+                        _SettingsLabel('PASSWORD (OPTIONAL)'),
+                        _StyledTextField(
+                          controller: lbdlPassCtrl,
+                          hint: 'Basic Auth Password',
+                          obscure: true,
+                        ),
+                        const SizedBox(height: 16),
+                        _SyncButton(
+                          label: testingLbdl.value
+                              ? 'Testing...'
+                              : 'Test & Save LBDL Server',
+                          icon: Icons.api_rounded,
+                          color: cs.primary,
+                          onTap: testAndSaveLbdl,
+                          loading: testingLbdl.value,
+                        ),
                       ],
                     ),
 
