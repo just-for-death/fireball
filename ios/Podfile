@@ -34,6 +34,14 @@ post_install do |installer|
     target.build_configurations.each do |config|
       # Resolve compatibility issues for pods like home_widget that require iOS 14+
       config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '14.0'
+      # Prevent stripping of Rust/FRB symbols
+      config.build_settings['DEAD_CODE_STRIPPING'] = 'NO'
+    end
+
+    if target.name == 'audiotags'
+      target.build_configurations.each do |config|
+        config.build_settings['OTHER_LDFLAGS'] = '$(inherited) -all_load'
+      end
     end
   end
 end
