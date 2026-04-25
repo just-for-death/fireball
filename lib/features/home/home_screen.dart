@@ -495,6 +495,7 @@ class HomeScreen extends HookConsumerWidget {
                           title: meta['track_name']?.toString() ?? '—',
                           artist: meta['artist_name']?.toString() ?? '—',
                           caaMbid: caaMbid,
+                          album: meta['release_name']?.toString(),
                           cs: cs,
                           isDark: isDark,
                           right: date != null
@@ -511,6 +512,7 @@ class HomeScreen extends HookConsumerWidget {
                               id: meta['track_name']?.toString() ?? '',
                               title: meta['track_name']?.toString() ?? '—',
                               artist: meta['artist_name']?.toString() ?? '—',
+                              album: meta['release_name']?.toString(),
                             );
                             ref.read(playerProvider.notifier).playTrackNow(t);
                           },
@@ -519,6 +521,7 @@ class HomeScreen extends HookConsumerWidget {
                               id: meta['track_name']?.toString() ?? '',
                               title: meta['track_name']?.toString() ?? '—',
                               artist: meta['artist_name']?.toString() ?? '—',
+                              album: meta['release_name']?.toString(),
                             );
                             showTrackOptions(context, ref, t);
                           },
@@ -598,6 +601,7 @@ class HomeScreen extends HookConsumerWidget {
                             title: rec['track_name']?.toString() ?? '—',
                             artist: rec['artist_name']?.toString() ?? '—',
                             caaMbid: caaMbid,
+                            album: rec['release_name']?.toString(),
                             cs: cs,
                             isDark: isDark,
                             rank: index + 1,
@@ -607,6 +611,7 @@ class HomeScreen extends HookConsumerWidget {
                                 id: rec['track_name']?.toString() ?? '',
                                 title: rec['track_name']?.toString() ?? '—',
                                 artist: rec['artist_name']?.toString() ?? '—',
+                                album: rec['release_name']?.toString(),
                               );
                               ref.read(playerProvider.notifier).playTrackNow(t);
                             },
@@ -615,6 +620,7 @@ class HomeScreen extends HookConsumerWidget {
                                 id: rec['track_name']?.toString() ?? '',
                                 title: rec['track_name']?.toString() ?? '—',
                                 artist: rec['artist_name']?.toString() ?? '—',
+                                album: rec['release_name']?.toString(),
                               );
                               showTrackOptions(context, ref, t);
                             },
@@ -754,12 +760,14 @@ class _LBTrackTile extends StatelessWidget {
     required this.onTap,
     this.onLongPress,
     this.caaMbid,
+    this.album,
     this.rank,
     this.right,
   });
 
   final String title;
   final String artist;
+  final String? album;
   final String? caaMbid;
   final int? rank;
   final Widget? right;
@@ -809,7 +817,7 @@ class _LBTrackTile extends StatelessWidget {
                     ),
                   ),
                   Text(
-                    artist,
+                    '$artist${caaMbid != null ? "" : (album != null ? " • $album" : "")}',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
@@ -925,7 +933,7 @@ class _FavoritesRow extends StatelessWidget {
                         const SizedBox(width: 4),
                         Expanded(
                           child: Text(
-                            track.artist,
+                            '${track.artist}${track.album != null ? " • ${track.album}" : ""}${track.year != null ? " (${track.year})" : ""}',
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
@@ -1105,7 +1113,7 @@ class _HistoryTile extends StatelessWidget {
                     ),
                   ),
                   Text(
-                    track.artist,
+                    '${track.artist}${track.album != null ? " • ${track.album}" : ""}${track.year != null ? " (${track.year})" : ""}',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
