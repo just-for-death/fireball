@@ -23,6 +23,7 @@ final downloadManagerProvider =
 class DownloadState {
   final Set<String> downloadedIds;
   final Set<String> activeDownloads;
+
   /// Full track metadata for every completed download.
   final Map<String, Track> downloadedTracks;
 
@@ -71,16 +72,19 @@ class DownloadManager extends StateNotifier<DownloadState> {
       final tracks = <String, Track>{};
 
       for (final f in files) {
-        if (f is File && f.path.endsWith('.media')) {
-          final id = f.uri.pathSegments.last.replaceAll('.media', '');
-          downloaded.add(id);
-          // Load sidecar metadata if present
-          final sidecar = File('${_dir!.path}/$id.json');
-          if (await sidecar.exists()) {
-            try {
-              final raw = jsonDecode(await sidecar.readAsString());
-              tracks[id] = Track.fromJson(raw as Map<String, dynamic>);
-            } catch (_) {}
+        if (f is File) {
+          final ext = f.path.split('.').last.toLowerCase();
+          if (ext == 'media' || ext == 'm4a') {
+            final id = f.uri.pathSegments.last.replaceAll('.$ext', '');
+            downloaded.add(id);
+            // Load sidecar metadata if present
+            final sidecar = File('${_dir!.path}/$id.json');
+            if (await sidecar.exists()) {
+              try {
+                final raw = jsonDecode(await sidecar.readAsString());
+                tracks[id] = Track.fromJson(raw as Map<String, dynamic>);
+              } catch (_) {}
+            }
           }
         }
       }
@@ -93,6 +97,56 @@ class DownloadManager extends StateNotifier<DownloadState> {
     }
   }
 
+  /// Scans every registered download and removes entries whose file on disk
+  /// no longer exists (e.g., user deleted the file via a file manager).
+  Future<void> verifyDownloads() async {
+    if (_dir == null) return;
+    final staleIds = <String>{};
+    for (final id in state.downloadedIds) {
+      final m4a = File('${_dir!.path}/$id.m4a');
+      final media = File('${_dir!.path}/$id.media');
+      final exists = m4a.existsSync() || media.existsSync();
+      if (!exists) staleIds.add(id);
+    }
+    if (staleIds.isEmpty) return;
+    dev.log('DownloadManager: pruning ${staleIds.length} stale entries');
+    final newIds = Set<String>.from(state.downloadedIds)..removeAll(staleIds);
+    final newTracks = Map<String, Track>.from(state.downloadedTracks)
+      ..removeWhere((k, _) => staleIds.contains(k));
+    state = state.copyWith(downloadedIds: newIds, downloadedTracks: newTracks);
+  }
+
+  /// Deletes the audio file (and sidecar) from disk **and** removes the
+  /// registry entry.  Use this when the user explicitly requests deletion.
+  Future<void> deleteDownload(String trackId) async {
+    if (_dir == null) return;
+    try {
+      final m4aFile = File('${_dir!.path}/$trackId.m4a');
+      if (await m4aFile.exists()) await m4aFile.delete();
+
+      final mediaFile = File('${_dir!.path}/$trackId.media');
+      if (await mediaFile.exists()) await mediaFile.delete();
+
+      final lrcFile = File('${_dir!.path}/$trackId.lrc');
+      if (await lrcFile.exists()) await lrcFile.delete();
+
+      final sidecar = File('${_dir!.path}/$trackId.json');
+      if (await sidecar.exists()) await sidecar.delete();
+
+      final newTracks = Map<String, Track>.from(state.downloadedTracks)
+        ..remove(trackId);
+      state = state.copyWith(
+        downloadedIds: {...state.downloadedIds}..remove(trackId),
+        downloadedTracks: newTracks,
+      );
+    } catch (e) {
+      dev.log('DownloadManager deleteDownload error: $e');
+    }
+  }
+
+  List<Track> get downloadedTracksList =>
+      state.downloadedTracks.values.toList();
+
   bool isDownloaded(String trackId) {
     return state.downloadedIds.contains(trackId);
   }
@@ -103,6 +157,8 @@ class DownloadManager extends StateNotifier<DownloadState> {
 
   String? getLocalPath(String trackId) {
     if (_dir == null || !isDownloaded(trackId)) return null;
+    final m4a = File('${_dir!.path}/$trackId.m4a');
+    if (m4a.existsSync()) return m4a.path;
     return '${_dir!.path}/$trackId.media';
   }
 
@@ -116,8 +172,11 @@ class DownloadManager extends StateNotifier<DownloadState> {
   Future<void> removeDownload(String trackId) async {
     if (_dir == null) return;
     try {
-      final file = File('${_dir!.path}/$trackId.media');
-      if (await file.exists()) await file.delete();
+      final mediaFile = File('${_dir!.path}/$trackId.media');
+      if (await mediaFile.exists()) await mediaFile.delete();
+
+      final m4aFile = File('${_dir!.path}/$trackId.m4a');
+      if (await m4aFile.exists()) await m4aFile.delete();
 
       final sidecar = File('${_dir!.path}/$trackId.json');
       if (await sidecar.exists()) await sidecar.delete();
@@ -180,8 +239,11 @@ class DownloadManager extends StateNotifier<DownloadState> {
             instanceUrl: instance, sid: settings.invidiousSid);
         final formats = (details['adaptiveFormats'] as List<dynamic>? ?? []);
         final bestFormat = formats.firstWhere(
-          (f) => f['type']?.toString().startsWith('audio/') ?? false,
-          orElse: () => formats.isEmpty ? null : formats.first,
+          (f) => f['type']?.toString().startsWith('audio/mp4') ?? false,
+          orElse: () => formats.firstWhere(
+            (f) => f['type']?.toString().startsWith('audio/') ?? false,
+            orElse: () => formats.isEmpty ? null : formats.first,
+          ),
         );
         if (bestFormat != null && bestFormat['url'] != null) {
           dlUrl = _proxyStreamUrl(bestFormat['url'] as String, instance);
@@ -198,8 +260,11 @@ class DownloadManager extends StateNotifier<DownloadState> {
               instanceUrl: instance, sid: settings.invidiousSid);
           final formats = (details['adaptiveFormats'] as List<dynamic>? ?? []);
           final bestFormat = formats.firstWhere(
-            (f) => f['type']?.toString().startsWith('audio/') ?? false,
-            orElse: () => formats.isEmpty ? null : formats.first,
+            (f) => f['type']?.toString().startsWith('audio/mp4') ?? false,
+            orElse: () => formats.firstWhere(
+              (f) => f['type']?.toString().startsWith('audio/') ?? false,
+              orElse: () => formats.isEmpty ? null : formats.first,
+            ),
           );
           if (bestFormat != null && bestFormat['url'] != null) {
             dlUrl = _proxyStreamUrl(bestFormat['url'] as String, instance);
@@ -216,8 +281,11 @@ class DownloadManager extends StateNotifier<DownloadState> {
               instanceUrl: instance, sid: settings.invidiousSid);
           final formats = (details['adaptiveFormats'] as List<dynamic>? ?? []);
           final bestFormat = formats.firstWhere(
-            (f) => f['type']?.toString().startsWith('audio/') ?? false,
-            orElse: () => formats.isEmpty ? null : formats.first,
+            (f) => f['type']?.toString().startsWith('audio/mp4') ?? false,
+            orElse: () => formats.firstWhere(
+              (f) => f['type']?.toString().startsWith('audio/') ?? false,
+              orElse: () => formats.isEmpty ? null : formats.first,
+            ),
           );
           if (bestFormat != null && bestFormat['url'] != null) {
             dlUrl = _proxyStreamUrl(bestFormat['url'] as String, instance);
@@ -234,7 +302,7 @@ class DownloadManager extends StateNotifier<DownloadState> {
         throw Exception('Failed to download: ${response.statusCode}');
       }
 
-      final file = File('${_dir!.path}/${track.effectiveId}.media');
+      final file = File('${_dir!.path}/${track.effectiveId}.m4a');
       await file.writeAsBytes(response.bodyBytes);
 
       // Enhance metadata and fetch lyrics
@@ -270,7 +338,7 @@ class DownloadManager extends StateNotifier<DownloadState> {
       final term = '${track.artist} ${track.title}';
       final results = await api.itunesSearch(term, limit: 3);
       final raw = results['results'] as List<dynamic>? ?? [];
-      
+
       if (raw.isNotEmpty) {
         final match = raw.first;
         enhanced = enhanced.copyWith(
@@ -291,8 +359,8 @@ class DownloadManager extends StateNotifier<DownloadState> {
 
       // LRCLIB
       try {
-        final lrclibData =
-            await api.lrclibGet(enhanced.artist, enhanced.title, album: enhanced.album);
+        final lrclibData = await api.lrclibGet(enhanced.artist, enhanced.title,
+            album: enhanced.album);
         if (lrclibData != null && lrclibData is Map) {
           final synced = lrclibData['syncedLyrics']?.toString();
           final plain = lrclibData['plainLyrics']?.toString();

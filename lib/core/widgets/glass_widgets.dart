@@ -89,9 +89,7 @@ class GlassPill extends StatelessWidget {
           curve: Curves.easeOutCubic,
           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
           decoration: BoxDecoration(
-            color: selected
-                ? accent
-                : Colors.white.withValues(alpha: 0.05),
+            color: selected ? accent : Colors.white.withValues(alpha: 0.05),
             borderRadius: BorderRadius.circular(25),
             border: Border.all(
               color: selected

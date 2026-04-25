@@ -207,6 +207,7 @@ class FireballSettings {
   final String listenBrainzUsername;
   final bool highQuality;
   final bool cacheEnabled;
+  final int localMusicCacheLimit;
   final String queueMode;
   final String invidiousInstance;
   final String? invidiousSid;
@@ -286,6 +287,7 @@ class FireballSettings {
     this.listenBrainzUsername = '',
     this.highQuality = false,
     this.cacheEnabled = true,
+    this.localMusicCacheLimit = 10,
     this.queueMode = 'off',
     this.invidiousInstance = '',
     this.invidiousSid,
@@ -359,6 +361,9 @@ class FireballSettings {
       listenBrainzUsername: j['listenBrainzUsername']?.toString() ?? '',
       highQuality: toBool(j['highQuality'], false),
       cacheEnabled: toBool(j['cacheEnabled'], true),
+      localMusicCacheLimit: j['localMusicCacheLimit'] is num
+          ? (j['localMusicCacheLimit'] as num).toInt()
+          : int.tryParse(j['localMusicCacheLimit']?.toString() ?? '') ?? 10,
       queueMode: j['queueMode']?.toString() ?? 'off',
       invidiousInstance: j['invidiousInstance']?.toString() ?? '',
       invidiousSid: j['invidiousSid']?.toString(),
@@ -422,6 +427,7 @@ class FireballSettings {
         'listenBrainzUsername': listenBrainzUsername,
         'highQuality': highQuality,
         'cacheEnabled': cacheEnabled,
+        'localMusicCacheLimit': localMusicCacheLimit,
         'queueMode': queueMode,
         'invidiousInstance': invidiousInstance,
         if (invidiousSid != null) 'invidiousSid': invidiousSid,
@@ -429,7 +435,8 @@ class FireballSettings {
         'sponsorBlock': sponsorBlock,
         'sponsorBlockCategories': sponsorBlockCategories,
         'analytics': analytics,
-        if (customDownloadPath != null) 'customDownloadPath': customDownloadPath,
+        if (customDownloadPath != null)
+          'customDownloadPath': customDownloadPath,
         'listenBrainzEnabled': listenBrainzEnabled,
         'listenBrainzPlayingNow': listenBrainzPlayingNow,
         'listenBrainzScrobblePercent': listenBrainzScrobblePercent,
@@ -472,13 +479,13 @@ class FireballSettings {
     String? listenBrainzUsername,
     bool? highQuality,
     bool? cacheEnabled,
+    int? localMusicCacheLimit,
     String? queueMode,
     String? invidiousInstance,
     String? invidiousSid,
     bool clearInvidiousSid = false,
     String? invidiousUsername,
     bool clearInvidiousUsername = false,
-
     bool? sponsorBlock,
     List<String>? sponsorBlockCategories,
     bool? analytics,
@@ -526,6 +533,7 @@ class FireballSettings {
         listenBrainzUsername: listenBrainzUsername ?? this.listenBrainzUsername,
         highQuality: highQuality ?? this.highQuality,
         cacheEnabled: cacheEnabled ?? this.cacheEnabled,
+        localMusicCacheLimit: localMusicCacheLimit ?? this.localMusicCacheLimit,
         queueMode: queueMode ?? this.queueMode,
         invidiousInstance: invidiousInstance ?? this.invidiousInstance,
         invidiousSid:

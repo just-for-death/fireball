@@ -310,7 +310,11 @@ class LocalStoreNotifier extends StateNotifier<LibraryData> {
 
   Future<void> checkGotifyNewReleases() async {
     await _ready.future;
-    if (!state.settings.gotifyEnabled || state.settings.gotifyUrl.isEmpty || state.settings.gotifyToken.isEmpty) return;
+    if (!state.settings.gotifyEnabled ||
+        state.settings.gotifyUrl.isEmpty ||
+        state.settings.gotifyToken.isEmpty) {
+      return;
+    }
 
     final api = const FireballApi();
     var artistsChanged = false;
@@ -324,11 +328,12 @@ class LocalStoreNotifier extends StateNotifier<LibraryData> {
       try {
         final albums = await api.itunesArtistAlbums(artistIdNum, limit: 1);
         if (albums.isEmpty) continue;
-        
+
         final latestAlbum = albums.first;
         final releaseId = latestAlbum['collectionId']?.toString();
-        final releaseName = latestAlbum['collectionName']?.toString() ?? 'New Release';
-        
+        final releaseName =
+            latestAlbum['collectionName']?.toString() ?? 'New Release';
+
         if (releaseId != null && releaseId != artist.latestReleaseId) {
           if (artist.latestReleaseId != null) {
             // Genuine new release (not first run)
@@ -339,7 +344,7 @@ class LocalStoreNotifier extends StateNotifier<LibraryData> {
               message: '$releaseName is out now!',
             );
           }
-          
+
           newArtists[i] = Artist(
             artistId: artist.artistId,
             name: artist.name,

@@ -107,7 +107,8 @@ class HomeScreen extends HookConsumerWidget {
     useEffect(() {
       load();
       // Run the Gotify release check silently in the background
-      Future.microtask(() => ref.read(localStoreProvider.notifier).checkGotifyNewReleases());
+      Future.microtask(
+          () => ref.read(localStoreProvider.notifier).checkGotifyNewReleases());
       return null;
     }, [country.value, lbEnabled, lbUsername, lbToken]);
 

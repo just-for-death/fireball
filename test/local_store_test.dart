@@ -82,7 +82,9 @@ void main() {
   });
 
   group('FireballSettings Merge', () {
-    test('fills empty service/account fields from remote without clobbering local overrides', () {
+    test(
+        'fills empty service/account fields from remote without clobbering local overrides',
+        () {
       final localSettings = const FireballSettings(
         themeMode: 'dark', // Should be preserved
         invidiousInstance: 'https://local.inv',

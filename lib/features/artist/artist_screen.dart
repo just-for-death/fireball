@@ -203,7 +203,8 @@ class _ArtistHero extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final library = ref.watch(localStoreProvider);
-    final isFollowing = library.artists.any((a) => a.name.toLowerCase() == artistName.toLowerCase());
+    final isFollowing = library.artists
+        .any((a) => a.name.toLowerCase() == artistName.toLowerCase());
 
     return Stack(
       fit: StackFit.expand,
@@ -268,10 +269,8 @@ class _ArtistHero extends ConsumerWidget {
                     child: CachedNetworkImage(
                       imageUrl: artworkUrl!,
                       fit: BoxFit.cover,
-                      errorWidget: (_, __, ___) => Icon(
-                          Icons.person_rounded,
-                          size: 40,
-                          color: cs.primary),
+                      errorWidget: (_, __, ___) => Icon(Icons.person_rounded,
+                          size: 40, color: cs.primary),
                     ),
                   ),
                 ),
@@ -319,12 +318,11 @@ class _ArtistHero extends ConsumerWidget {
                             if (artwork == null) {
                               final id = data['artistId'] as int?;
                               if (id != null) {
-                                final albumResults =
-                                    await const FireballApi()
-                                        .itunesArtistAlbums(id, limit: 1);
+                                final albumResults = await const FireballApi()
+                                    .itunesArtistAlbums(id, limit: 1);
                                 if (albumResults.isNotEmpty) {
-                                  final url = albumResults.first[
-                                      'artworkUrl100'] as String?;
+                                  final url = albumResults
+                                      .first['artworkUrl100'] as String?;
                                   if (url != null && url.isNotEmpty) {
                                     artwork = url.replaceAll(
                                         '100x100bb', '600x600bb');
@@ -357,7 +355,9 @@ class _ArtistHero extends ConsumerWidget {
                       }
                     },
                     icon: Icon(
-                      isFollowing ? Icons.check_rounded : Icons.person_add_rounded,
+                      isFollowing
+                          ? Icons.check_rounded
+                          : Icons.person_add_rounded,
                       size: 16,
                       color: isFollowing ? cs.primary : Colors.white,
                     ),
@@ -370,11 +370,15 @@ class _ArtistHero extends ConsumerWidget {
                     ),
                     style: OutlinedButton.styleFrom(
                       side: BorderSide(
-                        color: isFollowing ? cs.primary : Colors.white.withValues(alpha: 0.5),
+                        color: isFollowing
+                            ? cs.primary
+                            : Colors.white.withValues(alpha: 0.5),
                         width: 1.5,
                       ),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(20)),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 0),
                     ),
                   ),
                 ],
@@ -684,7 +688,8 @@ class _ErrorState extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.cloud_off_rounded, size: 48, color: Colors.white38),
+            const Icon(Icons.cloud_off_rounded,
+                size: 48, color: Colors.white38),
             const SizedBox(height: 12),
             Text(
               message,

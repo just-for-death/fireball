@@ -15,6 +15,7 @@ import '../models/sponsor_segment.dart';
 import '../models/track.dart';
 import '../../remote/remote_server.dart';
 import '../audio/download_manager.dart';
+import '../audio/stream_cache_manager.dart';
 import 'local_store.dart';
 import 'player_state.dart';
 import 'dart:io';
@@ -224,6 +225,16 @@ class PlayerNotifier extends StateNotifier<PlayerState>
         }
       }
 
+      final streamCache = _ref.read(streamCacheManagerProvider.notifier);
+      if (playUrl == null || playUrl == track.url) {
+        if (streamCache.isCached(track.effectiveId)) {
+          final cachePath = streamCache.getLocalPath(track.effectiveId);
+          if (cachePath != null && await File(cachePath).exists()) {
+            playUrl = cachePath;
+          }
+        }
+      }
+
       final api = _api;
       final instance = settings.invidiousInstance.isNotEmpty
           ? settings.invidiousInstance
@@ -305,6 +316,11 @@ class PlayerNotifier extends StateNotifier<PlayerState>
         }
       }
       if (playUrl != null && playUrl.isNotEmpty && version == _playVersion) {
+        // Trigger auto-cache if it's an HTTP stream
+        if (settings.cacheEnabled && playUrl.startsWith('http')) {
+          streamCache.cacheTrack(track, playUrl).ignore();
+        }
+
         await _p.open(Media(playUrl));
         // SponsorBlock: fetch segments async after opening (only for YouTube)
         if (version == _playVersion && track.videoId != null) {

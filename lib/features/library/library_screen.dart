@@ -12,9 +12,10 @@ import '../../core/widgets/empty_state.dart';
 import '../../core/widgets/glass_widgets.dart';
 import '../../core/widgets/track_options_sheet.dart';
 import '../../core/audio/download_manager.dart';
+import '../../core/audio/stream_cache_manager.dart';
 import '../../core/api/fireball_api.dart';
 
-enum _LibTab { favorites, playlists, artists, albums, downloads }
+enum _LibTab { favorites, playlists, artists, albums, downloads, cached }
 
 class LibraryScreen extends HookConsumerWidget {
   const LibraryScreen({super.key});
@@ -179,7 +180,7 @@ class LibraryScreen extends HookConsumerWidget {
                               color: selected
                                   ? cs.primary
                                   : (isDarkMode
-                                      ? Colors.white.withValues(alpha: 0.55)
+                                      ? cs.onSurface.withValues(alpha: 0.7)
                                       : Colors.black.withValues(alpha: 0.45)),
                             ),
                             const SizedBox(width: 12),
@@ -251,6 +252,8 @@ class LibraryScreen extends HookConsumerWidget {
         return '💿 Albums';
       case _LibTab.downloads:
         return '💾 Downloads';
+      case _LibTab.cached:
+        return '🗂️ Cached';
     }
   }
 
@@ -266,6 +269,8 @@ class LibraryScreen extends HookConsumerWidget {
         return 'Albums';
       case _LibTab.downloads:
         return 'Downloads';
+      case _LibTab.cached:
+        return 'Cached';
     }
   }
 
@@ -281,6 +286,8 @@ class LibraryScreen extends HookConsumerWidget {
         return Icons.album_rounded;
       case _LibTab.downloads:
         return Icons.download_done_rounded;
+      case _LibTab.cached:
+        return Icons.offline_bolt_rounded;
     }
   }
 
@@ -321,30 +328,10 @@ class LibraryScreen extends HookConsumerWidget {
         );
 
       case _LibTab.downloads:
-        final dlState = ref.watch(downloadManagerProvider);
+        return _DownloadsTab(cs: cs, isDark: isDark);
 
-        // Use the authoritative map from DownloadManager — only fully completed
-        // downloads are stored here, active/in-progress ones are never included.
-        final dlList = dlState.downloadedTracks.values.toList();
-
-        return _TrackList(
-          tracks: dlList,
-          cs: cs,
-          isDark: isDark,
-          emptyMessage:
-              'No downloaded music yet.\nDownload tracks for offline playback.',
-          emptyIcon: Icons.download_rounded,
-          onTap: (index) {
-            ref.read(playerProvider.notifier).setQueue(dlList);
-            ref.read(playerProvider.notifier).playIndex(index);
-          },
-          trailing: (track) => IconButton(
-            icon: Icon(Icons.more_vert_rounded,
-                color: Colors.white.withValues(alpha: 0.5)),
-            onPressed: () => showTrackOptions(context, ref, track),
-          ),
-          onLongPress: (track) => showTrackOptions(context, ref, track),
-        );
+      case _LibTab.cached:
+        return _CachedTab(cs: cs, isDark: isDark);
 
       case _LibTab.playlists:
         if (library.playlists.isEmpty) {
@@ -377,8 +364,8 @@ class LibraryScreen extends HookConsumerWidget {
                   onTap: openDetail,
                   onLongPress: openMenu,
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 4, vertical: 2),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
                     child: ListTile(
                       leading: _PlaylistArt(playlist: pl, size: 50, cs: cs),
                       title: Text(
@@ -436,7 +423,8 @@ class LibraryScreen extends HookConsumerWidget {
             final artist = library.artists[i];
             return GestureDetector(
               onTap: () {
-                context.push('/artist?name=${Uri.encodeComponent(artist.name)}');
+                context
+                    .push('/artist?name=${Uri.encodeComponent(artist.name)}');
               },
               child: Column(
                 children: [
@@ -447,7 +435,8 @@ class LibraryScreen extends HookConsumerWidget {
                             width: 110,
                             height: 110,
                             fit: BoxFit.cover,
-                            errorWidget: (_, __, ___) => _circularPlaceholder(cs),
+                            errorWidget: (_, __, ___) =>
+                                _circularPlaceholder(cs),
                           )
                         : _circularPlaceholder(cs),
                   ),
@@ -651,9 +640,7 @@ class LibraryScreen extends HookConsumerWidget {
                     label: 'Play all',
                     onTap: () {
                       Navigator.pop(ctx);
-                      ref
-                          .read(playerProvider.notifier)
-                          .setQueue(pl.videos);
+                      ref.read(playerProvider.notifier).setQueue(pl.videos);
                       ref.read(playerProvider.notifier).playIndex(0);
                     },
                   ),
@@ -668,8 +655,8 @@ class LibraryScreen extends HookConsumerWidget {
                       }
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
-                          content: Text(
-                              'Added ${pl.videos.length} tracks to queue'),
+                          content:
+                              Text('Added ${pl.videos.length} tracks to queue'),
                           duration: const Duration(seconds: 2),
                         ),
                       );
@@ -697,28 +684,34 @@ class LibraryScreen extends HookConsumerWidget {
                       final settings = ref.read(settingsProvider);
                       if (settings.lbdlUrl.isEmpty) {
                         ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Please configure lbdl in Settings first')),
+                          const SnackBar(
+                              content: Text(
+                                  'Please configure lbdl in Settings first')),
                         );
                         return;
                       }
-                      
+
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Preparing playlist for lbdl...')),
+                        const SnackBar(
+                            content: Text('Preparing playlist for lbdl...')),
                       );
-                      
+
                       try {
-                        final invId = await const FireballApi().pushPlaylistToInvidious(
+                        final invId =
+                            await const FireballApi().pushPlaylistToInvidious(
                           pl,
                           instanceUrl: settings.invidiousInstance,
                           sid: settings.invidiousSid,
                         );
                         if (context.mounted) {
-                          context.push('/lbdl-job?url=https://youtube.com/playlist?list=$invId');
+                          context.push(
+                              '/lbdl-job?url=https://youtube.com/playlist?list=$invId');
                         }
                       } catch (e) {
                         if (context.mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text('Failed to push playlist: $e')),
+                            SnackBar(
+                                content: Text('Failed to push playlist: $e')),
                           );
                         }
                       }
@@ -762,8 +755,8 @@ class LibraryScreen extends HookConsumerWidget {
     return ListTile(
       leading: Icon(icon, color: c, size: 22),
       title: Text(label,
-          style: TextStyle(
-              color: c, fontWeight: FontWeight.w500, fontSize: 14)),
+          style:
+              TextStyle(color: c, fontWeight: FontWeight.w500, fontSize: 14)),
       onTap: onTap,
     );
   }
@@ -779,6 +772,294 @@ class LibraryScreen extends HookConsumerWidget {
       builder: (ctx) => _PlaylistDetailSheet(pl: pl, ref: ref, cs: cs),
     );
   }
+}
+
+// ── Downloads Tab ─────────────────────────────────────────────────────────────
+// Verifies files on mount (prunes stale entries), shows delete button per track.
+class _DownloadsTab extends HookConsumerWidget {
+  const _DownloadsTab({required this.cs, required this.isDark});
+  final ColorScheme cs;
+  final bool isDark;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final dlState = ref.watch(downloadManagerProvider);
+
+    // Prune stale entries once when this tab first mounts.
+    useEffect(() {
+      Future.microtask(() {
+        if (context.mounted) {
+          ref.read(downloadManagerProvider.notifier).verifyDownloads();
+        }
+      });
+      return null;
+    }, const []);
+
+    final dlList = dlState.downloadedTracks.values.toList();
+
+    if (dlList.isEmpty) {
+      return const FireballEmptyState(
+        onDarkGlass: true,
+        title: 'No downloaded music yet.',
+        subtitle: 'Download tracks for offline playback.',
+        icon: Icons.download_rounded,
+      );
+    }
+
+    return Column(
+      children: [
+        // Play All + track count header
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  '${dlList.length} track${dlList.length == 1 ? '' : 's'}',
+                  style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.55),
+                      fontSize: 13),
+                ),
+              ),
+              TextButton.icon(
+                onPressed: () {
+                  ref.read(playerProvider.notifier).setQueue(dlList);
+                  ref.read(playerProvider.notifier).playIndex(0);
+                },
+                icon: const Icon(Icons.play_arrow_rounded, size: 18),
+                label: const Text('Play All'),
+              ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: ListView.builder(
+            padding: EdgeInsets.only(bottom: shellScrollBottomPadding(context)),
+            itemCount: dlList.length,
+            itemBuilder: (context, i) {
+              final track = dlList[i];
+              return ListTile(
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                leading: ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: track.artwork != null
+                      ? CachedNetworkImage(
+                          imageUrl: track.artwork!,
+                          width: 50,
+                          height: 50,
+                          fit: BoxFit.cover,
+                          errorWidget: (_, __, ___) => _artPlaceholder(cs),
+                        )
+                      : _artPlaceholder(cs),
+                ),
+                title: Text(
+                  track.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 14,
+                    color: isDark ? Colors.white : cs.onSurface,
+                  ),
+                ),
+                subtitle: Text(
+                  track.artist,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+                ),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.offline_pin_rounded,
+                        size: 14, color: cs.primary),
+                    const SizedBox(width: 4),
+                    IconButton(
+                      tooltip: 'Delete from device',
+                      icon: const Icon(Icons.delete_outline_rounded,
+                          color: Colors.redAccent, size: 22),
+                      onPressed: () async {
+                        final confirm = await showDialog<bool>(
+                          context: context,
+                          builder: (ctx) => AlertDialog(
+                            title: const Text('Delete Download?'),
+                            content: Text(
+                                'This will permanently delete "${track.title}" from your device.'),
+                            actions: [
+                              TextButton(
+                                  onPressed: () => Navigator.pop(ctx, false),
+                                  child: const Text('Cancel')),
+                              TextButton(
+                                  onPressed: () => Navigator.pop(ctx, true),
+                                  child: const Text('Delete',
+                                      style:
+                                          TextStyle(color: Colors.redAccent))),
+                            ],
+                          ),
+                        );
+                        if (confirm == true && context.mounted) {
+                          await ref
+                              .read(downloadManagerProvider.notifier)
+                              .deleteDownload(track.effectiveId);
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                  content: Text(
+                                      '"${track.title}" deleted from device')),
+                            );
+                          }
+                        }
+                      },
+                    ),
+                  ],
+                ),
+                onTap: () {
+                  ref.read(playerProvider.notifier).setQueue(dlList);
+                  ref.read(playerProvider.notifier).playIndex(i);
+                },
+                onLongPress: () => showTrackOptions(context, ref, track),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _artPlaceholder(ColorScheme cs) => Container(
+        width: 50,
+        height: 50,
+        color: cs.surfaceContainerHighest,
+        child: Icon(Icons.music_note_rounded,
+            color: cs.primary.withValues(alpha: 0.4), size: 22),
+      );
+}
+
+// ── Cached Songs Tab ──────────────────────────────────────────────────────────
+// Auto-playlist of all stream-cached songs, with per-track delete.
+class _CachedTab extends HookConsumerWidget {
+  const _CachedTab({required this.cs, required this.isDark});
+  final ColorScheme cs;
+  final bool isDark;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final cacheState = ref.watch(streamCacheManagerProvider);
+    final cached = cacheState.cachedTracks.values.toList();
+
+    if (cached.isEmpty) {
+      return const FireballEmptyState(
+        onDarkGlass: true,
+        title: 'No cached songs yet.',
+        subtitle:
+            'Songs you listen to are automatically cached here for offline playback.',
+        icon: Icons.offline_bolt_rounded,
+      );
+    }
+
+    return Column(
+      children: [
+        // Header
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+          child: Row(
+            children: [
+              Icon(Icons.offline_bolt_rounded, color: cs.primary, size: 18),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  '${cached.length} cached track${cached.length == 1 ? '' : 's'}',
+                  style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.55),
+                      fontSize: 13),
+                ),
+              ),
+              TextButton.icon(
+                onPressed: () {
+                  ref.read(playerProvider.notifier).setQueue(cached);
+                  ref.read(playerProvider.notifier).playIndex(0);
+                },
+                icon: const Icon(Icons.play_arrow_rounded, size: 18),
+                label: const Text('Play All'),
+              ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: ListView.builder(
+            padding: EdgeInsets.only(bottom: shellScrollBottomPadding(context)),
+            itemCount: cached.length,
+            itemBuilder: (context, i) {
+              final track = cached[i];
+              return ListTile(
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                leading: ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: track.artwork != null
+                      ? CachedNetworkImage(
+                          imageUrl: track.artwork!,
+                          width: 50,
+                          height: 50,
+                          fit: BoxFit.cover,
+                          errorWidget: (_, __, ___) => _artPlaceholder(cs),
+                        )
+                      : _artPlaceholder(cs),
+                ),
+                title: Text(
+                  track.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 14,
+                    color: isDark ? Colors.white : cs.onSurface,
+                  ),
+                ),
+                subtitle: Text(
+                  track.artist,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+                ),
+                trailing: IconButton(
+                  tooltip: 'Remove from cache',
+                  icon: Icon(Icons.delete_outline_rounded,
+                      color: Colors.white.withValues(alpha: 0.4), size: 22),
+                  onPressed: () async {
+                    await ref
+                        .read(streamCacheManagerProvider.notifier)
+                        .deleteCachedTrack(track.effectiveId);
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                            content:
+                                Text('"${track.title}" removed from cache')),
+                      );
+                    }
+                  },
+                ),
+                onTap: () {
+                  ref.read(playerProvider.notifier).setQueue(cached);
+                  ref.read(playerProvider.notifier).playIndex(i);
+                },
+                onLongPress: () => showTrackOptions(context, ref, track),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _artPlaceholder(ColorScheme cs) => Container(
+        width: 50,
+        height: 50,
+        color: cs.surfaceContainerHighest,
+        child: Icon(Icons.music_note_rounded,
+            color: cs.primary.withValues(alpha: 0.4), size: 22),
+      );
 }
 
 class _TrackList extends ConsumerWidget {
@@ -804,7 +1085,7 @@ class _TrackList extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final downloadedIds = ref.watch(downloadManagerProvider).downloadedIds;
-    
+
     if (tracks.isEmpty) {
       final parts = emptyMessage.split('\n');
       return FireballEmptyState(
@@ -894,10 +1175,13 @@ class _PlaylistArt extends StatelessWidget {
   Widget build(BuildContext context) {
     // Extract unique artworks from tracks (limit search to first 50 to avoid perf hits on massive playlists)
     final uniqueArts = <String>[];
-    final searchLimit = playlist.videos.length > 50 ? 50 : playlist.videos.length;
+    final searchLimit =
+        playlist.videos.length > 50 ? 50 : playlist.videos.length;
     for (int i = 0; i < searchLimit; i++) {
       final track = playlist.videos[i];
-      if (track.artwork != null && track.artwork!.isNotEmpty && !uniqueArts.contains(track.artwork)) {
+      if (track.artwork != null &&
+          track.artwork!.isNotEmpty &&
+          !uniqueArts.contains(track.artwork)) {
         uniqueArts.add(track.artwork!);
         if (uniqueArts.length >= 4) break;
       }
@@ -911,7 +1195,8 @@ class _PlaylistArt extends StatelessWidget {
           color: cs.primary.withValues(alpha: 0.15),
           borderRadius: BorderRadius.circular(12),
         ),
-        child: Icon(Icons.queue_music_rounded, color: cs.primary, size: size * 0.5),
+        child: Icon(Icons.queue_music_rounded,
+            color: cs.primary, size: size * 0.5),
       );
     }
 
@@ -967,7 +1252,8 @@ class _PlaylistArt extends StatelessWidget {
 
   Widget _fallback() => Container(
         color: cs.primary.withValues(alpha: 0.15),
-        child: Icon(Icons.music_note_rounded, color: cs.primary, size: size * 0.4),
+        child:
+            Icon(Icons.music_note_rounded, color: cs.primary, size: size * 0.4),
       );
 }
 
@@ -1052,9 +1338,7 @@ class _PlaylistDetailSheet extends StatelessWidget {
                         ),
                         onPressed: () {
                           Navigator.pop(ctx);
-                          ref
-                              .read(playerProvider.notifier)
-                              .setQueue(pl.videos);
+                          ref.read(playerProvider.notifier).setQueue(pl.videos);
                           ref.read(playerProvider.notifier).playIndex(0);
                         },
                       ),
@@ -1141,9 +1425,7 @@ class _PlaylistDetailSheet extends StatelessWidget {
                               ref
                                   .read(playerProvider.notifier)
                                   .setQueue(pl.videos);
-                              ref
-                                  .read(playerProvider.notifier)
-                                  .playIndex(i);
+                              ref.read(playerProvider.notifier).playIndex(i);
                             },
                             onLongPress: () =>
                                 showTrackOptions(context, ref, t),

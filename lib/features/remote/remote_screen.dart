@@ -27,7 +27,7 @@ class RemoteScreen extends HookConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final settings = ref.watch(settingsProvider);
-    
+
     // Use provided parameters or fallback to settings
     final ip = remoteIp ?? settings.remoteHostIp;
     final port = remotePort ?? settings.remotePeerPort;
@@ -73,8 +73,6 @@ class RemoteScreen extends HookConsumerWidget {
     );
   }
 }
-
-
 
 // ── Control mode ──────────────────────────────────────────────────────────────
 
