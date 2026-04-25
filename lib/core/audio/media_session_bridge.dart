@@ -3,6 +3,7 @@ import 'package:audio_service/audio_service.dart';
 import '../models/track.dart';
 import '../store/player_state.dart';
 import 'media_session_player.dart';
+import '../widgets/widget_bridge.dart';
 
 /// Pushes [PlayerState] into [audio_service] for notifications / lock screen / OS controls.
 class MediaSessionBridge {
@@ -80,6 +81,8 @@ class MediaSessionBridge {
     final t = s.currentTrack;
     if (t != null) {
       h.mediaItem.add(_itemForTrack(t, s));
+      // Bridge data to home screen widgets (Android AppWidget / iOS WidgetKit)
+      WidgetBridge.updateWidget(t);
     } else {
       h.mediaItem.add(null);
     }

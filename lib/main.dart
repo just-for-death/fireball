@@ -18,6 +18,7 @@ import 'core/audio/media_session_bridge.dart';
 import 'core/store/providers.dart';
 import 'core/theme/app_theme.dart';
 import 'core/ui/messenger_service.dart';
+import 'core/widgets/widget_bridge.dart';
 import 'routes/router.dart';
 
 Future<void> _initAudioSession() async {
@@ -107,6 +108,7 @@ void _scheduleIosFriendlyMediaBootstrap() {
 Future<void> _bootstrapAudioAfterFirstFrame() async {
   // Must run before any Player() — see PlayerNotifier._ensurePlayer.
   MediaKit.ensureInitialized();
+  await WidgetBridge.init();
   await _initMediaService();
   await _initAudioSession();
   MediaSessionBridge.sync();
