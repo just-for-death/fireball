@@ -177,8 +177,8 @@ class SettingsScreen extends HookConsumerWidget {
         }
       } catch (e) {
         if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-              content: Text('lbdl connection failed: $e')));
+          ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('lbdl connection failed: $e')));
         }
       } finally {
         testingLbdl.value = false;
@@ -1342,13 +1342,23 @@ class SettingsScreen extends HookConsumerWidget {
                                 color: Colors.white.withValues(alpha: 0.7),
                                 fontSize: 13),
                           ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Hint: To make downloaded tracks visible to other music players, select a public folder (e.g., Music or Downloads).',
+                            style: TextStyle(
+                                color:
+                                    Colors.orangeAccent.withValues(alpha: 0.8),
+                                fontSize: 12,
+                                fontStyle: FontStyle.italic),
+                          ),
                           const SizedBox(height: 12),
                           Row(
                             children: [
                               Expanded(
                                 child: OutlinedButton.icon(
                                   onPressed: () async {
-                                    final path = await FilePicker.getDirectoryPath();
+                                    final path =
+                                        await FilePicker.getDirectoryPath();
                                     if (path != null) {
                                       await saveSettings(
                                           {'customDownloadPath': path});
@@ -1373,13 +1383,58 @@ class SettingsScreen extends HookConsumerWidget {
                             ],
                           ),
                         ],
+                        const SizedBox(height: 24),
+                        const Text(
+                          'Stream Auto-Cache',
+                          style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Automatically save played streams for offline use.',
+                          style: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.5),
+                              fontSize: 13),
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text('Enable Auto-Cache',
+                                style: TextStyle(
+                                    color: Colors.white, fontSize: 14)),
+                            Switch(
+                              value: settings.cacheEnabled,
+                              onChanged: (v) =>
+                                  saveSettings({'cacheEnabled': v}),
+                              activeThumbColor: cs.primary,
+                            ),
+                          ],
+                        ),
+                        if (settings.cacheEnabled) ...[
+                          const SizedBox(height: 8),
+                          _SettingsLabel(
+                              'CACHE LIMIT: ${settings.localMusicCacheLimit} SONGS'),
+                          Slider(
+                            value: settings.localMusicCacheLimit.toDouble(),
+                            min: 5,
+                            max: 30,
+                            divisions: 25,
+                            activeColor: cs.primary,
+                            onChanged: (v) => saveSettings(
+                                {'localMusicCacheLimit': v.toInt()}),
+                          ),
+                        ],
                       ],
                     ),
 
                   const SizedBox(height: 16),
 
                   // ── LBDL SERVER ─────────────────────────────────────────
-                  if (showSection('lbdl server downloader youtube dlp playlist'))
+                  if (showSection(
+                      'lbdl server downloader youtube dlp playlist'))
                     _SectionCard(
                       title: 'LBDL SERVER',
                       icon: Icons.cloud_download_rounded,

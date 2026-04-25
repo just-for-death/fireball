@@ -488,14 +488,14 @@ class PlayerScreen extends HookConsumerWidget {
                           // Try to upgrade to a better artist/album image
                           final id = data['artistId'] as int?;
                           if (id != null) {
-                            final albumResults = await api
-                                .itunesArtistAlbums(id, limit: 1);
+                            final albumResults =
+                                await api.itunesArtistAlbums(id, limit: 1);
                             if (albumResults.isNotEmpty) {
-                              final url = albumResults.first[
-                                  'artworkUrl100'] as String?;
+                              final url = albumResults.first['artworkUrl100']
+                                  as String?;
                               if (url != null && url.isNotEmpty) {
-                                artwork = url.replaceAll(
-                                    '100x100bb', '600x600bb');
+                                artwork =
+                                    url.replaceAll('100x100bb', '600x600bb');
                               }
                             }
                           }
@@ -1557,7 +1557,8 @@ class PlayerScreen extends HookConsumerWidget {
 
     try {
       // ── Phase 0: Local Offline Lyrics ──────────────────────────────────
-      final localLyricsPath = downloadManager.getLocalLyricsPath(track.effectiveId);
+      final localLyricsPath =
+          downloadManager.getLocalLyricsPath(track.effectiveId);
       if (localLyricsPath != null) {
         final localFile = File(localLyricsPath);
         if (await localFile.exists()) {
@@ -1568,7 +1569,10 @@ class PlayerScreen extends HookConsumerWidget {
             if (isSynced) {
               lyrics.value = _parseLRC(content);
             } else {
-              lyricsPlain.value = content.split('\n').where((l) => l.trim().isNotEmpty).toList();
+              lyricsPlain.value = content
+                  .split('\n')
+                  .where((l) => l.trim().isNotEmpty)
+                  .toList();
             }
             lyricsLoading.value = false;
             return;
