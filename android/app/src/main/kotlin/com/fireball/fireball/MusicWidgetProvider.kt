@@ -1,4 +1,3 @@
-// android/app/src/main/kotlin/com/fireball/fireball/MusicWidgetProvider.kt
 package com.fireball.fireball
 
 import android.appwidget.AppWidgetManager
@@ -26,8 +25,8 @@ class MusicWidgetProvider : AppWidgetProvider() {
             appWidgetManager: AppWidgetManager,
             appWidgetId: Int
         ) {
-            // Retrieve simple data from shared preferences (set by Flutter via MethodChannel)
-            val prefs = context.getSharedPreferences("fireball_widget", Context.MODE_PRIVATE)
+            // Retrieve data from home_widget preferences
+            val prefs = context.getSharedPreferences("HomeWidgetPreferences", Context.MODE_PRIVATE)
             val title = prefs.getString("track_title", "No track") ?: "No track"
             val artist = prefs.getString("track_artist", "") ?: ""
 

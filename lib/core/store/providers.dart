@@ -252,6 +252,13 @@ class PlayerNotifier extends StateNotifier<PlayerState>
           if (version != _playVersion) return;
 
           final formats = (details['adaptiveFormats'] as List<dynamic>? ?? []);
+          final isHigh = settings.highQuality;
+          formats.sort((a, b) {
+            final bitA = int.tryParse(a['bitrate']?.toString() ?? '0') ?? 0;
+            final bitB = int.tryParse(b['bitrate']?.toString() ?? '0') ?? 0;
+            return isHigh ? bitB.compareTo(bitA) : bitA.compareTo(bitB);
+          });
+
           final bestFormat = formats.firstWhere(
             (f) => f['type']?.toString().startsWith('audio/') ?? false,
             orElse: () => formats.isEmpty ? null : formats.first,

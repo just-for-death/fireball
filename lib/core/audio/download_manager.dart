@@ -238,6 +238,13 @@ class DownloadManager extends StateNotifier<DownloadState> {
         final details = await api.getVideoDetails(track.videoId!,
             instanceUrl: instance, sid: settings.invidiousSid);
         final formats = (details['adaptiveFormats'] as List<dynamic>? ?? []);
+        final isHigh = settings.highQuality;
+        formats.sort((a, b) {
+          final bitA = int.tryParse(a['bitrate']?.toString() ?? '0') ?? 0;
+          final bitB = int.tryParse(b['bitrate']?.toString() ?? '0') ?? 0;
+          return isHigh ? bitB.compareTo(bitA) : bitA.compareTo(bitB);
+        });
+
         final bestFormat = formats.firstWhere(
           (f) => f['type']?.toString().startsWith('audio/mp4') ?? false,
           orElse: () => formats.firstWhere(

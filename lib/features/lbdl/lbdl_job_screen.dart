@@ -5,6 +5,7 @@ import 'package:flutter_hooks/flutter_hooks.dart';
 
 import '../../core/api/fireball_api.dart';
 import '../../core/store/providers.dart';
+import '../../core/widgets/platform_widgets.dart';
 
 class LbdlJobScreen extends HookConsumerWidget {
   final String playlistUrl;
@@ -111,7 +112,7 @@ class LbdlJobScreen extends HookConsumerWidget {
       return () => timer?.cancel();
     }, const []);
 
-    return Scaffold(
+    return PlatformScaffold(
       backgroundColor: bg,
       appBar: AppBar(
         title: const Text('lbdl Server Download'),
