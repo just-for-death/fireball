@@ -2,6 +2,35 @@
 
 All notable changes to **Fireball** are documented here. Release binaries live on [GitHub Releases](https://github.com/just-for-death/fireball/releases).
 
+## [3.0.0] — 2026-04-25
+
+### iOS & Release Pipeline
+
+- Fixed unsigned iOS IPA CI pipeline for Codemagic by hardening CocoaPods integration and iOS xcconfig includes.
+- Added CI safeguards in `scripts/build_unsigned_ipa.sh` to ensure required Pods xcconfig includes remain present and patch known `audiotags` podspec breakage during build.
+- Simplified `codemagic.yaml` to **unsigned iOS IPA only** workflow.
+- Pinned `audiotags` to `1.4.2` because `1.4.3+` iOS binaries are missing required FRB symbols (`_wire_read`, `_wire_write`, etc.), which caused linker failures.
+
+### Stability & Logic Fixes
+
+- Fixed remote control polling race conditions (stale endpoint after port changes and overlapping poll requests).
+- Fixed lbdl job polling overlap and made payload parsing tolerant to malformed track entries.
+- Fixed WebDAV live sync concurrency overlap and changed behavior to skip sync when remote freshness cannot be determined.
+- Fixed download verification to support current Artist/Title file layout (preventing false stale-prune behavior).
+- Switched download/cache writes to streamed HTTP downloads with timeouts to reduce memory spikes on large files.
+- Fixed local store restore/init race by waiting for store readiness before restore.
+- Preserved signed stream URL query integrity in proxy URL rewriting to avoid signature breakage.
+- Improved search debounce guards to avoid stale result updates when search mode changes mid-request.
+
+### Release Assets (v3.0.0)
+
+| Platform | Asset name |
+|----------|------------|
+| Android | `Fireball-3.0.0-android.apk` |
+| iOS | `Fireball-3.0.0-ios-unsigned.ipa` (unsigned — sideload / your signing) |
+
+---
+
 ## [2.0.0] — 2026-04-19
 
 ### Artist Discovery
@@ -125,6 +154,7 @@ Verify downloads with `SHA256SUMS.txt` on the release.
 
 Initial public release: Invidious playback, library, lyrics, ListenBrainz, Google Drive & WebDAV backup, tablet UI, Material 3 / dynamic color. See GitHub release [v1.0.0](https://github.com/just-for-death/fireball/releases/tag/v1.0.0) for assets and checksums.
 
+[3.0.0]: https://github.com/just-for-death/fireball/releases/tag/v3.0.0
 [2.0.0]: https://github.com/just-for-death/fireball/releases/tag/v2.0.0
 [1.6.0]: https://github.com/just-for-death/fireball/releases/tag/v1.6.0
 [1.5.0]: https://github.com/just-for-death/fireball/releases/tag/v1.5.0
