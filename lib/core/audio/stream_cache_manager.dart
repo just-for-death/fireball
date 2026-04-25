@@ -170,13 +170,8 @@ class StreamCacheManager extends StateNotifier<StreamCacheState> {
     );
 
     try {
-      final response = await http.get(Uri.parse(url));
-      if (response.statusCode != 200) {
-        throw Exception('Failed to cache stream: ${response.statusCode}');
-      }
-
       final file = File('${_dir!.path}/${track.effectiveId}.m4a');
-      await file.writeAsBytes(response.bodyBytes);
+      await _downloadToFile(url, file.path);
 
       final sidecar = File('${_dir!.path}/${track.effectiveId}.json');
       await sidecar.writeAsString(jsonEncode(track.toJson()));
@@ -195,6 +190,29 @@ class StreamCacheManager extends StateNotifier<StreamCacheState> {
       state = state.copyWith(
         activeDownloads: {...state.activeDownloads}..remove(track.effectiveId),
       );
+    }
+  }
+
+  Future<void> _downloadToFile(String url, String destinationPath) async {
+    final client = http.Client();
+    final request = http.Request('GET', Uri.parse(url));
+    try {
+      final response =
+          await client.send(request).timeout(const Duration(seconds: 60));
+      if (response.statusCode != 200) {
+        throw Exception('Failed to cache stream: ${response.statusCode}');
+      }
+      final file = File(destinationPath);
+      final sink = file.openWrite();
+      try {
+        await response.stream
+            .timeout(const Duration(seconds: 60))
+            .pipe(sink);
+      } finally {
+        await sink.close();
+      }
+    } finally {
+      client.close();
     }
   }
 }

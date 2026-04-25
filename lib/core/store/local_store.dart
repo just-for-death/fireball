@@ -286,6 +286,7 @@ class LocalStoreNotifier extends StateNotifier<LibraryData> {
 
   // ── Full restore (used by sync) ───────────────────────────────────────────────
   Future<void> restore(String libraryJson) async {
+    await _ready.future;
     try {
       final j = jsonDecode(libraryJson) as Map<String, dynamic>;
       state = _fromJson(j);
