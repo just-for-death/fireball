@@ -13,6 +13,27 @@ OUT_NAME="${1:-build/ios/fireball_unsigned.ipa}"
 echo "==> flutter pub get"
 flutter pub get
 
+echo "==> ensure CocoaPods xcconfig includes (Runner)"
+python3 - <<'PY'
+from pathlib import Path
+
+debug_path = Path("ios/Flutter/Debug.xcconfig")
+release_path = Path("ios/Flutter/Release.xcconfig")
+
+debug_include = '#include? "../Pods/Target Support Files/Pods-Runner/Pods-Runner.debug.xcconfig"'
+release_include = '#include? "../Pods/Target Support Files/Pods-Runner/Pods-Runner.release.xcconfig"'
+profile_include = '#include? "../Pods/Target Support Files/Pods-Runner/Pods-Runner.profile.xcconfig"'
+
+def prepend_if_missing(path: Path, include: str):
+    text = path.read_text() if path.exists() else ""
+    if include not in text:
+        path.write_text(include + "\n" + text)
+
+prepend_if_missing(debug_path, debug_include)
+prepend_if_missing(release_path, release_include)
+prepend_if_missing(release_path, profile_include)
+PY
+
 echo "==> patch audiotags iOS podspec (CI safeguard)"
 AUDIO_PODSPEC_PATH="$(python3 - <<'PY'
 import json

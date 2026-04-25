@@ -1,28 +1,15 @@
-# Codemagic CI/CD — Fireball v3.0.x
-# Marketing version: FLUTTER_BUILD_NAME (3.0.0). Build number: CM_BUILD_NUMBER or ASC (signed IPA).
-# Typical order: run `fireball-ios-unsigned-ipa` or `fireball-ios-ipa`, then `fireball-android-apk`.
+# Codemagic CI/CD — Fireball unsigned iOS IPA only
+# Marketing version: FLUTTER_BUILD_NAME (3.0.0). Build number: CM_BUILD_NUMBER.
 #
 # Docs: https://docs.codemagic.io/yaml-quick-start/building-a-flutter-app/
-#       https://docs.codemagic.io/yaml-code-signing/signing-ios/
-#       https://docs.codemagic.io/yaml-publishing/app-store-connect/
 #
-# Setup (Codemagic UI):
-# 1. Team integrations → Developer Portal → add App Store Connect API key (App Manager).
-# 2. Code signing identities → ensure App Store distribution cert + profile for bundle id
-#    com.fireball.fireball (or use automatic fetch after step 1).
-# 3. In Team integrations, name your App Store Connect key e.g. `fireball-asc` — it must match
-#    `app_store_connect` under workflow `fireball-ios-ipa` (or change that line to your name).
-# 4. Optional: in Codemagic app Environment variables, set APP_STORE_APPLE_ID to your app’s
-#    numeric Apple ID (App Store Connect → App → General) for ASC-based build numbering.
+# No Apple signing / TestFlight upload is configured in this file.
 #
 # Monorepo: if this file lives above the Flutter app, add to the workflow:
 #   working_directory: fireball
 #
 # Unsigned IPA: use workflow `fireball-ios-unsigned-ipa` (no Apple signing; artifact is not
 # installable on real devices until you sign it yourself).
-#
-# Android APK: workflow `fireball-android-apk` — release APK (add android_signing + keystore in
-# Codemagic for Play Store–style signing; project currently uses debug signing for release).
 
 workflows:
   fireball-ios-unsigned-ipa:
