@@ -209,6 +209,7 @@ class PlayerNotifier extends StateNotifier<PlayerState>
             token: settings.listenBrainzToken,
             artistName: track.artist,
             trackName: track.title,
+            releaseName: track.album,
           )
           .catchError((Object e) => dev.log('Playing-now error: $e'));
     }
@@ -671,6 +672,7 @@ class PlayerNotifier extends StateNotifier<PlayerState>
             token: s.listenBrainzToken,
             artistName: track.artist,
             trackName: track.title,
+            releaseName: track.album,
           )
           .catchError((Object e) => dev.log('Scrobble error: $e'));
     }

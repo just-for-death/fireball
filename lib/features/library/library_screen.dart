@@ -864,7 +864,7 @@ class _DownloadsTab extends HookConsumerWidget {
                   ),
                 ),
                 subtitle: Text(
-                  track.artist,
+                  '${track.artist}${track.album != null ? " • ${track.album}" : ""}${track.year != null ? " (${track.year})" : ""}',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
@@ -1018,7 +1018,7 @@ class _CachedTab extends HookConsumerWidget {
                   ),
                 ),
                 subtitle: Text(
-                  track.artist,
+                  '${track.artist}${track.album != null ? " • ${track.album}" : ""}${track.year != null ? " (${track.year})" : ""}',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
@@ -1138,7 +1138,7 @@ class _TrackList extends ConsumerWidget {
             ],
           ),
           subtitle: Text(
-            track.artist,
+            '${track.artist}${track.album != null ? " • ${track.album}" : ""}${track.year != null ? " (${track.year})" : ""}',
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),

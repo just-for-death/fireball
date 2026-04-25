@@ -121,6 +121,8 @@ class SearchScreen extends HookConsumerWidget {
                           'id': t['trackId']?.toString() ?? '',
                           'title': t['trackName'] ?? '—',
                           'artist': t['artistName'] ?? '—',
+                          'album': t['collectionName'],
+                          'year': t['releaseDate']?.toString().split('-').first,
                           'artwork': (t['artworkUrl100'] as String?)
                               ?.replaceAll('100x100bb', '400x400bb'),
                           'url': t['previewUrl'],
@@ -154,6 +156,8 @@ class SearchScreen extends HookConsumerWidget {
                       'id': t['trackId']?.toString() ?? '',
                       'title': t['trackName'] ?? '—',
                       'artist': t['artistName'] ?? '—',
+                      'album': t['collectionName'],
+                      'year': t['releaseDate']?.toString().split('-').first,
                       'artwork': (t['artworkUrl100'] as String?)
                           ?.replaceAll('100x100bb', '400x400bb'),
                       'url': t['previewUrl'],
@@ -175,6 +179,8 @@ class SearchScreen extends HookConsumerWidget {
                 artwork: r['artwork'],
                 url: r['url'] ?? '',
                 duration: r['duration'],
+                album: r['album'],
+                year: r['year'],
               ))
           .toList();
       ref.read(playerProvider.notifier).setQueue(tracks);
@@ -384,6 +390,8 @@ class SearchScreen extends HookConsumerWidget {
                                       artwork: item['artwork'],
                                       url: item['url'] ?? '',
                                       duration: item['duration'],
+                                      album: item['album'],
+                                      year: item['year'],
                                     );
                                     showTrackOptions(context, ref, t);
                                   },
