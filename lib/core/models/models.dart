@@ -272,6 +272,11 @@ class FireballSettings {
   final String gotifyUrl;
   final String gotifyToken;
 
+  // lbdl Server
+  final String lbdlUrl;
+  final String lbdlUsername;
+  final String lbdlPassword;
+
   const FireballSettings({
     this.ollamaEnabled = false,
     this.ollamaUrl = '',
@@ -317,6 +322,9 @@ class FireballSettings {
     this.gotifyEnabled = false,
     this.gotifyUrl = '',
     this.gotifyToken = '',
+    this.lbdlUrl = '',
+    this.lbdlUsername = '',
+    this.lbdlPassword = '',
   });
 
   factory FireballSettings.fromJson(Map<String, dynamic> j) {
@@ -399,6 +407,9 @@ class FireballSettings {
       gotifyEnabled: toBool(j['gotifyEnabled'], false),
       gotifyUrl: j['gotifyUrl']?.toString() ?? '',
       gotifyToken: j['gotifyToken']?.toString() ?? '',
+      lbdlUrl: j['lbdlUrl']?.toString() ?? '',
+      lbdlUsername: j['lbdlUsername']?.toString() ?? '',
+      lbdlPassword: j['lbdlPassword']?.toString() ?? '',
     );
   }
 
@@ -447,6 +458,9 @@ class FireballSettings {
         'gotifyEnabled': gotifyEnabled,
         'gotifyUrl': gotifyUrl,
         'gotifyToken': gotifyToken,
+        'lbdlUrl': lbdlUrl,
+        'lbdlUsername': lbdlUsername,
+        'lbdlPassword': lbdlPassword,
       };
 
   FireballSettings copyWith({
@@ -499,6 +513,9 @@ class FireballSettings {
     bool? gotifyEnabled,
     String? gotifyUrl,
     String? gotifyToken,
+    String? lbdlUrl,
+    String? lbdlUsername,
+    String? lbdlPassword,
   }) =>
       FireballSettings(
         ollamaEnabled: ollamaEnabled ?? this.ollamaEnabled,
@@ -560,6 +577,9 @@ class FireballSettings {
         gotifyEnabled: gotifyEnabled ?? this.gotifyEnabled,
         gotifyUrl: gotifyUrl ?? this.gotifyUrl,
         gotifyToken: gotifyToken ?? this.gotifyToken,
+        lbdlUrl: lbdlUrl ?? this.lbdlUrl,
+        lbdlUsername: lbdlUsername ?? this.lbdlUsername,
+        lbdlPassword: lbdlPassword ?? this.lbdlPassword,
       );
 
   // ── Convenience grouped getters (Option A: same flat JSON, typed Dart access)

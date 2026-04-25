@@ -106,6 +106,13 @@ class DownloadManager extends StateNotifier<DownloadState> {
     return '${_dir!.path}/$trackId.media';
   }
 
+  String? getLocalLyricsPath(String trackId) {
+    if (_dir == null || !isDownloaded(trackId)) return null;
+    final file = File('${_dir!.path}/$trackId.lrc');
+    if (file.existsSync()) return file.path;
+    return null;
+  }
+
   Future<void> removeDownload(String trackId) async {
     if (_dir == null) return;
     try {
@@ -230,15 +237,18 @@ class DownloadManager extends StateNotifier<DownloadState> {
       final file = File('${_dir!.path}/${track.effectiveId}.media');
       await file.writeAsBytes(response.bodyBytes);
 
-      // Write metadata sidecar so we can reconstruct track info on next launch
-      final sidecar = File('${_dir!.path}/${track.effectiveId}.json');
-      await sidecar.writeAsString(jsonEncode(track.toJson()));
+      // Enhance metadata and fetch lyrics
+      final enhancedTrack = await _enhanceMetadataAndFetchLyrics(track, api);
+
+      // Write metadata sidecar
+      final sidecar = File('${_dir!.path}/${enhancedTrack.effectiveId}.json');
+      await sidecar.writeAsString(jsonEncode(enhancedTrack.toJson()));
 
       final newTracks = Map<String, Track>.from(state.downloadedTracks)
-        ..[track.effectiveId] = track;
+        ..[enhancedTrack.effectiveId] = enhancedTrack;
 
       state = state.copyWith(
-        downloadedIds: {...state.downloadedIds, track.effectiveId},
+        downloadedIds: {...state.downloadedIds, enhancedTrack.effectiveId},
         downloadedTracks: newTracks,
       );
     } catch (e) {
@@ -249,5 +259,85 @@ class DownloadManager extends StateNotifier<DownloadState> {
         activeDownloads: {...state.activeDownloads}..remove(track.effectiveId),
       );
     }
+  }
+
+  Future<Track> _enhanceMetadataAndFetchLyrics(
+      Track track, FireballApi api) async {
+    Track enhanced = track;
+
+    // 1. iTunes Metadata Enhancement
+    try {
+      final term = '${track.artist} ${track.title}';
+      final results = await api.itunesSearch(term, limit: 3);
+      final raw = results['results'] as List<dynamic>? ?? [];
+      
+      if (raw.isNotEmpty) {
+        final match = raw.first;
+        enhanced = enhanced.copyWith(
+          title: match['trackName']?.toString() ?? track.title,
+          artist: match['artistName']?.toString() ?? track.artist,
+          album: match['collectionName']?.toString() ?? track.album,
+          artwork: (match['artworkUrl100']?.toString() ?? '')
+              .replaceAll('100x100bb', '600x600bb'),
+        );
+      }
+    } catch (e) {
+      dev.log('iTunes metadata enhancement failed: $e');
+    }
+
+    // 2. Fetch and save Lyrics (.lrc)
+    try {
+      String? lyricText;
+
+      // LRCLIB
+      try {
+        final lrclibData =
+            await api.lrclibGet(enhanced.artist, enhanced.title, album: enhanced.album);
+        if (lrclibData != null && lrclibData is Map) {
+          final synced = lrclibData['syncedLyrics']?.toString();
+          final plain = lrclibData['plainLyrics']?.toString();
+          if (synced != null && synced.trim().isNotEmpty) {
+            lyricText = synced.trim();
+          } else if (plain != null && plain.trim().isNotEmpty) {
+            lyricText = plain.trim();
+          }
+        }
+      } catch (_) {}
+
+      // Fallback to NetEase
+      if (lyricText == null) {
+        try {
+          final q = '${enhanced.artist} ${enhanced.title}'.trim();
+          final searchData = await api.lyricsSearch(q);
+          if (searchData != null && searchData['result'] != null) {
+            final songs = searchData['result']['songs'] as List<dynamic>? ?? [];
+            if (songs.isNotEmpty) {
+              final songId = songs.first['id']?.toString();
+              if (songId != null) {
+                final lData = await api.lyricsGet(songId);
+                if (lData != null) {
+                  for (final key in ['klyric', 'lrc']) {
+                    final lrc = (lData[key] as Map?)?['lyric']?.toString();
+                    if (lrc != null && lrc.trim().isNotEmpty) {
+                      lyricText = lrc.trim();
+                      break;
+                    }
+                  }
+                }
+              }
+            }
+          }
+        } catch (_) {}
+      }
+
+      if (lyricText != null && lyricText.isNotEmpty) {
+        final lrcFile = File('${_dir!.path}/${enhanced.effectiveId}.lrc');
+        await lrcFile.writeAsString(lyricText);
+      }
+    } catch (e) {
+      dev.log('Lyrics fetch failed: $e');
+    }
+
+    return enhanced;
   }
 }
