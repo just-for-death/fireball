@@ -12,7 +12,11 @@ import '../store/providers.dart';
 
 final streamCacheManagerProvider =
     StateNotifierProvider<StreamCacheManager, StreamCacheState>((ref) {
-  return StreamCacheManager(ref);
+  final manager = StreamCacheManager(ref);
+  ref.listen(settingsProvider.select((s) => s.localMusicCacheLimit), (_, __) {
+    manager.enforceCacheLimit();
+  });
+  return manager;
 });
 
 class StreamCacheState {
