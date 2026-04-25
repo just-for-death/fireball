@@ -4,23 +4,53 @@ All notable changes to **Fireball** are documented here. Release binaries live o
 
 ## [3.0.0] — 2026-04-25
 
+### Downloads & Offline
+
+- Added full offline download pipeline with `DownloadManager` and player/library integration.
+- Added per-track download actions in player and track options flows.
+- Added custom download location support (via file picker and settings).
+- Added metadata sidecars (`.json`) for downloaded tracks to preserve rich local metadata.
+- Added local lyrics sidecars (`.lrc`) for offline lyrics playback.
+- Added metadata enrichment during download (artist/title/album/year/artwork where available).
+- Added tag embedding for downloaded audio files (title, artist, album, year, artwork).
+- Added verification + cleanup logic for stale/missing downloaded files.
+
+### Streaming Cache
+
+- Added `StreamCacheManager` for automatic HTTP stream caching.
+- Added cache limit setting (`localMusicCacheLimit`) with automatic eviction/cleanup.
+- Added cache-aware playback fallback and local cache path resolution.
+- Improved cache/download network writes to streamed I/O with timeouts to reduce memory spikes.
+
+### Widgets
+
+- Added Android home-screen music widget provider/resources and playback controls.
+- Added iOS widget target integration (`MusicWidget`) and project wiring for widget support.
+- Added platform widget bridge updates to keep widget state in sync with playback metadata.
+
+### Metadata & Playback
+
+- Added release year metadata support across models/UI/download flows.
+- Added album metadata propagation in home/player metadata displays.
+- Added quality-aware stream selection improvements for Invidious-resolved playback/download URLs.
+- Preserved signed CDN query integrity when proxying stream URLs (avoid signature breakage).
+
+### Remote, Search, and Sync Robustness
+
+- Improved remote control pairing/polling logic and stale endpoint handling.
+- Fixed remote and lbdl polling overlap/race behavior under slow or unstable networks.
+- Improved lbdl track status parsing tolerance for partially malformed payloads.
+- Hardened WebDAV live sync with in-flight sync guard and safer “freshness unknown” handling.
+- Fixed local store restore/init ordering to avoid restore-write races.
+- Improved search debounce guards to prevent stale mode/query result overwrites.
+
 ### iOS & Release Pipeline
 
-- Fixed unsigned iOS IPA CI pipeline for Codemagic by hardening CocoaPods integration and iOS xcconfig includes.
-- Added CI safeguards in `scripts/build_unsigned_ipa.sh` to ensure required Pods xcconfig includes remain present and patch known `audiotags` podspec breakage during build.
+- Fixed unsigned iOS IPA CI pipeline for Codemagic by hardening CocoaPods integration and Runner xcconfig include wiring.
+- Added CI safeguards in `scripts/build_unsigned_ipa.sh` to auto-ensure required Pods xcconfig includes.
+- Added CI safeguard for known `audiotags` iOS podspec issue during unsigned IPA builds.
 - Simplified `codemagic.yaml` to **unsigned iOS IPA only** workflow.
-- Pinned `audiotags` to `1.4.2` because `1.4.3+` iOS binaries are missing required FRB symbols (`_wire_read`, `_wire_write`, etc.), which caused linker failures.
-
-### Stability & Logic Fixes
-
-- Fixed remote control polling race conditions (stale endpoint after port changes and overlapping poll requests).
-- Fixed lbdl job polling overlap and made payload parsing tolerant to malformed track entries.
-- Fixed WebDAV live sync concurrency overlap and changed behavior to skip sync when remote freshness cannot be determined.
-- Fixed download verification to support current Artist/Title file layout (preventing false stale-prune behavior).
-- Switched download/cache writes to streamed HTTP downloads with timeouts to reduce memory spikes on large files.
-- Fixed local store restore/init race by waiting for store readiness before restore.
-- Preserved signed stream URL query integrity in proxy URL rewriting to avoid signature breakage.
-- Improved search debounce guards to avoid stale result updates when search mode changes mid-request.
+- Pinned `audiotags` to `1.4.2` because `1.4.3+` iOS binaries are missing required FRB linker symbols (`_wire_read`, `_wire_write`, etc.).
 
 ### Release Assets (v3.0.0)
 
