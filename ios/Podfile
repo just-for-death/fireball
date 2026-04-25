@@ -19,6 +19,7 @@ end
 require File.expand_path(File.join('packages', 'flutter_tools', 'bin', 'podhelper'), flutter_root)
 
 target 'Runner' do
+  use_frameworks!
   use_modular_headers!
 
   flutter_install_all_ios_pods File.expand_path('..', __FILE__)
@@ -42,8 +43,15 @@ post_install do |installer|
 
     if target.name == 'audiotags' || target.name == 'Runner'
       target.build_configurations.each do |config|
-        config.build_settings['OTHER_LDFLAGS'] = '$(inherited) -all_load'
+        config.build_settings['OTHER_LDFLAGS'] = '$(inherited) -all_load -framework Flutter'
         config.build_settings['DEFINES_MODULE'] = 'YES'
+      end
+    end
+
+    if target.respond_to?(:instance_variable_get)
+      spec = target.instance_variable_get(:@spec)
+      if spec && spec.name == 'audiotags'
+        spec.static_framework = true
       end
     end
   end

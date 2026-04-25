@@ -1,8 +1,6 @@
 import Flutter
 import UIKit
-
-@_silgen_name("dummy_method_to_enforce_bundling")
-func dummy_method_to_enforce_bundling() -> Int64
+import audiotags
 
 @main
 @objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
@@ -11,7 +9,7 @@ func dummy_method_to_enforce_bundling() -> Int64
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
     // Force the linker to include native symbols from audiotags (Rust)
-    _ = dummy_method_to_enforce_bundling()
+    _ = SwiftAudiotagsPlugin.dummy()
     
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
