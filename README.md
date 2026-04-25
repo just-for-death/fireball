@@ -15,14 +15,48 @@ Fireball streams music through [Invidious](https://invidious.io), discovers lyri
 | Category | Details |
 |---|---|
 | **Playback** | Stream audio via any Invidious instance · background playback (lock screen controls) · shuffle, repeat, queue management |
+| **Downloads & Offline** | Download tracks for offline playback · custom download folder support · sidecar metadata (`.json`) + local lyrics (`.lrc`) · embedded audio tags/artwork during download |
+| **Caching** | Automatic stream cache with configurable cache size limit and cleanup |
 | **Discovery** | iTunes trending charts by country · search across Invidious · AI-generated queue via local Ollama |
 | **Lyrics** | Synced (LRC) + plain lyrics from LRCLIB with structured multi-step fallback · NetEase fallback for Asian tracks |
 | **Library** | Local-first JSON store (`path_provider`) · favorites, playlists, artists, albums · full play history |
 | **Scrobbling** | Direct ListenBrainz scrobbling · Last.fm API key validation |
 | **Backup & Sync** | Google Drive (`appDataFolder`) backup/restore · WebDAV / Nextcloud backup/restore · optional **live sync** with merge across devices |
+| **Widgets** | Android home-screen playback widget · iOS widget target integration for media controls |
 | **Tablet UI** | iPad glass sidebar · Android NavigationRail · two-pane player and library on large screens |
 | **Remote** | Dedicated **Remote** tab · single QR · bidirectional LAN pairing (`/pair`) · control without re-entering IPs |
 | **Theming** | Material 3 · FlexColorScheme · dynamic color (Android 12+) · true-black dark mode option |
+
+---
+
+## What's New in v3.0.0 (vs v2.1.0)
+
+- **Offline downloads + tagging**
+  - Added full track download flow with local file management and offline playback integration.
+  - Added metadata enrichment during download (title/artist/album/year/artwork) and embedded tags into saved audio files.
+  - Added local lyrics sidecars (`.lrc`) and metadata sidecars (`.json`) per downloaded track.
+  - Added custom download location support and download controls in player/track actions.
+
+- **Streaming cache system**
+  - Added stream caching manager and auto-cache behavior for HTTP playback URLs.
+  - Added user-configurable local cache limit and automatic eviction/cleanup.
+
+- **Widget support**
+  - Added Android home-screen music widget support and native bridge updates.
+  - Added iOS widget target plumbing for media widget integration.
+
+- **Search, metadata, and playback quality improvements**
+  - Added release year/album propagation in UI and track metadata models.
+  - Added quality-aware stream selection and improved URL handling for proxied stream playback.
+
+- **Remote and sync robustness**
+  - Improved remote pairing/control polling and screen behavior.
+  - Hardened WebDAV live sync flow and local store merge/restore behavior.
+
+- **Release/CI hardening**
+  - Stabilized unsigned iOS IPA pipeline in Codemagic.
+  - iOS build fixes for CocoaPods/xcconfig integration and audiotags compatibility.
+  - Release now standardized on v3.0.0 Android APK + unsigned iOS IPA artifacts.
 
 ---
 
@@ -32,18 +66,11 @@ Official binaries are published on **[GitHub Releases](https://github.com/just-f
 
 | Version | Android | iOS |
 |--------|---------|-----|
-| **v1.6.0** (current) | `Fireball-1.6.0-android.apk` | `Fireball-1.6.0-ios-unsigned.ipa` — **unsigned** |
-| **v1.0.0** | `Fireball-1.0.0-android.apk` | `Fireball-1.0.0-ios-unsigned.ipa` — **unsigned** |
+| **v3.0.0** (current) | `Fireball-3.0.0-android.apk` | `Fireball-3.0.0-ios-unsigned.ipa` — **unsigned** |
 
 - **Android**: Open the APK on device, or `adb install …`. You may need to allow installs from your file manager or developer options.
 - **iOS**: IPAs are **not** signed for App Store distribution. Install with AltStore / Sideloadly, or sign with your Apple Developer account / CI.
 - **Integrity**: Each release includes `SHA256SUMS.txt`. Verify with `sha256sum -c SHA256SUMS.txt` after downloading.
-
----
-
-## Screenshots
-
-> _Coming soon_
 
 ---
 
@@ -62,8 +89,8 @@ git clone https://github.com/just-for-death/fireball.git
 cd fireball
 flutter pub get
 flutter run                    # attach a device or emulator
-flutter build apk --release   # Android APK → build/app/outputs/flutter-apk/app-release.apk
-flutter build ipa              # iOS (requires macOS + Xcode)
+./scripts/build_apk.sh --build-name=3.0.0 --build-number=1
+./scripts/build_unsigned_ipa.sh build/ios/ipa_unsigned/fireball_unsigned.ipa   # macOS + Xcode
 ```
 
 **Android / Gradle:** Use **JDK 17 or 21** for release builds. JDK 26+ can break Gradle’s Kotlin DSL (`IllegalArgumentException` parsing the Java version). On Arch Linux, for example: `export JAVA_HOME=/usr/lib/jvm/java-21-openjdk`. If the NDK error `CXX1101` / missing `source.properties` appears, remove the broken NDK folder under your Android SDK and rebuild so Gradle re-downloads it (see `android/gradle.properties` comments).
