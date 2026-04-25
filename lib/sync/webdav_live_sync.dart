@@ -11,9 +11,13 @@ import 'webdav_sync.dart';
 /// On app resume: if the remote `library.json` was modified after our last
 /// known backup timestamp, pull it; otherwise push our current state.
 class WebDavLiveSync {
-  /// Returns `true` when the remote file was modified more recently than
-  /// the local [settings.lastBackupAt] timestamp.
-  static Future<bool> isRemoteNewer(FireballSettings s) async {
+  static bool _syncInProgress = false;
+
+  /// Returns:
+  /// - `true` when remote `library.json` is newer than local backup timestamp
+  /// - `false` when remote is not newer
+  /// - `null` when freshness cannot be determined (network/auth/transient error)
+  static Future<bool?> isRemoteNewer(FireballSettings s) async {
     if (s.webDavUrl.isEmpty || s.webDavUsername.isEmpty) return false;
     try {
       final client = webdav.newClient(
@@ -48,7 +52,8 @@ class WebDavLiveSync {
       return remoteModified.isAfter(localTime);
     } catch (e) {
       dev.log('WebDavLiveSync.isRemoteNewer: $e');
-      return false;
+      // Unknown state: do not assume remote is older.
+      return null;
     }
   }
 
@@ -58,8 +63,15 @@ class WebDavLiveSync {
     LocalStoreNotifier store,
   ) async {
     if (s.webDavUrl.isEmpty || s.webDavUsername.isEmpty) return;
+    if (_syncInProgress) return;
+    _syncInProgress = true;
     try {
-      if (await isRemoteNewer(s)) {
+      final remoteIsNewer = await isRemoteNewer(s);
+      if (remoteIsNewer == null) {
+        dev.log('WebDavLiveSync: skipped (remote freshness unknown)');
+        return;
+      }
+      if (remoteIsNewer) {
         final json = await WebDavSync.restore(
           serverUrl: s.webDavUrl,
           username: s.webDavUsername,
@@ -88,6 +100,8 @@ class WebDavLiveSync {
       }
     } catch (e) {
       dev.log('WebDavLiveSync.syncIfNeeded error: $e');
+    } finally {
+      _syncInProgress = false;
     }
   }
 }

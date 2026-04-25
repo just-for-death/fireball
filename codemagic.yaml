@@ -25,32 +25,6 @@
 # Codemagic for Play Store–style signing; project currently uses debug signing for release).
 
 workflows:
-  fireball-android-apk:
-    name: Fireball Android APK
-    max_build_duration: 120
-    instance_type: linux_x2
-    environment:
-      flutter: stable
-      vars:
-        FLUTTER_BUILD_NAME: "3.0.0"
-    scripts:
-      - name: Install dependencies
-        script: |
-          set -e
-          flutter pub get
-
-      - name: Build release APK
-        script: |
-          set -e
-          VERSION_NAME="${FLUTTER_BUILD_NAME:-3.0.0}"
-          BN="${CM_BUILD_NUMBER:-1}"
-          flutter build apk --release \
-            --build-name="$VERSION_NAME" \
-            --build-number="$BN"
-
-    artifacts:
-      - build/app/outputs/flutter-apk/*.apk
-
   fireball-ios-unsigned-ipa:
     name: Fireball iOS unsigned IPA
     max_build_duration: 120
@@ -62,107 +36,12 @@ workflows:
       vars:
         FLUTTER_BUILD_NAME: "3.0.0"
     scripts:
-      - name: Install dependencies
-        script: |
-          set -e
-          flutter pub get
-
-      - name: Install CocoaPods
-        script: |
-          set -e
-          cd ios
-          pod install
-
       - name: Build unsigned iOS app and package IPA
         script: |
           set -e
-          VERSION_NAME="${FLUTTER_BUILD_NAME:-3.0.0}"
-          BN="${CM_BUILD_NUMBER:-1}"
-
-          flutter build ios --release --no-codesign \
-            --build-name="$VERSION_NAME" \
-            --build-number="$BN"
-
-          APP="build/ios/iphoneos/Runner.app"
-          if [ ! -d "$APP" ]; then
-            APP="build/ios/Release-iphoneos/Runner.app"
-          fi
-          if [ ! -d "$APP" ]; then
-            echo "Runner.app not found." >&2
-            exit 1
-          fi
-
-          rm -rf Payload
-          mkdir -p Payload
-          cp -R "$APP" Payload/
-
-          mkdir -p build/ios/ipa_unsigned
-          zip -qr build/ios/ipa_unsigned/fireball_unsigned.ipa Payload
-          rm -rf Payload
+          export FLUTTER_BUILD_NAME="${FLUTTER_BUILD_NAME:-3.0.0}"
+          export FLUTTER_BUILD_NUMBER="${CM_BUILD_NUMBER:-1}"
+          ./scripts/build_unsigned_ipa.sh "build/ios/ipa_unsigned/fireball_unsigned.ipa"
 
     artifacts:
       - build/ios/ipa_unsigned/fireball_unsigned.ipa
-
-  fireball-ios-ipa:
-    name: Fireball iOS IPA
-    max_build_duration: 120
-    instance_type: mac_mini_m2
-    integrations:
-      # Must match the integration name in Codemagic → Team integrations → Developer Portal
-      app_store_connect: fireball-asc
-
-    environment:
-      flutter: stable
-      xcode: latest
-      cocoapods: default
-      ios_signing:
-        distribution_type: app_store
-        bundle_identifier: com.fireball.fireball
-      vars:
-        # Marketing version (CFBundleShortVersionString), e.g. 2.1.0
-        FLUTTER_BUILD_NAME: "3.0.0"
-        # Optional: add APP_STORE_APPLE_ID in Codemagic → App → Environment variables
-        # (numeric string, e.g. "1234567890") to bump build number from App Store Connect.
-        # Do not define it here empty — Codemagic rejects empty vars.
-
-    scripts:
-      - name: Set up code signing on Xcode project
-        script: xcode-project use-profiles
-
-      - name: Install dependencies
-        script: |
-          set -e
-          flutter pub get
-
-      - name: Install CocoaPods
-        script: |
-          set -e
-          cd ios
-          pod install
-
-      - name: Flutter build IPA
-        script: |
-          set -e
-          VERSION_NAME="${FLUTTER_BUILD_NAME:-3.0.0}"
-
-          if [ -n "$APP_STORE_APPLE_ID" ]; then
-            LATEST="$(app-store-connect get-latest-app-store-build-number "$APP_STORE_APPLE_ID" 2>/dev/null || echo 0)"
-            BUILD_NUMBER=$((LATEST + 1))
-          else
-            BUILD_NUMBER="${CM_BUILD_NUMBER:-1}"
-          fi
-
-          flutter build ipa --release \
-            --build-name="$VERSION_NAME" \
-            --build-number="$BUILD_NUMBER"
-
-    artifacts:
-      - build/ios/ipa/*.ipa
-      - /tmp/xcodebuild_logs/*.log
-
-    # Omit this entire `publishing` block if you only want the .ipa as a build artifact (no ASC upload).
-    publishing:
-      app_store_connect:
-        auth: integration
-        submit_to_testflight: false
-        submit_to_app_store: false

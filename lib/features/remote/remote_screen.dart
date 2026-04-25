@@ -99,7 +99,10 @@ class _ControlMode extends HookWidget {
 
     useEffect(() {
       Timer? timer;
+      var polling = false;
       Future<void> poll() async {
+        if (polling) return;
+        polling = true;
         try {
           final s = await client.getState();
           if (context.mounted) {
@@ -110,13 +113,15 @@ class _ControlMode extends HookWidget {
           if (context.mounted) {
             error.value = 'Cannot reach $remoteIp';
           }
+        } finally {
+          polling = false;
         }
       }
 
       poll();
       timer = Timer.periodic(const Duration(seconds: 1), (_) => poll());
       return timer.cancel;
-    }, [remoteIp]);
+    }, [remoteIp, remotePort]);
 
     final s = remoteState.value;
 
