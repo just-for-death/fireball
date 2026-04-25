@@ -9,6 +9,7 @@ class Track {
   final String? url;
   final int? duration;
   final String? album;
+  final String? year;
 
   const Track({
     required this.id,
@@ -19,6 +20,7 @@ class Track {
     this.url,
     this.duration,
     this.album,
+    this.year,
   });
 
   factory Track.fromJson(Map<String, dynamic> j) => Track(
@@ -32,6 +34,7 @@ class Track {
             ? j['duration']
             : int.tryParse(j['duration']?.toString() ?? ''),
         album: j['album']?.toString(),
+        year: j['year']?.toString(),
       );
 
   Map<String, dynamic> toJson() => {
@@ -43,6 +46,7 @@ class Track {
         if (url != null) 'url': url,
         if (duration != null) 'duration': duration,
         if (album != null) 'album': album,
+        if (year != null) 'year': year,
       };
 
   Track copyWith({
@@ -54,6 +58,7 @@ class Track {
     String? url,
     int? duration,
     String? album,
+    String? year,
   }) =>
       Track(
         id: id ?? this.id,
@@ -64,6 +69,7 @@ class Track {
         url: url ?? this.url,
         duration: duration ?? this.duration,
         album: album ?? this.album,
+        year: year ?? this.year,
       );
 
   String get effectiveId => videoId ?? id;

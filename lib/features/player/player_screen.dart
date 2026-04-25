@@ -789,6 +789,20 @@ class PlayerScreen extends HookConsumerWidget {
                     ],
                   ),
                 ),
+                if (track?.album != null && track!.album!.isNotEmpty) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    '${track.album}${track.year != null ? " • ${track.year}" : ""}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.45),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w400,
+                      letterSpacing: 0.1,
+                    ),
+                  ),
+                ],
               ],
             ),
           ),

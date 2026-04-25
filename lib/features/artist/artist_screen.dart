@@ -476,6 +476,8 @@ class _SongTile extends StatelessWidget {
         .replaceAll('100x100bb', '300x300bb');
     final previewUrl = song['previewUrl'] as String?;
     final trackId = song['trackId']?.toString() ?? '';
+    final yearStr = (song['releaseDate'] as String? ?? '').split('-').first;
+    final year = yearStr.length == 4 ? yearStr : null;
 
     // Build a playable track from the iTunes data
     Track toTrack() => Track(
@@ -485,6 +487,7 @@ class _SongTile extends StatelessWidget {
           album: album.isNotEmpty ? album : null,
           artwork: artUrl.isNotEmpty ? artUrl : null,
           url: previewUrl ?? '',
+          year: year,
         );
 
     return Material(
@@ -543,9 +546,9 @@ class _SongTile extends StatelessWidget {
                         fontWeight: FontWeight.w600,
                       ),
                     ),
-                    if (album.isNotEmpty)
+                    if (album.isNotEmpty || year != null)
                       Text(
-                        album,
+                        '$album${album.isNotEmpty && year != null ? " • " : ""}${year ?? ""}',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
