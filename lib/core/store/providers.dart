@@ -602,11 +602,14 @@ class PlayerNotifier extends StateNotifier<PlayerState>
       // Only rewrite googlevideo.com CDN URLs
       if (!uri.host.contains('googlevideo.com')) return url;
       final base = instance.replaceAll(RegExp(r'/+$'), '');
-      // Proxy format: instance/videoplayback?...&host=original-host
-      final newUri = Uri.parse('$base/videoplayback').replace(queryParameters: {
-        ...uri.queryParameters,
-        'host': uri.host,
-      });
+      // Preserve the raw query string exactly; `queryParameters` flattens
+      // duplicate keys and can break signed CDN URLs.
+      final hasHost = uri.queryParametersAll.containsKey('host');
+      final hostPair = 'host=${Uri.encodeQueryComponent(uri.host)}';
+      final query = uri.query.isEmpty
+          ? hostPair
+          : (hasHost ? uri.query : '${uri.query}&$hostPair');
+      final newUri = Uri.parse('$base/videoplayback?$query');
       return newUri.toString();
     } catch (_) {
       return url;

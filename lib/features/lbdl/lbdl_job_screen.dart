@@ -30,9 +30,12 @@ class LbdlJobScreen extends HookConsumerWidget {
 
     useEffect(() {
       Timer? timer;
+      var polling = false;
 
       Future<void> pollJob() async {
         if (jobId.value == null || isDone.value) return;
+        if (polling) return;
+        polling = true;
         try {
           final res = await api.lbdlGetJob(
             settings.lbdlUrl,
@@ -42,8 +45,13 @@ class LbdlJobScreen extends HookConsumerWidget {
           );
 
           final status = res['status']?.toString() ?? 'unknown';
+          // Be tolerant to partially malformed payload entries from server.
           final tracks = (res['tracks'] as List<dynamic>? ?? [])
-              .cast<Map<String, dynamic>>();
+              .whereType<Map>()
+              .map((m) => m.map(
+                    (k, v) => MapEntry(k.toString(), v),
+                  ))
+              .toList();
 
           if (status != 'error') {
             error.value = null; // Clear any previous polling errors
@@ -81,6 +89,8 @@ class LbdlJobScreen extends HookConsumerWidget {
           }
         } catch (e) {
           error.value = 'Polling failed: $e';
+        } finally {
+          polling = false;
         }
       }
 
