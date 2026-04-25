@@ -98,9 +98,19 @@ class DownloadManager extends StateNotifier<DownloadState> {
     if (_dir == null) return;
     final staleIds = <String>{};
     for (final id in state.downloadedIds) {
-      final m4a = File('${_dir!.path}/$id.m4a');
-      final media = File('${_dir!.path}/$id.media');
-      final exists = m4a.existsSync() || media.existsSync();
+      final track = state.downloadedTracks[id];
+      bool exists = false;
+      if (track != null) {
+        final artist = _sanitize(track.artist);
+        final title = _sanitize(track.title);
+        exists = File('${_dir!.path}/$artist/$title.m4a').existsSync();
+      }
+      // Backward-compat for older flat file layout.
+      if (!exists) {
+        final m4a = File('${_dir!.path}/$id.m4a');
+        final media = File('${_dir!.path}/$id.media');
+        exists = m4a.existsSync() || media.existsSync();
+      }
       if (!exists) staleIds.add(id);
     }
     if (staleIds.isEmpty) return;
@@ -202,10 +212,13 @@ class DownloadManager extends StateNotifier<DownloadState> {
       final uri = Uri.parse(url);
       if (!uri.host.contains('googlevideo.com')) return url;
       final base = instance.replaceAll(RegExp(r'/+$'), '');
-      final newUri = Uri.parse('$base/videoplayback').replace(queryParameters: {
-        ...uri.queryParameters,
-        'host': uri.host,
-      });
+      // Preserve full query string; flattening queryParameters can break signed URLs.
+      final hasHost = uri.queryParametersAll.containsKey('host');
+      final hostPair = 'host=${Uri.encodeQueryComponent(uri.host)}';
+      final query = uri.query.isEmpty
+          ? hostPair
+          : (hasHost ? uri.query : '${uri.query}&$hostPair');
+      final newUri = Uri.parse('$base/videoplayback?$query');
       return newUri.toString();
     } catch (_) {
       return url;
@@ -323,15 +336,10 @@ class DownloadManager extends StateNotifier<DownloadState> {
         throw Exception('No download URL found');
       }
 
-      final response = await http.get(Uri.parse(dlUrl));
-      if (response.statusCode != 200) {
-        throw Exception('Failed to download: ${response.statusCode}');
-      }
-
       // 1. Initial save as temporary ID-based file
       final tempFilePath = '${_dir!.path}/${track.effectiveId}.tmp';
+      await _downloadToFile(dlUrl, tempFilePath);
       final tempFile = File(tempFilePath);
-      await tempFile.writeAsBytes(response.bodyBytes);
 
       // 2. Enhance metadata and fetch lyrics
       final result = await _enhanceMetadataAndFetchLyrics(track, api, tempFilePath);
@@ -372,6 +380,29 @@ class DownloadManager extends StateNotifier<DownloadState> {
       state = state.copyWith(
         activeDownloads: {...state.activeDownloads}..remove(track.effectiveId),
       );
+    }
+  }
+
+  Future<void> _downloadToFile(String url, String destinationPath) async {
+    final client = http.Client();
+    final request = http.Request('GET', Uri.parse(url));
+    try {
+      final response =
+          await client.send(request).timeout(const Duration(seconds: 60));
+      if (response.statusCode != 200) {
+        throw Exception('Failed to download: ${response.statusCode}');
+      }
+      final file = File(destinationPath);
+      final sink = file.openWrite();
+      try {
+        await response.stream
+            .timeout(const Duration(seconds: 60))
+            .pipe(sink);
+      } finally {
+        await sink.close();
+      }
+    } finally {
+      client.close();
     }
   }
 
@@ -470,7 +501,6 @@ class DownloadManager extends StateNotifier<DownloadState> {
           trackArtist: enhanced.artist,
           album: enhanced.album,
           year: int.tryParse(enhanced.year ?? ''),
-          lyrics: lyricText,
           pictures: pictures,
         );
 

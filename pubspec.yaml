@@ -56,7 +56,8 @@ dependencies:
   mobile_scanner: ^7.2.0
   file_picker: ^11.0.2
   home_widget: ^0.9.1
-  audiotags: ^1.4.5
+  # 1.4.3+ iOS binary misses FRB symbols needed at link-time; pin to 1.4.2.
+  audiotags: 1.4.2
 
 dev_dependencies:
   flutter_test:

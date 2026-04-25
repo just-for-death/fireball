@@ -101,7 +101,10 @@ class SearchScreen extends HookConsumerWidget {
             final tracks =
                 await api.invidiousSearch(capturedQuery, instanceUrl: instance);
             // Guard again: user may have typed more while we awaited the network
-            if (query.value != capturedQuery) return;
+            if (query.value != capturedQuery ||
+                searchMode.value != capturedMode) {
+              return;
+            }
             results.value = tracks
                 .map((t) => {
                       'id': t.id,
@@ -115,7 +118,10 @@ class SearchScreen extends HookConsumerWidget {
                 .cast();
           } else {
             final data = await api.itunesSearch(capturedQuery);
-            if (query.value != capturedQuery) return;
+            if (query.value != capturedQuery ||
+                searchMode.value != capturedMode) {
+              return;
+            }
             results.value = ((data['results'] as List<dynamic>? ?? [])
                     .map((t) => {
                           'id': t['trackId']?.toString() ?? '',
@@ -138,7 +144,10 @@ class SearchScreen extends HookConsumerWidget {
           }
           results.value = [];
         } finally {
-          if (query.value == capturedQuery) loading.value = false;
+          if (query.value == capturedQuery &&
+              searchMode.value == capturedMode) {
+            loading.value = false;
+          }
         }
       });
       return timer.cancel;
