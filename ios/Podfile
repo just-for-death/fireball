@@ -34,25 +34,6 @@ post_install do |installer|
     target.build_configurations.each do |config|
       # Resolve compatibility issues for pods like home_widget that require iOS 14+
       config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '14.0'
-      # Prevent stripping of Rust/FRB symbols
-      config.build_settings['DEAD_CODE_STRIPPING'] = 'NO'
-      config.build_settings['STRIP_INSTALLED_PRODUCT'] = 'NO'
-      config.build_settings['STRIP_STYLE'] = 'non-global'
-      config.build_settings['ENABLE_BITCODE'] = 'NO'
-    end
-
-    if target.name == 'audiotags' || target.name == 'Runner'
-      target.build_configurations.each do |config|
-        config.build_settings['OTHER_LDFLAGS'] = '$(inherited) -all_load -framework Flutter'
-        config.build_settings['DEFINES_MODULE'] = 'YES'
-      end
-    end
-
-    if target.respond_to?(:instance_variable_get)
-      spec = target.instance_variable_get(:@spec)
-      if spec && spec.name == 'audiotags'
-        spec.static_framework = true
-      end
     end
   end
 end
