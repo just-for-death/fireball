@@ -44,6 +44,10 @@ class LbdlJobScreen extends HookConsumerWidget {
           final tracks = (res['tracks'] as List<dynamic>? ?? [])
               .cast<Map<String, dynamic>>();
 
+          if (status != 'error') {
+            error.value = null; // Clear any previous polling errors
+          }
+
           trackStatuses.value = tracks;
 
           // Compute progress from how many tracks are done
