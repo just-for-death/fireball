@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import '../core/diagnostics/soft_error_reporter.dart';
 import 'remote_server.dart' show RemoteServer;
 
 /// LAN endpoint for remote control (HTTP to [host]:[port]).
@@ -100,7 +101,14 @@ RemoteEndpoint? parseRemoteConnectionString(String raw) {
     if (c != null && c.isNotEmpty) {
       try {
         return decodeRemotePairing(c);
-      } catch (_) {}
+      } catch (e, st) {
+        SoftErrorReporter.report(
+          'remote_pairing.tryDecodePairingCodeFromText',
+          e,
+          st,
+          details: <String, Object?>{'candidate': c},
+        );
+      }
     }
   }
 
@@ -132,7 +140,14 @@ RemoteEndpoint? parseRemoteConnectionString(String raw) {
       s.replaceAll(RegExp(r'[\s\-]'), '').length >= 6) {
     try {
       return decodeRemotePairing(s);
-    } catch (_) {}
+    } catch (e, st) {
+      SoftErrorReporter.report(
+        'remote_pairing.tryDecodePairingCodeFromText',
+        e,
+        st,
+        details: <String, Object?>{'candidate': s},
+      );
+    }
   }
 
   return null;

@@ -10,7 +10,9 @@ import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
+import '../../core/adapters/fireball_backend_bridge.dart';
 import '../../core/api/fireball_api.dart';
+import '../../core/diagnostics/soft_error_reporter.dart';
 import '../../core/models/models.dart';
 import '../../core/models/track.dart';
 import 'package:share_plus/share_plus.dart';
@@ -21,6 +23,8 @@ import '../../core/widgets/fireball_logo.dart';
 import '../../core/widgets/track_options_sheet.dart';
 import '../../core/store/providers.dart';
 import '../../core/audio/download_manager.dart';
+import '../../core/ui/messenger_service.dart';
+import '../../core/theme/fireball_tokens.dart';
 
 enum _PlayerTab { cover, lyrics, queue }
 
@@ -135,10 +139,11 @@ class PlayerScreen extends HookConsumerWidget {
     final settings = ref.watch(settingsProvider);
     const api = FireballApi();
     final cs = Theme.of(context).colorScheme;
+    final isTablet = MediaQuery.sizeOf(context).width >= 600;
 
     final track = player.currentTrack;
     final downloadState = ref.watch(downloadManagerProvider);
-    final tab = useState(_PlayerTab.cover);
+    final tab = useState(isTablet ? _PlayerTab.lyrics : _PlayerTab.cover);
     final lyrics = useState<List<({double time, String text})>>([]);
     final lyricsPlain = useState<List<String>>([]);
     final lyricsLoading = useState(false);
@@ -149,7 +154,7 @@ class PlayerScreen extends HookConsumerWidget {
     final lyricsScrollCtrl = useScrollController();
     final seekBarKey = useMemoized(() => GlobalKey(), const []);
     final artworkAnim =
-        useAnimationController(duration: const Duration(milliseconds: 300));
+        useAnimationController(duration: FireballTokens.motionBase);
     final resolvedArtwork = useState<String?>(null);
 
     useEffect(() {
@@ -164,7 +169,6 @@ class PlayerScreen extends HookConsumerWidget {
       return null;
     }, [track?.effectiveId]);
 
-    final isTablet = MediaQuery.sizeOf(context).width >= 600;
     useEffect(() {
       if (isTablet && tab.value == _PlayerTab.cover) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -186,24 +190,22 @@ class PlayerScreen extends HookConsumerWidget {
           if (!cancelled && url != null) {
             resolvedArtwork.value = url;
           }
-        } catch (_) {}
+        } catch (e, st) {
+          SoftErrorReporter.report(
+            'player_screen.resolveArtwork',
+            e,
+            st,
+            details: <String, Object?>{
+              'artist': t.artist,
+              'title': t.title,
+            },
+          );
+        }
       });
       return () {
         cancelled = true;
       };
     }, [track?.effectiveId]);
-
-    final rotationCtrl =
-        useAnimationController(duration: const Duration(seconds: 20));
-
-    useEffect(() {
-      if (player.isPlaying) {
-        rotationCtrl.repeat();
-      } else {
-        rotationCtrl.stop();
-      }
-      return null;
-    }, [player.isPlaying]);
 
     useEffect(() {
       if (tab.value != _PlayerTab.lyrics || track == null) return null;
@@ -326,7 +328,6 @@ class PlayerScreen extends HookConsumerWidget {
                         activeLyricIdx,
                         lyricsScrollCtrl,
                         artworkAnim,
-                        rotationCtrl,
                         seekBarKey,
                         aiLoading,
                         cs,
@@ -351,7 +352,6 @@ class PlayerScreen extends HookConsumerWidget {
                       activeLyricIdx,
                       lyricsScrollCtrl,
                       artworkAnim,
-                      rotationCtrl,
                       seekBarKey,
                       aiLoading,
                       cs,
@@ -417,15 +417,27 @@ class PlayerScreen extends HookConsumerWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  track?.album ?? 'Now Playing',
+                  'NOW PLAYING',
                   textAlign: TextAlign.center,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                     color: Colors.white60,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 1.2,
+                  ),
+                ),
+                Text(
+                  track?.album?.isNotEmpty == true ? track!.album! : 'From queue',
+                  textAlign: TextAlign.center,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.white,
                     fontSize: 12,
                     fontWeight: FontWeight.w700,
-                    letterSpacing: 1,
+                    letterSpacing: 0.2,
                   ),
                 ),
                 if (sleepHint != null)
@@ -471,54 +483,21 @@ class PlayerScreen extends HookConsumerWidget {
                           .read(localStoreProvider.notifier)
                           .deleteArtist(a.artistId);
                     } else {
-                      // Resolve real artist id + best artwork before saving
-                      String finalId = track.artist;
-                      String finalName = track.artist;
-                      // Use track artwork as initial candidate
-                      String? artwork = track.artwork;
-
-                      try {
-                        final data = await api.itunesFindArtist(track.artist);
-                        if (data != null) {
-                          finalId =
-                              data['artistId']?.toString() ?? track.artist;
-                          finalName =
-                              data['artistName']?.toString() ?? track.artist;
-
-                          // Try to upgrade to a better artist/album image
-                          final id = data['artistId'] as int?;
-                          if (id != null) {
-                            final albumResults =
-                                await api.itunesArtistAlbums(id, limit: 1);
-                            if (albumResults.isNotEmpty) {
-                              final url = albumResults.first['artworkUrl100']
-                                  as String?;
-                              if (url != null && url.isNotEmpty) {
-                                artwork =
-                                    url.replaceAll('100x100bb', '600x600bb');
-                              }
-                            }
-                          }
-                        }
-                      } catch (_) {}
+                      final resolved = await FireballBackendBridge()
+                          .resolveArtistForFollow(
+                        artistName: track.artist,
+                        fallbackArtwork: track.artwork,
+                      );
 
                       if (context.mounted) {
                         await ref
                             .read(localStoreProvider.notifier)
-                            .addArtist(Artist(
-                              artistId: finalId,
-                              name: finalName,
-                              artwork: artwork,
-                            ));
-                        if (context.mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text('Following $finalName'),
-                              duration: const Duration(seconds: 1),
-                            ),
+                            .addArtist(resolved);
+                          MessengerService.instance.showSuccess(
+                            'Following ${resolved.name}',
+                            duration: const Duration(seconds: 1),
                           );
                         }
-                      }
                     }
                   }
                 case 'share':
@@ -528,13 +507,10 @@ class PlayerScreen extends HookConsumerWidget {
                   }
                 case 'download':
                   if (track != null) {
-                    if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                            content: Text('Downloading...'),
-                            duration: const Duration(seconds: 1)),
-                      );
-                    }
+                    MessengerService.instance.showInfo(
+                      'Downloading...',
+                      duration: const Duration(seconds: 1),
+                    );
                     try {
                       await ref
                           .read(downloadManagerProvider.notifier)
@@ -543,21 +519,15 @@ class PlayerScreen extends HookConsumerWidget {
                             api,
                             settings,
                           );
-                      if (context.mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                              content: Text('Downloaded successfully'),
-                              duration: const Duration(seconds: 2)),
-                        );
-                      }
+                      MessengerService.instance.showSuccess(
+                        'Downloaded successfully',
+                        duration: const Duration(seconds: 2),
+                      );
                     } catch (e) {
-                      if (context.mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                              content: Text('Download failed'),
-                              duration: const Duration(seconds: 2)),
-                        );
-                      }
+                      MessengerService.instance.showError(
+                        'Download failed',
+                        duration: const Duration(seconds: 2),
+                      );
                     }
                   }
                 case 'removeDownload':
@@ -565,13 +535,10 @@ class PlayerScreen extends HookConsumerWidget {
                     await ref
                         .read(downloadManagerProvider.notifier)
                         .removeDownload(track.effectiveId);
-                    if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                            content: Text('Removed from downloads'),
-                            duration: const Duration(seconds: 1)),
-                      );
-                    }
+                    MessengerService.instance.showInfo(
+                      'Removed from downloads',
+                      duration: const Duration(seconds: 1),
+                    );
                   }
                 case 'open':
                   final u = _invidiousWatchUrl(settings, track);
@@ -621,12 +588,12 @@ class PlayerScreen extends HookConsumerWidget {
                       ),
                       const SizedBox(width: 8),
                       Text(isFollowingArtist
-                          ? 'Unfollow Artist'
-                          : 'Follow Artist'),
+                          ? 'Remove from your library'
+                          : 'Add artist to your library'),
                     ],
                   ),
                 ),
-              const PopupMenuItem(value: 'share', child: Text('Share track')),
+              const PopupMenuItem(value: 'share', child: Text('Share')),
               if (track != null && isDownloading)
                 PopupMenuItem(
                   enabled: false,
@@ -667,7 +634,7 @@ class PlayerScreen extends HookConsumerWidget {
                 ),
               if (_invidiousWatchUrl(settings, track) != null)
                 const PopupMenuItem(
-                    value: 'open', child: Text('Open in Invidious')),
+                    value: 'open', child: Text('Open source')),
               const PopupMenuDivider(),
               PopupMenuItem(
                 value: 'lyricsScroll',
@@ -710,12 +677,10 @@ class PlayerScreen extends HookConsumerWidget {
                             ref.read(playerProvider.notifier).playNext(aiTrack);
                           }
                         } catch (e) {
-                          if (context.mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                              content: Text('AI queue failed: $e'),
-                              duration: const Duration(seconds: 3),
-                            ));
-                          }
+                          MessengerService.instance.showError(
+                            'AI queue failed: $e',
+                            duration: const Duration(seconds: 3),
+                          );
                         } finally {
                           aiLoading.value = false;
                         }
@@ -735,7 +700,7 @@ class PlayerScreen extends HookConsumerWidget {
     ColorScheme cs,
   ) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 2),
       child: Row(
         children: [
           Expanded(
@@ -748,13 +713,14 @@ class PlayerScreen extends HookConsumerWidget {
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                     color: Colors.white,
-                    fontSize: 22,
+                    fontSize: 17,
                     fontWeight: FontWeight.w800,
                     letterSpacing: -0.3,
                   ),
                 ),
-                const SizedBox(height: 2),
-                GestureDetector(
+                const SizedBox(height: 1),
+                InkWell(
+                  borderRadius: BorderRadius.circular(8),
                   onTap: track == null
                       ? null
                       : () => context.push(
@@ -770,21 +736,17 @@ class PlayerScreen extends HookConsumerWidget {
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
                             color: track != null
-                                ? cs.primary.withValues(alpha: 0.85)
+                                ? Colors.white.withValues(alpha: 0.85)
                                 : Colors.white60,
-                            fontSize: 15,
+                            fontSize: 13,
                             fontWeight: FontWeight.w500,
-                            decoration: track != null
-                                ? TextDecoration.underline
-                                : TextDecoration.none,
-                            decorationColor: cs.primary.withValues(alpha: 0.5),
                           ),
                         ),
                       ),
                       if (track != null) ...[
                         const SizedBox(width: 4),
                         Icon(Icons.chevron_right_rounded,
-                            size: 16, color: cs.primary.withValues(alpha: 0.6)),
+                            size: 16, color: Colors.white.withValues(alpha: 0.5)),
                       ],
                     ],
                   ),
@@ -797,7 +759,7 @@ class PlayerScreen extends HookConsumerWidget {
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       color: Colors.white.withValues(alpha: 0.45),
-                      fontSize: 12,
+                      fontSize: 10,
                       fontWeight: FontWeight.w400,
                       letterSpacing: 0.1,
                     ),
@@ -812,9 +774,9 @@ class PlayerScreen extends HookConsumerWidget {
                 player.isFavorite(track.effectiveId)
                     ? Icons.favorite_rounded
                     : Icons.favorite_border_rounded,
-                size: 28,
+                size: 26,
                 color: player.isFavorite(track.effectiveId)
-                    ? Colors.redAccent
+                    ? cs.primary
                     : Colors.white60,
               ),
               onPressed: () async {
@@ -848,19 +810,19 @@ class PlayerScreen extends HookConsumerWidget {
     GlobalKey seekBarKey,
   ) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24),
+      padding: const EdgeInsets.symmetric(horizontal: 20),
       child: Column(
         children: [
           SizedBox(
             key: seekBarKey,
-            height: 30,
+            height: 28,
             child: SliderTheme(
               data: SliderTheme.of(context).copyWith(
-                trackHeight: 4,
-                thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
-                overlayShape: const RoundSliderOverlayShape(overlayRadius: 14),
+                trackHeight: 2.5,
+                thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 4.5),
+                overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
                 activeTrackColor: Colors.white,
-                inactiveTrackColor: Colors.white.withValues(alpha: 0.25),
+                inactiveTrackColor: Colors.white.withValues(alpha: 0.2),
                 thumbColor: Colors.white,
                 trackShape: const RoundedRectSliderTrackShape(),
               ),
@@ -883,12 +845,12 @@ class PlayerScreen extends HookConsumerWidget {
               Text(_fmt(player.position),
                   style: const TextStyle(
                       color: Colors.white60,
-                      fontSize: 11,
+                      fontSize: 10,
                       fontWeight: FontWeight.w600)),
               Text(_fmt(player.duration),
                   style: const TextStyle(
                       color: Colors.white38,
-                      fontSize: 11,
+                      fontSize: 10,
                       fontWeight: FontWeight.w600)),
             ],
           ),
@@ -905,47 +867,47 @@ class PlayerScreen extends HookConsumerWidget {
     ColorScheme cs,
   ) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 4, 24, 16),
+      padding: const EdgeInsets.fromLTRB(20, 2, 20, 10),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
           IconButton(
             icon: Icon(Icons.shuffle_rounded,
-                size: 24,
+                size: 19,
                 color: player.shuffled
                     ? cs.primary
                     : Colors.white.withValues(alpha: 0.5)),
             onPressed: () => ref.read(playerProvider.notifier).toggleShuffle(),
           ),
+          const SizedBox(width: 2),
           IconButton(
             icon: const Icon(Icons.skip_previous_rounded,
-                size: 44, color: Colors.white),
+                size: 33, color: Colors.white),
             onPressed: () => ref.read(playerProvider.notifier).previous(),
           ),
-          GestureDetector(
-            onTap: () => ref.read(playerProvider.notifier).togglePlayPause(),
-            child: Container(
-              width: 72,
-              height: 72,
-              decoration: const BoxDecoration(
-                  color: Colors.white, shape: BoxShape.circle),
-              child: Icon(
-                player.isPlaying
-                    ? Icons.pause_rounded
-                    : Icons.play_arrow_rounded,
-                size: 38,
-                color: Colors.black,
-              ),
+          const SizedBox(width: 2),
+          IconButton.filled(
+            style: IconButton.styleFrom(
+              backgroundColor: cs.primary,
+              foregroundColor: cs.onPrimary,
+              fixedSize: const Size(60, 60),
+            ),
+            onPressed: () => ref.read(playerProvider.notifier).togglePlayPause(),
+            icon: Icon(
+              player.isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+              size: 28,
             ),
           ),
+          const SizedBox(width: 2),
           IconButton(
             icon: const Icon(Icons.skip_next_rounded,
-                size: 44, color: Colors.white),
+                size: 33, color: Colors.white),
             onPressed: () => ref.read(playerProvider.notifier).next(),
           ),
+          const SizedBox(width: 2),
           IconButton(
             icon: Icon(_repeatIcon(player.repeatMode),
-                size: 24,
+                size: 19,
                 color: player.repeatMode != ElysiumRepeatMode.off
                     ? cs.primary
                     : Colors.white.withValues(alpha: 0.5)),
@@ -998,7 +960,6 @@ class PlayerScreen extends HookConsumerWidget {
     ValueNotifier<int> activeLyricIdx,
     ScrollController lyricsScrollCtrl,
     AnimationController artworkAnim,
-    AnimationController rotationCtrl,
     GlobalKey seekBarKey,
     ValueNotifier<bool> aiLoading,
     ColorScheme cs,
@@ -1009,7 +970,7 @@ class PlayerScreen extends HookConsumerWidget {
         _buildHeader(context, ref, track, player, aiLoading, settings, api, cs,
             downloadState),
         _buildTabPills(tab),
-        const SizedBox(height: 8),
+        const SizedBox(height: 4),
         Expanded(
           child: _buildTabContent(
             context,
@@ -1025,7 +986,6 @@ class PlayerScreen extends HookConsumerWidget {
             activeLyricIdx,
             lyricsScrollCtrl,
             artworkAnim,
-            rotationCtrl,
             cs,
             lyricsColumnMaxWidth: null,
           ),
@@ -1033,7 +993,7 @@ class PlayerScreen extends HookConsumerWidget {
         _buildTrackInfo(context, ref, track, player, cs),
         _buildProgressBar(context, ref, player, progress, seekBarKey),
         _buildControls(context, ref, player, cs),
-        const SizedBox(height: 8),
+        const SizedBox(height: 4),
       ],
     );
   }
@@ -1057,7 +1017,6 @@ class PlayerScreen extends HookConsumerWidget {
     ValueNotifier<int> activeLyricIdx,
     ScrollController lyricsScrollCtrl,
     AnimationController artworkAnim,
-    AnimationController rotationCtrl,
     GlobalKey seekBarKey,
     ValueNotifier<bool> aiLoading,
     ColorScheme cs,
@@ -1076,62 +1035,15 @@ class PlayerScreen extends HookConsumerWidget {
                 // Back + AI header for left pane on tablet
                 _buildHeader(context, ref, track, player, aiLoading, settings,
                     api, cs, downloadState),
-                const SizedBox(height: 16),
-                // Rotating album art
+                const SizedBox(height: 14),
                 Expanded(
                   child: Center(
-                    child: AspectRatio(
-                      aspectRatio: 1,
-                      child: Stack(
-                        alignment: Alignment.center,
-                        children: [
-                          Container(
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withValues(alpha: 0.5),
-                                  blurRadius: 40,
-                                  spreadRadius: 8,
-                                ),
-                              ],
-                            ),
-                          ),
-                          RotationTransition(
-                            turns: rotationCtrl,
-                            child: ScaleTransition(
-                              scale: CurvedAnimation(
-                                  parent: artworkAnim,
-                                  curve: Curves.elasticOut),
-                              child: Container(
-                                padding: const EdgeInsets.all(8),
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  color: const Color(0xFF1A1A1A),
-                                  border: Border.all(
-                                      color: Colors.white10, width: 2),
-                                ),
-                                child: ClipOval(
-                                  child: FireballPlayerArtwork(
-                                    networkUrl: artworkUrl,
-                                    fit: BoxFit.cover,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                          Container(
-                            width: 20,
-                            height: 20,
-                            decoration: BoxDecoration(
-                              color: Colors.black,
-                              shape: BoxShape.circle,
-                              border:
-                                  Border.all(color: Colors.white24, width: 1),
-                            ),
-                          ),
-                        ],
+                    child: ScaleTransition(
+                      scale: CurvedAnimation(
+                        parent: artworkAnim,
+                        curve: FireballTokens.motionCurve,
                       ),
+                      child: _squareArtwork(artworkUrl),
                     ),
                   ),
                 ),
@@ -1174,14 +1086,13 @@ class PlayerScreen extends HookConsumerWidget {
                   activeLyricIdx,
                   lyricsScrollCtrl,
                   artworkAnim,
-                  rotationCtrl,
                   cs,
                   lyricsColumnMaxWidth: 560,
                 ),
               ),
               _buildProgressBar(context, ref, player, progress, seekBarKey),
               _buildControls(context, ref, player, cs),
-              const SizedBox(height: 16),
+              const SizedBox(height: 14),
             ],
           ),
         ),
@@ -1203,7 +1114,6 @@ class PlayerScreen extends HookConsumerWidget {
     ValueNotifier<int> activeLyricIdx,
     ScrollController scrollCtrl,
     AnimationController artworkAnim,
-    AnimationController rotationCtrl,
     ColorScheme cs, {
     double? lyricsColumnMaxWidth,
   }) {
@@ -1212,57 +1122,10 @@ class PlayerScreen extends HookConsumerWidget {
         return Center(
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 40),
-            child: AspectRatio(
-              aspectRatio: 1,
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  Container(
-                    width: double.infinity,
-                    height: double.infinity,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.5),
-                          blurRadius: 30,
-                          spreadRadius: 5,
-                        )
-                      ],
-                    ),
-                  ),
-                  RotationTransition(
-                    turns: rotationCtrl,
-                    child: ScaleTransition(
-                      scale: CurvedAnimation(
-                          parent: artworkAnim, curve: Curves.elasticOut),
-                      child: Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: const Color(0xFF1A1A1A),
-                          border: Border.all(color: Colors.white10, width: 2),
-                        ),
-                        child: ClipOval(
-                          child: FireballPlayerArtwork(
-                            networkUrl: artworkUrl,
-                            fit: BoxFit.cover,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                  Container(
-                    width: 20,
-                    height: 20,
-                    decoration: BoxDecoration(
-                      color: Colors.black,
-                      shape: BoxShape.circle,
-                      border: Border.all(color: Colors.white24, width: 1),
-                    ),
-                  ),
-                ],
-              ),
+            child: ScaleTransition(
+              scale: CurvedAnimation(
+                  parent: artworkAnim, curve: FireballTokens.motionCurve),
+              child: _squareArtwork(artworkUrl),
             ),
           ),
         );
@@ -1286,7 +1149,7 @@ class PlayerScreen extends HookConsumerWidget {
                         fontSize: 17,
                         fontWeight: FontWeight.w600)),
                 const SizedBox(height: 4),
-                const Text('No lyrics — this is an instrumental track',
+                const Text('No lyrics for this instrumental track',
                     style: TextStyle(color: Colors.white38, fontSize: 13)),
               ],
             ),
@@ -1317,7 +1180,7 @@ class PlayerScreen extends HookConsumerWidget {
         if (lyrics.value.isNotEmpty) {
           final list = ListView.builder(
             controller: scrollCtrl,
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 40),
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
             itemCount: lyrics.value.length,
             itemBuilder: (context, i) {
               final isActive = i == activeLyricIdx.value;
@@ -1345,7 +1208,7 @@ class PlayerScreen extends HookConsumerWidget {
                   button: true,
                   label: 'Seek to ${lyric.text}, ${_fmt(seekPos)}',
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    padding: const EdgeInsets.symmetric(vertical: 6),
                     child: Text(
                       lyric.text,
                       style: TextStyle(
@@ -1353,10 +1216,10 @@ class PlayerScreen extends HookConsumerWidget {
                             alpha: isActive
                                 ? 1.0
                                 : (0.6 - delta * 0.1).clamp(0.1, 0.6)),
-                        fontSize: isActive ? 22 : 18,
+                        fontSize: isActive ? 21 : 17,
                         fontWeight:
                             isActive ? FontWeight.w700 : FontWeight.w500,
-                        height: 1.4,
+                        height: 1.32,
                       ),
                     ),
                   ),
@@ -1379,12 +1242,12 @@ class PlayerScreen extends HookConsumerWidget {
         if (lyricsPlain.value.isNotEmpty) {
           final plain = SingleChildScrollView(
             controller: scrollCtrl,
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 40),
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Container(
-                  margin: const EdgeInsets.only(bottom: 20),
+                  margin: const EdgeInsets.only(bottom: 16),
                   padding:
                       const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(
@@ -1403,14 +1266,14 @@ class PlayerScreen extends HookConsumerWidget {
                 ),
                 ...lyricsPlain.value.map(
                   (line) => Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 5),
+                    padding: const EdgeInsets.symmetric(vertical: 3),
                     child: Text(
                       line,
                       style: const TextStyle(
                         color: Colors.white,
-                        fontSize: 18,
+                        fontSize: 17,
                         fontWeight: FontWeight.w500,
-                        height: 1.5,
+                        height: 1.4,
                       ),
                     ),
                   ),
@@ -1431,8 +1294,8 @@ class PlayerScreen extends HookConsumerWidget {
         }
 
         return const Center(
-          child:
-              Text('No lyrics found', style: TextStyle(color: Colors.white38)),
+          child: Text('Couldn\'t find lyrics',
+              style: TextStyle(color: Colors.white38)),
         );
 
       case _PlayerTab.queue:
@@ -1440,12 +1303,12 @@ class PlayerScreen extends HookConsumerWidget {
           return const FireballEmptyState(
             onDarkGlass: true,
             title: 'Queue is empty',
-            subtitle: 'Add tracks from search or home.',
+            subtitle: 'Add songs from Search or Home.',
             icon: Icons.queue_music_rounded,
           );
         }
         return ReorderableListView.builder(
-          padding: const EdgeInsets.symmetric(vertical: 8),
+          padding: const EdgeInsets.symmetric(vertical: 3),
           itemCount: player.queue.length,
           onReorder: (oldIndex, newIndex) {
             ref.read(playerProvider.notifier).reorderQueue(oldIndex, newIndex);
@@ -1456,29 +1319,37 @@ class PlayerScreen extends HookConsumerWidget {
             return ListTile(
               key: ValueKey('q-${t.effectiveId}-$i'),
               contentPadding:
-                  const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+                  const EdgeInsets.symmetric(horizontal: 13, vertical: 1),
+              tileColor: isActive
+                  ? Colors.white.withValues(alpha: 0.06)
+                  : Colors.transparent,
+              hoverColor: Colors.white.withValues(alpha: 0.05),
+              splashColor: Colors.white.withValues(alpha: 0.08),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
               leading: ClipRRect(
                 borderRadius: BorderRadius.circular(8),
                 child: t.artwork != null
                     ? CachedNetworkImage(
                         imageUrl: t.artwork!,
-                        width: 44,
-                        height: 44,
+                        width: 42,
+                        height: 42,
                         fit: BoxFit.cover,
                         errorWidget: (_, __, ___) => Container(
-                          width: 44,
-                          height: 44,
+                          width: 42,
+                          height: 42,
                           color: Colors.white12,
                           child: const Icon(Icons.music_note_rounded,
-                              color: Colors.white38, size: 20),
+                              color: Colors.white38, size: 18),
                         ),
                       )
                     : Container(
-                        width: 44,
-                        height: 44,
+                        width: 42,
+                        height: 42,
                         color: Colors.white12,
                         child: const Icon(Icons.music_note_rounded,
-                            color: Colors.white38, size: 20),
+                            color: Colors.white38, size: 18),
                       ),
               ),
               title: Text(
@@ -1487,26 +1358,26 @@ class PlayerScreen extends HookConsumerWidget {
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
                   color: isActive ? cs.primary : Colors.white,
-                  fontWeight: FontWeight.w600,
-                  fontSize: 14,
+                  fontWeight: isActive ? FontWeight.w700 : FontWeight.w600,
+                  fontSize: 13,
                 ),
               ),
               subtitle: Text(
                 t.artist,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(color: Colors.white54, fontSize: 12),
+                style: const TextStyle(color: Colors.white54, fontSize: 10),
               ),
               trailing: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   if (isActive)
-                    Icon(Icons.equalizer_rounded, color: cs.primary, size: 20),
+                    Icon(Icons.equalizer_rounded, color: cs.primary, size: 18),
                   IconButton(
                     icon: Icon(
                       Icons.remove_circle_outline_rounded,
                       color: Colors.white.withValues(alpha: 0.35),
-                      size: 22,
+                      size: 19,
                     ),
                     onPressed: () =>
                         ref.read(playerProvider.notifier).removeFromQueueAt(i),
@@ -1522,14 +1393,39 @@ class PlayerScreen extends HookConsumerWidget {
     }
   }
 
+  Widget _squareArtwork(String? artworkUrl) {
+    return AspectRatio(
+      aspectRatio: 1,
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(10),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.45),
+              blurRadius: 26,
+              offset: const Offset(0, 12),
+            ),
+          ],
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(10),
+          child: FireballPlayerArtwork(
+            networkUrl: artworkUrl,
+            fit: BoxFit.cover,
+          ),
+        ),
+      ),
+    );
+  }
+
   String _tabLabel(_PlayerTab t) {
     switch (t) {
       case _PlayerTab.cover:
-        return '♫ Cover';
+        return 'Now Playing';
       case _PlayerTab.lyrics:
-        return '☰ Lyrics';
+        return 'Lyrics';
       case _PlayerTab.queue:
-        return '≡ Queue';
+        return 'Queue';
     }
   }
 
@@ -1600,11 +1496,27 @@ class PlayerScreen extends HookConsumerWidget {
             .lrclibGet(artist, title,
                 album: track.album, duration: track.duration)
             .then<dynamic>((v) => v)
-            .catchError((_) => null),
+            .catchError((e, st) {
+          SoftErrorReporter.report(
+            'player_screen.fetchLyrics.phase1.lrclibGet',
+            e,
+            st is StackTrace ? st : StackTrace.current,
+            details: <String, Object?>{'artist': artist, 'title': title},
+          );
+          return null;
+        }),
         api
             .lyricsSearch('$title $artist'.trim())
             .then<dynamic>((v) => v)
-            .catchError((_) => null),
+            .catchError((e, st) {
+          SoftErrorReporter.report(
+            'player_screen.fetchLyrics.phase1.neteaseSearch',
+            e,
+            st is StackTrace ? st : StackTrace.current,
+            details: <String, Object?>{'artist': artist, 'title': title},
+          );
+          return null;
+        }),
       ]);
       if (stale()) return;
 
@@ -1664,7 +1576,16 @@ class PlayerScreen extends HookConsumerWidget {
                   }
                 }
               }
-            } catch (_) {}
+            } catch (e, st) {
+              SoftErrorReporter.report(
+                'player_screen.fetchLyrics.neteaseLyricsGet',
+                e,
+                st,
+                details: <String, Object?>{
+                  'songId': bestId.toString(),
+                },
+              );
+            }
           }
         }
       }
@@ -1714,7 +1635,14 @@ class PlayerScreen extends HookConsumerWidget {
               }
             }
           }
-        } on Exception catch (_) {}
+        } on Exception catch (e, st) {
+          SoftErrorReporter.report(
+            'player_screen.fetchLyrics.fallback.lrclibSearch',
+            e,
+            st,
+            details: <String, Object?>{'artist': artist, 'title': title},
+          );
+        }
       }
 
       // Field search as final fallback
@@ -1735,12 +1663,19 @@ class PlayerScreen extends HookConsumerWidget {
               }
             }
           }
-        } on Exception catch (_) {}
+        } on Exception catch (e, st) {
+          SoftErrorReporter.report(
+            'player_screen.fetchLyrics.fallback.lrclibSearchByFields',
+            e,
+            st,
+            details: <String, Object?>{'artist': artist, 'title': title},
+          );
+        }
       }
 
-      throw Exception('No lyrics found');
+      throw Exception('Couldn\'t find lyrics');
     } catch (e) {
-      if (!stale()) lyricError.value = 'No lyrics found';
+      if (!stale()) lyricError.value = 'Couldn\'t find lyrics';
     } finally {
       if (!stale()) lyricsLoading.value = false;
     }
@@ -1800,7 +1735,13 @@ class PlayerScreen extends HookConsumerWidget {
           final secStr = m.group(2)!.replaceAll(':', '.');
           final time = int.parse(m.group(1)!) * 60 + double.parse(secStr);
           result.add((time: time, text: text));
-        } catch (_) {
+        } catch (e, st) {
+          SoftErrorReporter.report(
+            'player_screen.parseLrc.timestamp',
+            e,
+            st,
+            details: <String, Object?>{'line': line},
+          );
           // Skip malformed timestamp
         }
       }
@@ -1831,11 +1772,17 @@ class PlayerScreen extends HookConsumerWidget {
       } else {
         ctrl.animateTo(
           offset,
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeOutCubic,
+          duration: FireballTokens.motionBase,
+          curve: FireballTokens.motionCurve,
         );
       }
-    } catch (_) {
+    } catch (e, st) {
+      SoftErrorReporter.report(
+        'player_screen.scrollToLyric',
+        e,
+        st,
+        details: <String, Object?>{'index': idx},
+      );
       // ScrollPosition may not be laid out yet on first call — safe to ignore.
     }
   }
@@ -1853,25 +1800,42 @@ class _PlayerTabPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        margin: const EdgeInsets.symmetric(horizontal: 4),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-        decoration: BoxDecoration(
-          color: selected
-              ? Colors.white.withValues(alpha: 0.25)
-              : Colors.white.withValues(alpha: 0.08),
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            color:
-                selected ? Colors.white : Colors.white.withValues(alpha: 0.5),
-            fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-            fontSize: 13,
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: label,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          hoverColor: Colors.white.withValues(alpha: 0.08),
+          splashColor: Colors.white.withValues(alpha: 0.10),
+          highlightColor: Colors.white.withValues(alpha: 0.05),
+          onTap: onTap,
+          child: AnimatedContainer(
+            duration: FireballTokens.motionFast,
+            margin: const EdgeInsets.symmetric(horizontal: 3),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+            decoration: BoxDecoration(
+              color: selected
+                  ? Colors.white.withValues(alpha: 0.16)
+                  : Colors.white.withValues(alpha: 0.06),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: selected
+                    ? Colors.white.withValues(alpha: 0.2)
+                    : Colors.white.withValues(alpha: 0.08),
+              ),
+            ),
+            child: Text(
+              label,
+              style: TextStyle(
+                color:
+                    selected ? Colors.white : Colors.white.withValues(alpha: 0.62),
+                fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                fontSize: 12,
+              ),
+            ),
           ),
         ),
       ),

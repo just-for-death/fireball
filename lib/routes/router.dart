@@ -28,15 +28,10 @@ final routerProvider = Provider<GoRouter>((ref) {
             GoRoute(
                 path: '/library', builder: (_, __) => const LibraryScreen()),
           ]),
-          StatefulShellBranch(routes: [
-            GoRoute(path: '/remote', builder: (_, __) => const RemoteScreen()),
-          ]),
-          StatefulShellBranch(routes: [
-            GoRoute(
-                path: '/settings', builder: (_, __) => const SettingsScreen()),
-          ]),
         ],
       ),
+      GoRoute(path: '/remote', builder: (_, __) => const RemoteScreen()),
+      GoRoute(path: '/settings', builder: (_, __) => const SettingsScreen()),
       GoRoute(
         path: '/player',
         builder: (_, __) => const PlayerScreen(),

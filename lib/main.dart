@@ -17,6 +17,7 @@ import 'core/audio/fireball_audio_handler.dart';
 import 'core/audio/media_session_bridge.dart';
 import 'core/store/providers.dart';
 import 'core/theme/app_theme.dart';
+import 'core/theme/fireball_tokens.dart';
 import 'core/ui/messenger_service.dart';
 import 'core/widgets/widget_bridge.dart';
 import 'routes/router.dart';
@@ -46,14 +47,16 @@ Future<void> _initMediaService() async {
     _registerLinuxMpris();
     MediaSessionBridge.handler = await AudioService.init<FireballAudioHandler>(
       builder: FireballAudioHandler.new,
-      config: const AudioServiceConfig(
+      config: AudioServiceConfig(
         androidNotificationChannelId: 'com.fireball.fireball.playback',
         androidNotificationChannelName: 'Playback',
         androidNotificationChannelDescription: 'Now playing controls',
         androidNotificationIcon: 'mipmap/launcher_icon',
         notificationColor: Color(0xFF4A378B),
-        androidStopForegroundOnPause: true,
-        androidNotificationOngoing: false,
+        // Keep the media service alive so lock-screen / headset controls remain
+        // reliable while paused or backgrounded.
+        androidStopForegroundOnPause: false,
+        androidNotificationOngoing: true,
         preloadArtwork: true,
       ),
     );
@@ -119,17 +122,14 @@ class FireballApp extends ConsumerWidget {
 
   ThemeData _withDynamic(ThemeData base, ColorScheme? dynamic, bool isDark) {
     if (dynamic == null) return base;
-    final harmonized = ColorScheme.fromSeed(
-      seedColor: dynamic.primary,
-      brightness: isDark ? Brightness.dark : Brightness.light,
-    );
+    final tuned = dynamic;
     return base.copyWith(
-      colorScheme: harmonized,
+      colorScheme: tuned,
       scaffoldBackgroundColor:
-          isDark ? const Color(0xFF050505) : harmonized.surface,
+          isDark ? const Color(0xFF050505) : tuned.surface,
       navigationBarTheme: NavigationBarThemeData(
-        indicatorColor: harmonized.secondaryContainer,
-        backgroundColor: harmonized.surfaceContainer,
+        indicatorColor: tuned.primary.withValues(alpha: isDark ? 0.22 : 0.18),
+        backgroundColor: isDark ? const Color(0xFF121212) : tuned.surfaceContainer,
         elevation: 0,
         height: 72,
       ),
@@ -159,8 +159,8 @@ class FireballApp extends ConsumerWidget {
           theme: lightTheme,
           darkTheme: darkTheme,
           themeMode: themeModeFromSettings(settings),
-          themeAnimationDuration: const Duration(milliseconds: 350),
-          themeAnimationCurve: Curves.easeOutCubic,
+          themeAnimationDuration: FireballTokens.motionSlow,
+          themeAnimationCurve: FireballTokens.motionCurve,
           routerConfig: router,
           scrollBehavior: _FireballScrollBehavior(),
           builder: (ctx, child) {

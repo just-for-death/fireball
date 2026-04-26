@@ -29,34 +29,26 @@ Fireball streams music through [Invidious](https://invidious.io), discovers lyri
 
 ---
 
-## What's New in v3.0.0 (vs v2.1.0)
+## What's New in v5.0.0
 
-- **Offline downloads + tagging**
-  - Added full track download flow with local file management and offline playback integration.
-  - Added metadata enrichment during download (title/artist/album/year/artwork) and embedded tags into saved audio files.
-  - Added local lyrics sidecars (`.lrc`) and metadata sidecars (`.json`) per downloaded track.
-  - Added custom download location support and download controls in player/track actions.
+- **UI cleanup + interaction polish**
+  - Removed dead/non-functional desktop header controls and placeholder actions.
+  - Improved collapsed sidebar/rail geometry for smoother curved selection states.
+  - Fixed mini-player to full-player navigation behavior on desktop/tablet.
 
-- **Streaming cache system**
-  - Added stream caching manager and auto-cache behavior for HTTP playback URLs.
-  - Added user-configurable local cache limit and automatic eviction/cleanup.
+- **Theming accuracy**
+  - Removed forced green accents from primary actions/surfaces and aligned to `colorScheme.primary`.
+  - Improved `onPrimary` contrast usage for filled actions across themes.
+  - Dynamic color and Material You behavior now applies consistently when enabled.
 
-- **Widget support**
-  - Added Android home-screen music widget support and native bridge updates.
-  - Added iOS widget target plumbing for media widget integration.
+- **Background playback + media notification improvements**
+  - Improved Android background media service behavior for stable OS media controls.
+  - Added Android 13+ notification permission declaration support.
+  - Kept iOS background audio mode and media session behavior aligned.
 
-- **Search, metadata, and playback quality improvements**
-  - Added release year/album propagation in UI and track metadata models.
-  - Added quality-aware stream selection and improved URL handling for proxied stream playback.
-
-- **Remote and sync robustness**
-  - Improved remote pairing/control polling and screen behavior.
-  - Hardened WebDAV live sync flow and local store merge/restore behavior.
-
-- **Release/CI hardening**
-  - Stabilized unsigned iOS IPA pipeline in Codemagic.
-  - iOS build fixes for CocoaPods/xcconfig integration and audiotags compatibility.
-  - Release now standardized on v3.0.0 Android APK + unsigned iOS IPA artifacts.
+- **Branding/code consistency**
+  - Migrated runtime naming from Spotify-style symbols to Fireball-native symbols.
+  - Removed extra compatibility dead code/no-op handlers and placeholder controls.
 
 ---
 
@@ -66,7 +58,7 @@ Official binaries are published on **[GitHub Releases](https://github.com/just-f
 
 | Version | Android | iOS |
 |--------|---------|-----|
-| **v3.0.0** (current) | `Fireball-3.0.0-android.apk` | `Fireball-3.0.0-ios-unsigned.ipa` — **unsigned** |
+| **v5.0.0** (current) | `Fireball-5.0.0-android.apk` | `Fireball-5.0.0-ios-unsigned.ipa` — **unsigned** |
 
 - **Android**: Open the APK on device, or `adb install …`. You may need to allow installs from your file manager or developer options.
 - **iOS**: IPAs are **not** signed for App Store distribution. Install with AltStore / Sideloadly, or sign with your Apple Developer account / CI.
@@ -89,7 +81,7 @@ git clone https://github.com/just-for-death/fireball.git
 cd fireball
 flutter pub get
 flutter run                    # attach a device or emulator
-./scripts/build_apk.sh --build-name=3.0.0 --build-number=1
+./scripts/build_apk.sh --build-name=5.0.0 --build-number=5
 ./scripts/build_unsigned_ipa.sh build/ios/ipa_unsigned/fireball_unsigned.ipa   # macOS + Xcode
 ```
 

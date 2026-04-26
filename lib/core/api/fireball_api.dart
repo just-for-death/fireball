@@ -104,10 +104,33 @@ class FireballApi {
   // ── iTunes ─────────────────────────────────────────────────────────────────
   static const _itunesBase = 'https://itunes.apple.com';
 
-  Future<dynamic> itunesSearch(String term, {int limit = 30}) async {
+  Future<dynamic> itunesSearch(
+    String term, {
+    int limit = 30,
+    String entity = 'song',
+  }) async {
     return _get(
-      '$_itunesBase/search?term=${Uri.encodeComponent(term)}&entity=song&limit=$limit',
+      '$_itunesBase/search?term=${Uri.encodeComponent(term)}&entity=${Uri.encodeComponent(entity)}&limit=$limit',
     );
+  }
+
+  /// Fetch tracks for an iTunes collection/playlist by [collectionId].
+  Future<List<Map<String, dynamic>>> itunesCollectionTracks(
+    int collectionId, {
+    int limit = 50,
+  }) async {
+    try {
+      final data = await _get(
+        '$_itunesBase/lookup?id=$collectionId&entity=song&limit=$limit',
+      );
+      final results = (data['results'] as List<dynamic>? ?? []);
+      return results
+          .where((r) => r['wrapperType'] == 'track')
+          .cast<Map<String, dynamic>>()
+          .toList();
+    } catch (_) {
+      return [];
+    }
   }
 
   /// Search for an artist by name and return the first matching iTunes artist.

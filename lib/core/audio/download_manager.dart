@@ -9,6 +9,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:audiotags/audiotags.dart' as tags;
 
 import '../api/fireball_api.dart';
+import '../diagnostics/soft_error_reporter.dart';
 import '../models/models.dart';
 import '../models/track.dart';
 
@@ -80,7 +81,14 @@ class DownloadManager extends StateNotifier<DownloadState> {
             final id = track.effectiveId;
             downloaded.add(id);
             tracks[id] = track;
-          } catch (_) {}
+          } catch (e, st) {
+            SoftErrorReporter.report(
+              'download_manager.init.readTrackJson',
+              e,
+              st,
+              details: <String, Object?>{'path': f.path},
+            );
+          }
         }
       }
       state = state.copyWith(
@@ -220,7 +228,12 @@ class DownloadManager extends StateNotifier<DownloadState> {
           : (hasHost ? uri.query : '${uri.query}&$hostPair');
       final newUri = Uri.parse('$base/videoplayback?$query');
       return newUri.toString();
-    } catch (_) {
+    } catch (e, st) {
+      SoftErrorReporter.report(
+        'download_manager.resolveProxiedGoogleVideoUrl',
+        e,
+        st,
+      );
       return url;
     }
   }
@@ -447,7 +460,17 @@ class DownloadManager extends StateNotifier<DownloadState> {
             lyricText = plain.trim();
           }
         }
-      } catch (_) {}
+      } catch (e, st) {
+        SoftErrorReporter.report(
+          'download_manager.enhanceForDownload.lrclibGet',
+          e,
+          st,
+          details: <String, Object?>{
+            'artist': enhanced.artist,
+            'title': enhanced.title,
+          },
+        );
+      }
 
       // Fallback to NetEase
       if (lyricText == null) {
@@ -472,7 +495,17 @@ class DownloadManager extends StateNotifier<DownloadState> {
               }
             }
           }
-        } catch (_) {}
+        } catch (e, st) {
+          SoftErrorReporter.report(
+            'download_manager.enhanceForDownload.neteaseFallback',
+            e,
+            st,
+            details: <String, Object?>{
+              'artist': enhanced.artist,
+              'title': enhanced.title,
+            },
+          );
+        }
       }
     } catch (e) {
       dev.log('Lyrics fetch failed: $e');
@@ -493,7 +526,14 @@ class DownloadManager extends StateNotifier<DownloadState> {
                 pictureType: tags.PictureType.coverFront,
               ));
             }
-          } catch (_) {}
+          } catch (e, st) {
+            SoftErrorReporter.report(
+              'download_manager.enhanceForDownload.fetchArtwork',
+              e,
+              st,
+              details: <String, Object?>{'artwork': enhanced.artwork},
+            );
+          }
         }
 
         final tag = tags.Tag(

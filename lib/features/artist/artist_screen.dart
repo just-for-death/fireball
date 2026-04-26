@@ -6,10 +6,11 @@ import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-import '../../core/api/fireball_api.dart';
+import '../../core/adapters/fireball_backend_bridge.dart';
 import '../../core/models/models.dart';
 import '../../core/models/track.dart';
 import '../../core/store/providers.dart';
+import '../../core/ui/messenger_service.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Route entry point: /artist?name=XYZ
@@ -20,7 +21,7 @@ class ArtistScreen extends HookConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final api = const FireballApi();
+    final bridge = useMemoized(() => FireballBackendBridge());
     final cs = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
@@ -38,15 +39,15 @@ class ArtistScreen extends HookConsumerWidget {
           isLoading.value = true;
           error.value = null;
 
-          final artist = await api.itunesFindArtist(artistName);
+          final artist = await bridge.findArtist(artistName);
           artistData.value = artist;
 
           if (artist != null) {
             final id = artist['artistId'] as int?;
             if (id != null) {
               final results = await Future.wait<List<Map<String, dynamic>>>([
-                api.itunesArtistTopSongs(id, limit: 20),
-                api.itunesArtistAlbums(id, limit: 20),
+                bridge.artistTopSongs(id, limit: 20),
+                bridge.artistAlbums(id, limit: 20),
               ]);
               topSongs.value = results[0];
               albums.value = results[1];
@@ -306,31 +307,15 @@ class _ArtistHero extends ConsumerWidget {
                         String? artwork = artworkUrl;
 
                         try {
-                          final data = await const FireballApi()
-                              .itunesFindArtist(artistName);
-                          if (data != null) {
-                            finalId =
-                                data['artistId']?.toString() ?? artistName;
-                            finalName =
-                                data['artistName']?.toString() ?? artistName;
-
-                            // If artwork still null, fetch from first album
-                            if (artwork == null) {
-                              final id = data['artistId'] as int?;
-                              if (id != null) {
-                                final albumResults = await const FireballApi()
-                                    .itunesArtistAlbums(id, limit: 1);
-                                if (albumResults.isNotEmpty) {
-                                  final url = albumResults
-                                      .first['artworkUrl100'] as String?;
-                                  if (url != null && url.isNotEmpty) {
-                                    artwork = url.replaceAll(
-                                        '100x100bb', '600x600bb');
-                                  }
-                                }
-                              }
-                            }
-                          }
+                          final resolved =
+                              await FireballBackendBridge()
+                                  .resolveArtistForFollow(
+                            artistName: artistName,
+                            fallbackArtwork: artwork,
+                          );
+                          finalId = resolved.artistId;
+                          finalName = resolved.name;
+                          artwork = resolved.artwork;
                         } catch (_) {
                           // Network failure – save with whatever is available
                         }
@@ -343,14 +328,10 @@ class _ArtistHero extends ConsumerWidget {
                                 name: finalName,
                                 artwork: artwork,
                               ));
-                          if (context.mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text('Following $finalName'),
-                                duration: const Duration(seconds: 1),
-                              ),
-                            );
-                          }
+                          MessengerService.instance.showSuccess(
+                            'Following $finalName',
+                            duration: const Duration(seconds: 1),
+                          );
                         }
                       }
                     },
@@ -565,11 +546,9 @@ class _SongTile extends StatelessWidget {
                     size: 22, color: Colors.white.withValues(alpha: 0.5)),
                 onPressed: () {
                   ref.read(playerProvider.notifier).addToQueue(toTrack());
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('Added "$title" to queue'),
-                      duration: const Duration(seconds: 2),
-                    ),
+                  MessengerService.instance.showInfo(
+                    'Added "$title" to queue',
+                    duration: const Duration(seconds: 2),
                   );
                 },
               ),
@@ -610,17 +589,18 @@ class _AlbumCard extends StatelessWidget {
         .replaceAll('100x100bb', '400x400bb');
     final trackCount = album['trackCount'] as int? ?? 0;
 
-    return GestureDetector(
-      onTap: () {
-        // Navigate to album detail — for now show a snack with the info
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('$name ($year) • $trackCount tracks'),
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () {
+          // Navigate to album detail — for now show a snack with the info.
+          MessengerService.instance.showInfo(
+            '$name (${year ?? "Unknown"}) • $trackCount tracks',
             duration: const Duration(seconds: 3),
-          ),
-        );
-      },
-      child: Column(
+          );
+        },
+        child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // Cover art
@@ -656,6 +636,7 @@ class _AlbumCard extends StatelessWidget {
             ),
           ),
         ],
+        ),
       ),
     );
   }

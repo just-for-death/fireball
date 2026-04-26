@@ -2,11 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:share_plus/share_plus.dart';
 
+import '../adapters/fireball_backend_bridge.dart';
 import '../api/fireball_api.dart';
 import '../models/models.dart';
 import '../models/track.dart';
 import '../store/providers.dart';
 import '../audio/download_manager.dart';
+import '../ui/messenger_service.dart';
+import '../theme/fireball_tokens.dart';
 
 /// Shows the track context-action bottom sheet.
 ///
@@ -49,8 +52,8 @@ class _TrackOptionsSheet extends ConsumerWidget {
       child: Container(
         margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
         decoration: BoxDecoration(
-          color: const Color(0xFF1A1A1E),
-          borderRadius: BorderRadius.circular(24),
+          color: FireballTokens.blackElevated,
+          borderRadius: BorderRadius.circular(12),
           border: Border.all(
             color: Colors.white.withValues(alpha: 0.08),
           ),
@@ -214,34 +217,19 @@ class _TrackOptionsSheet extends ConsumerWidget {
                               .deleteArtist(a.artistId);
                         } else {
                           if (context.mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                  content: Text('Following ${track.artist}...'),
-                                  duration: const Duration(seconds: 1)),
+                            MessengerService.instance.showInfo(
+                              'Following ${track.artist}...',
+                              duration: const Duration(seconds: 1),
                             );
                           }
-                          final data = await const FireballApi()
-                              .itunesFindArtist(track.artist);
-                          if (data != null) {
-                            final newArtist = Artist(
-                              artistId:
-                                  data['artistId']?.toString() ?? track.artist,
-                              name: data['artistName']?.toString() ??
-                                  track.artist,
-                              artwork: track.artwork,
-                            );
-                            await watchRef
-                                .read(localStoreProvider.notifier)
-                                .addArtist(newArtist);
-                          } else {
-                            await watchRef
-                                .read(localStoreProvider.notifier)
-                                .addArtist(Artist(
-                                  artistId: track.artist,
-                                  name: track.artist,
-                                  artwork: track.artwork,
-                                ));
-                          }
+                          final resolved = await FireballBackendBridge()
+                              .resolveArtistForFollow(
+                            artistName: track.artist,
+                            fallbackArtwork: track.artwork,
+                          );
+                          await watchRef
+                              .read(localStoreProvider.notifier)
+                              .addArtist(resolved);
                         }
                       },
                     ),
@@ -272,7 +260,7 @@ class _TrackOptionsSheet extends ConsumerWidget {
                         icon: Icons.downloading_rounded,
                         label: 'Downloading...',
                         cs: cs,
-                        onTap: () {},
+                        onTap: null,
                         iconColor: cs.primary,
                       )
                     else if (isDownloaded)
@@ -286,10 +274,9 @@ class _TrackOptionsSheet extends ConsumerWidget {
                               .read(downloadManagerProvider.notifier)
                               .removeDownload(track.effectiveId);
                           if (context.mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                  content: Text('Removed from downloads'),
-                                  duration: const Duration(seconds: 1)),
+                            MessengerService.instance.showInfo(
+                              'Removed from downloads',
+                              duration: const Duration(seconds: 1),
                             );
                           }
                         },
@@ -303,10 +290,9 @@ class _TrackOptionsSheet extends ConsumerWidget {
                         onTap: () async {
                           Navigator.pop(context);
                           if (context.mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                  content: Text('Downloading...'),
-                                  duration: const Duration(seconds: 1)),
+                            MessengerService.instance.showInfo(
+                              'Downloading...',
+                              duration: const Duration(seconds: 1),
                             );
                           }
                           try {
@@ -318,18 +304,16 @@ class _TrackOptionsSheet extends ConsumerWidget {
                                   library.settings,
                                 );
                             if (context.mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                    content: Text('Downloaded successfully'),
-                                    duration: const Duration(seconds: 2)),
+                              MessengerService.instance.showSuccess(
+                                'Downloaded successfully',
+                                duration: const Duration(seconds: 2),
                               );
                             }
                           } catch (e) {
                             if (context.mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                    content: Text('Download failed'),
-                                    duration: const Duration(seconds: 2)),
+                              MessengerService.instance.showError(
+                                'Download failed',
+                                duration: const Duration(seconds: 2),
                               );
                             }
                           }
@@ -355,9 +339,8 @@ void _showAddToPlaylist(
   List<Playlist> playlists,
 ) {
   if (playlists.isEmpty) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-          content: Text('No playlists yet. Create one in Your Library.')),
+    MessengerService.instance.showInfo(
+      'No playlists yet. Create one in Your Library.',
     );
     return;
   }
@@ -372,8 +355,8 @@ void _showAddToPlaylist(
         child: Container(
           margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
           decoration: BoxDecoration(
-            color: const Color(0xFF1A1A1E),
-            borderRadius: BorderRadius.circular(24),
+            color: FireballTokens.blackElevated,
+            borderRadius: BorderRadius.circular(12),
             border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
           ),
           child: Column(
@@ -450,11 +433,9 @@ void _showAddToPlaylist(
                             .read(localStoreProvider.notifier)
                             .addTrackToPlaylist(pl.id, track);
                         if (ctx.mounted) {
-                          ScaffoldMessenger.of(ctx).showSnackBar(
-                            SnackBar(
-                              content: Text('Added to "${pl.title}"'),
-                              duration: const Duration(seconds: 2),
-                            ),
+                          MessengerService.instance.showSuccess(
+                            'Added to "${pl.title}"',
+                            duration: const Duration(seconds: 2),
                           );
                         }
                       },
@@ -476,34 +457,43 @@ class _ActionTile extends StatelessWidget {
     required this.icon,
     required this.label,
     required this.cs,
-    required this.onTap,
+    this.onTap,
     this.iconColor,
   });
 
   final IconData icon;
   final String label;
   final ColorScheme cs;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
   final Color? iconColor;
 
   @override
   Widget build(BuildContext context) {
-    return ListTile(
-      leading: Icon(
-        icon,
-        size: 22,
-        color: iconColor ?? Colors.white.withValues(alpha: 0.8),
-      ),
-      title: Text(
-        label,
-        style: const TextStyle(
-          color: Colors.white,
-          fontWeight: FontWeight.w600,
-          fontSize: 14,
+    return InkWell(
+        onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        child: Row(
+          children: [
+            Icon(
+              icon,
+              size: 22,
+              color: iconColor ?? Colors.white.withValues(alpha: 0.84),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Text(
+                label,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 14,
+                ),
+              ),
+            ),
+          ],
         ),
       ),
-      onTap: onTap,
-      dense: true,
     );
   }
 }

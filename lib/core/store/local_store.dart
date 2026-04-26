@@ -6,7 +6,9 @@ import 'dart:io';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 
+import '../adapters/fireball_backend_bridge.dart';
 import '../api/fireball_api.dart';
+import '../diagnostics/soft_error_reporter.dart';
 import '../models/models.dart';
 import '../models/track.dart';
 import '../ui/messenger_service.dart';
@@ -51,7 +53,15 @@ class LocalStoreNotifier extends StateNotifier<LibraryData> {
         // No file yet — flush the default state through the serialization chain
         // so a concurrent _save() from an early mutation stays ordered.
         _ready.complete();
-        _lastWrite = _lastWrite.catchError((_) {}).then((_) => _write(state));
+        _lastWrite = _lastWrite
+            .catchError((e, st) {
+              SoftErrorReporter.report(
+                'local_store.init.recoverPriorWrite',
+                e,
+                st is StackTrace ? st : StackTrace.current,
+              );
+            })
+            .then((_) => _write(state));
         await _lastWrite;
         return;
       }
@@ -69,12 +79,26 @@ class LocalStoreNotifier extends StateNotifier<LibraryData> {
         if (await file.exists()) {
           await file.rename('${file.path}.corrupt');
         }
-      } catch (_) {}
+      } catch (e, st) {
+        SoftErrorReporter.report(
+          'local_store.init.backupCorruptDb',
+          e,
+          st,
+        );
+      }
       if (!_ready.isCompleted) {
         // Route corrupt-recovery write through the chain so it stays ordered
         // with any concurrent _save() calls.
         _ready.complete();
-        _lastWrite = _lastWrite.catchError((_) {}).then((_) => _write(state));
+        _lastWrite = _lastWrite
+            .catchError((e, st) {
+              SoftErrorReporter.report(
+                'local_store.init.recoverWriteAfterCorruptDb',
+                e,
+                st is StackTrace ? st : StackTrace.current,
+              );
+            })
+            .then((_) => _write(state));
         await _lastWrite;
       }
     } finally {
@@ -124,7 +148,14 @@ class LocalStoreNotifier extends StateNotifier<LibraryData> {
     // The closure captures `state` lazily (at execution time), so each write
     // always persists the latest state — never an older one.
     _lastWrite = _lastWrite
-        .catchError((_) {}) // recover from a prior write failure
+        .catchError((e, st) {
+          // recover from a prior write failure
+          SoftErrorReporter.report(
+            'local_store.save.recoverPriorWrite',
+            e,
+            st is StackTrace ? st : StackTrace.current,
+          );
+        })
         .then((_) => _write(state));
     await _lastWrite;
   }
@@ -318,6 +349,7 @@ class LocalStoreNotifier extends StateNotifier<LibraryData> {
     }
 
     final api = const FireballApi();
+    final bridge = FireballBackendBridge(api: api);
     var artistsChanged = false;
     final newArtists = List<Artist>.from(state.artists);
 
@@ -327,7 +359,7 @@ class LocalStoreNotifier extends StateNotifier<LibraryData> {
       if (artistIdNum == null) continue; // Not a valid iTunes numeric ID
 
       try {
-        final albums = await api.itunesArtistAlbums(artistIdNum, limit: 1);
+        final albums = await bridge.artistAlbums(artistIdNum, limit: 1);
         if (albums.isEmpty) continue;
 
         final latestAlbum = albums.first;

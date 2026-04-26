@@ -7,6 +7,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 
+import '../diagnostics/soft_error_reporter.dart';
 import '../models/track.dart';
 import '../store/providers.dart';
 
@@ -72,7 +73,14 @@ class StreamCacheManager extends StateNotifier<StreamCacheState> {
             try {
               final raw = jsonDecode(await sidecar.readAsString());
               tracks[id] = Track.fromJson(raw as Map<String, dynamic>);
-            } catch (_) {}
+            } catch (e, st) {
+              SoftErrorReporter.report(
+                'stream_cache_manager.init.readSidecar',
+                e,
+                st,
+                details: <String, Object?>{'trackId': id},
+              );
+            }
           }
         }
       }
@@ -151,7 +159,14 @@ class StreamCacheManager extends StateNotifier<StreamCacheState> {
           if (await sidecar.exists()) {
             await sidecar.delete();
           }
-        } catch (_) {}
+        } catch (e, st) {
+          SoftErrorReporter.report(
+            'stream_cache_manager.enforceLimit.deleteTrack',
+            e,
+            st,
+            details: <String, Object?>{'trackId': id},
+          );
+        }
       }
 
       state = state.copyWith(cachedIds: cachedIds, cachedTracks: cachedTracks);
