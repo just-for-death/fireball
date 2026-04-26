@@ -1,5 +1,5 @@
 # Codemagic CI/CD — Fireball unsigned iOS IPA only
-# Marketing version: FLUTTER_BUILD_NAME (3.0.0). Build number: CM_BUILD_NUMBER.
+# Marketing version: FLUTTER_BUILD_NAME (5.0.0). Build number: CM_BUILD_NUMBER.
 #
 # Docs: https://docs.codemagic.io/yaml-quick-start/building-a-flutter-app/
 #
@@ -21,12 +21,12 @@ workflows:
       xcode: latest
       cocoapods: default
       vars:
-        FLUTTER_BUILD_NAME: "3.0.0"
+        FLUTTER_BUILD_NAME: "5.0.0"
     scripts:
       - name: Build unsigned iOS app and package IPA
         script: |
           set -e
-          export FLUTTER_BUILD_NAME="${FLUTTER_BUILD_NAME:-3.0.0}"
+          export FLUTTER_BUILD_NAME="${FLUTTER_BUILD_NAME:-5.0.0}"
           export FLUTTER_BUILD_NUMBER="${CM_BUILD_NUMBER:-1}"
           ./scripts/build_unsigned_ipa.sh "build/ios/ipa_unsigned/fireball_unsigned.ipa"
 

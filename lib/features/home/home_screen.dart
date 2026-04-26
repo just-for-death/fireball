@@ -3,14 +3,17 @@ import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:shimmer/shimmer.dart';
+import 'package:go_router/go_router.dart';
 
+import '../../core/adapters/fireball_backend_bridge.dart';
 import '../../core/api/fireball_api.dart';
 import '../../core/countries.dart';
 import '../../core/models/track.dart';
 import '../../core/store/providers.dart';
+import '../../core/theme/fireball_tokens.dart';
 import '../../core/ui/shell_content_insets.dart';
-import '../../core/utils.dart';
 import '../../core/widgets/empty_state.dart';
+import '../../core/widgets/fireball_logo.dart';
 import '../../core/widgets/glass_widgets.dart';
 import '../../core/widgets/track_options_sheet.dart';
 
@@ -20,6 +23,7 @@ const _lbRanges = [
   ('year', 'Year'),
   ('all_time', 'All time'),
 ];
+const _cloneHomeTabs = ['News', 'Videos', 'Artist', 'Podcasts'];
 
 class HomeScreen extends HookConsumerWidget {
   const HomeScreen({super.key});
@@ -27,6 +31,8 @@ class HomeScreen extends HookConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final settings = ref.watch(settingsProvider);
+    final currentTrack = ref.watch(playerProvider.select((p) => p.currentTrack));
+    final bridge = useMemoized(() => FireballBackendBridge());
     const api = FireballApi();
     final cs = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -39,6 +45,7 @@ class HomeScreen extends HookConsumerWidget {
     final lbRange = useState('month');
     final loading = useState(true);
     final lbTopLoading = useState(false);
+    final selectedCloneTab = useState(_cloneHomeTabs.first);
 
     // ── Visible countries (filtered by settings, fallback to defaults) ──────
     final savedCodes = settings.homeCountries;
@@ -65,22 +72,9 @@ class HomeScreen extends HookConsumerWidget {
     Future<void> load() async {
       loading.value = true;
       try {
-        final trendingFuture = api
-            .itunesTopSongs(country.value, limit: 20)
-            .catchError((_) => null);
-
-        final rss = await trendingFuture;
-        final entries = FireballApi.appleRssFeedEntries(rss);
-        trending.value = entries
-            .map((e) => {
-                  'id': (e['id']?['attributes']?['im:id'] ?? '').toString(),
-                  'title': e['im:name']?['label'] ?? '—',
-                  'artist': e['im:artist']?['label'] ?? '—',
-                  'artwork': e['im:image']?[2]?['label'],
-                  'url': extractItunesUrl(e['link']),
-                })
-            .toList()
-            .cast<Map<String, dynamic>>();
+        trending.value = await bridge
+            .fetchTopSongs(countryCode: country.value, limit: 20)
+            .catchError((_) => <Map<String, dynamic>>[]);
 
         if (lbEnabled) {
           lbRecent.value = await api
@@ -119,7 +113,7 @@ class HomeScreen extends HookConsumerWidget {
 
     final screenWidth = MediaQuery.sizeOf(context).width;
     final isTablet = screenWidth >= 600;
-    final hPad = isTablet ? (screenWidth * 0.05).clamp(24.0, 64.0) : 24.0;
+    final hPad = isTablet ? (screenWidth * 0.045).clamp(20.0, 56.0) : 20.0;
 
     final trendingTracks = trending.value
         .map((t) => Track(
@@ -130,6 +124,12 @@ class HomeScreen extends HookConsumerWidget {
               url: t['url'] ?? '',
             ))
         .toList();
+    final cloneTabTracks = _tracksForCloneTab(
+      selectedTab: selectedCloneTab.value,
+      trendingTracks: trendingTracks,
+      historyRows: historyRows,
+      favoritesRows: favoritesRows,
+    );
 
     return PremiumBackground(
       child: RefreshIndicator(
@@ -143,58 +143,98 @@ class HomeScreen extends HookConsumerWidget {
           slivers: [
             // ── Header ──────────────────────────────────────────────────────
             SliverToBoxAdapter(
-              child: SafeArea(
-                bottom: false,
-                child: Padding(
-                  padding: EdgeInsets.fromLTRB(hPad, 32, hPad, 12),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      ShaderMask(
-                        shaderCallback: (bounds) => LinearGradient(
+              child: AnimatedContainer(
+                duration: FireballTokens.motionBase,
+                curve: FireballTokens.motionCurve,
+                decoration: BoxDecoration(
+                  gradient: currentTrack == null
+                      ? null
+                      : LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
                           colors: [
-                            Colors.white,
-                            Colors.white.withValues(alpha: 0.7),
+                            cs.primary.withValues(alpha: 0.18),
+                            Colors.transparent,
                           ],
-                        ).createShader(bounds),
-                        child: Text(
-                          'Fireball',
+                          stops: const [0.0, 1.0],
+                        ),
+                ),
+                child: SafeArea(
+                  bottom: false,
+                  child: Padding(
+                    padding: EdgeInsets.fromLTRB(
+                      hPad,
+                      FireballTokens.gapXl + FireballTokens.gapSm,
+                      hPad,
+                      FireballTokens.gapMd,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              child: ShaderMask(
+                                shaderCallback: (bounds) => LinearGradient(
+                                  colors: [
+                                    Colors.white,
+                                    Colors.white.withValues(alpha: 0.7),
+                                  ],
+                                ).createShader(bounds),
+                                child: Text(
+                                  'Fireball',
+                                  style: TextStyle(
+                                    fontSize: isTablet ? 42 : 38,
+                                    fontWeight: FontWeight.w900,
+                                    color: Colors.white,
+                                    letterSpacing: -1.4,
+                                    height: 1,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            IconButton(
+                              tooltip: 'Remote',
+                              onPressed: () => context.push('/remote'),
+                              icon: Icon(Icons.cast_rounded,
+                                  color: Colors.white.withValues(alpha: 0.78)),
+                            ),
+                            IconButton(
+                              tooltip: 'Settings',
+                              onPressed: () => context.push('/settings'),
+                              icon: Icon(Icons.settings_rounded,
+                                  color: Colors.white.withValues(alpha: 0.78)),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Good evening',
                           style: TextStyle(
-                            fontSize: isTablet ? 56 : 48,
-                            fontWeight: FontWeight.w900,
-                            color: Colors.white,
-                            letterSpacing: -2,
-                            height: 1,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.white.withValues(alpha: 0.4),
+                            letterSpacing: 0.1,
                           ),
                         ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'Your music, anywhere.',
-                        style: TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w500,
-                          color: Colors.white.withValues(alpha: 0.4),
-                          letterSpacing: 0.2,
-                        ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
               ),
             ),
 
-            // ── Country picker ────────────────────────────────────────────
+            // ── Top chips ────────────────────────────────────────────────
             SliverToBoxAdapter(
               child: isTablet
                   ? Padding(
-                      padding: EdgeInsets.fromLTRB(hPad, 8, hPad, 0),
+                      padding: EdgeInsets.fromLTRB(hPad, 10, hPad, 0),
                       child: Wrap(
-                        spacing: 10,
-                        runSpacing: 10,
+                        spacing: 8,
+                        runSpacing: 8,
                         children: visibleCountries.map((c) {
                           final (cc, label) = c;
-                          return GlassPill(
+                          return _HomeHeaderChip(
                             label: label,
                             selected: country.value == cc,
                             onTap: () => country.value = cc,
@@ -203,7 +243,7 @@ class HomeScreen extends HookConsumerWidget {
                       ),
                     )
                   : Container(
-                      height: 58,
+                      height: 52,
                       margin: const EdgeInsets.only(top: 8),
                       alignment: Alignment.center,
                       child: ListView.separated(
@@ -211,10 +251,10 @@ class HomeScreen extends HookConsumerWidget {
                         clipBehavior: Clip.none,
                         padding: const EdgeInsets.symmetric(horizontal: 24),
                         itemCount: visibleCountries.length,
-                        separatorBuilder: (_, __) => const SizedBox(width: 10),
+                        separatorBuilder: (_, __) => const SizedBox(width: 8),
                         itemBuilder: (context, i) {
                           final (cc, label) = visibleCountries[i];
-                          return GlassPill(
+                          return _HomeHeaderChip(
                             label: label,
                             selected: country.value == cc,
                             onTap: () => country.value = cc,
@@ -224,7 +264,73 @@ class HomeScreen extends HookConsumerWidget {
                     ),
             ),
 
-            const SliverToBoxAdapter(child: SizedBox(height: 32)),
+            const SliverToBoxAdapter(child: SizedBox(height: 16)),
+            if (trendingTracks.isNotEmpty)
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: EdgeInsets.symmetric(horizontal: hPad),
+                  child: _CloneInspiredHeroCard(
+                    featured: trendingTracks.first,
+                    onPlay: () {
+                      ref.read(playerProvider.notifier).setQueue(trendingTracks);
+                      ref.read(playerProvider.notifier).playIndex(0);
+                      ref.read(localStoreProvider.notifier).addHistory(
+                            trendingTracks.first,
+                          );
+                    },
+                  ),
+                ),
+              ),
+            if (trendingTracks.isNotEmpty)
+              const SliverToBoxAdapter(child: SizedBox(height: 16)),
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: EdgeInsets.symmetric(horizontal: hPad),
+                child: _CloneInspiredTabs(
+                  tabs: _cloneHomeTabs,
+                  selected: selectedCloneTab.value,
+                  onSelect: (value) => selectedCloneTab.value = value,
+                ),
+              ),
+            ),
+            const SliverToBoxAdapter(child: SizedBox(height: 10)),
+            if (cloneTabTracks.isNotEmpty)
+              SliverToBoxAdapter(
+                child: _RecommendationShelf(
+                  title: 'From ${selectedCloneTab.value}',
+                  tracks: cloneTabTracks.take(8).toList(),
+                  onTap: (idx, tracks) {
+                    ref.read(playerProvider.notifier).setQueue(tracks);
+                    ref.read(playerProvider.notifier).playIndex(idx);
+                    ref.read(localStoreProvider.notifier).addHistory(tracks[idx]);
+                  },
+                  cs: cs,
+                ),
+              ),
+            if (cloneTabTracks.isNotEmpty)
+              const SliverToBoxAdapter(child: SizedBox(height: 20)),
+
+            if (historyRows.isNotEmpty || favoritesRows.isNotEmpty)
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: EdgeInsets.symmetric(horizontal: hPad),
+                  child: _QuickPicksGrid(
+                    tracks: _buildRecommendationTracks(
+                      historyRows: historyRows,
+                      favoritesRows: favoritesRows,
+                      trendingTracks: trendingTracks,
+                    ).take(8).toList(),
+                    onTap: (idx, tracks) {
+                      ref.read(playerProvider.notifier).setQueue(tracks);
+                      ref.read(playerProvider.notifier).playIndex(idx);
+                      ref.read(localStoreProvider.notifier).addHistory(tracks[idx]);
+                    },
+                    cs: cs,
+                  ),
+                ),
+              ),
+            if (historyRows.isNotEmpty || favoritesRows.isNotEmpty)
+              const SliverToBoxAdapter(child: SizedBox(height: 18)),
 
             // ── Trending Now ──────────────────────────────────────────────
             SliverToBoxAdapter(
@@ -233,9 +339,9 @@ class HomeScreen extends HookConsumerWidget {
                 child: Row(
                   children: [
                     const Text(
-                      'Trending Now',
+                      'Top Charts',
                       style: TextStyle(
-                        fontSize: 22,
+                        fontSize: 20,
                         fontWeight: FontWeight.w800,
                         color: Colors.white,
                         letterSpacing: -0.5,
@@ -243,21 +349,37 @@ class HomeScreen extends HookConsumerWidget {
                     ),
                     const Spacer(),
                     Icon(Icons.trending_up_rounded,
-                        color: cs.primary, size: 20),
+                        color: cs.primary.withValues(alpha: 0.92), size: 18),
                   ],
                 ),
               ),
             ),
-            const SliverToBoxAdapter(child: SizedBox(height: 16)),
+            const SliverToBoxAdapter(child: SizedBox(height: 10)),
             if (loading.value)
-              SliverToBoxAdapter(child: _TrendingShimmer(isDark: isDark))
+              SliverToBoxAdapter(
+                child: Column(
+                  children: [
+                    _TrendingShimmer(isDark: isDark),
+                    const SizedBox(height: 8),
+                    Center(
+                      child: SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white.withValues(alpha: 0.5),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              )
             else if (trending.value.isEmpty)
               const SliverToBoxAdapter(
                 child: FireballEmptyState(
                   onDarkGlass: true,
                   title: 'Could not load trending',
-                  subtitle:
-                      'Check your internet connection or try again later.',
+                  subtitle: 'Check your connection and pull to refresh.',
                   icon: Icons.wifi_off_rounded,
                 ),
               )
@@ -265,11 +387,11 @@ class HomeScreen extends HookConsumerWidget {
               SliverPadding(
                 padding: EdgeInsets.symmetric(horizontal: hPad),
                 sliver: SliverGrid(
-                  gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                    maxCrossAxisExtent: 180,
+                  gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
+                    maxCrossAxisExtent: screenWidth >= 1100 ? 176 : 166,
                     mainAxisSpacing: 12,
                     crossAxisSpacing: 12,
-                    mainAxisExtent: 176,
+                    mainAxisExtent: screenWidth >= 1100 ? 170 : 162,
                   ),
                   delegate: SliverChildBuilderDelegate(
                     (context, i) {
@@ -291,20 +413,22 @@ class HomeScreen extends HookConsumerWidget {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              ClipRRect(
-                                borderRadius: BorderRadius.circular(10),
-                                child: item['artwork'] != null
-                                    ? CachedNetworkImage(
-                                        imageUrl: item['artwork']!,
-                                        width: double.infinity,
-                                        height: 108,
-                                        fit: BoxFit.cover,
-                                        errorWidget: (_, __, ___) =>
-                                            _TrendingGridPlaceholder(cs: cs),
-                                      )
-                                    : _TrendingGridPlaceholder(cs: cs),
+                              Expanded(
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(10),
+                                  child: item['artwork'] != null
+                                      ? CachedNetworkImage(
+                                          imageUrl: item['artwork']!,
+                                          width: double.infinity,
+                                          height: double.infinity,
+                                          fit: BoxFit.cover,
+                                          errorWidget: (_, __, ___) =>
+                                              _TrendingGridPlaceholder(cs: cs),
+                                        )
+                                      : _TrendingGridPlaceholder(cs: cs),
+                                ),
                               ),
-                              const SizedBox(height: 8),
+                              const SizedBox(height: 6),
                               Text(
                                 item['title'] ?? '—',
                                 maxLines: 1,
@@ -316,7 +440,7 @@ class HomeScreen extends HookConsumerWidget {
                                   letterSpacing: -0.2,
                                 ),
                               ),
-                              const SizedBox(height: 2),
+                              const SizedBox(height: 1),
                               Text(
                                 item['artist'] ?? '—',
                                 maxLines: 1,
@@ -353,16 +477,55 @@ class HomeScreen extends HookConsumerWidget {
                 ),
               ),
 
-            // ── Recently Played ───────────────────────────────────────────
+            // ── Personalized sections ─────────────────────────────────────
             if (historyRows.isNotEmpty) ...[
-              const SliverToBoxAdapter(child: SizedBox(height: 36)),
+              const SliverToBoxAdapter(child: SizedBox(height: 24)),
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: EdgeInsets.symmetric(horizontal: hPad),
+                  child: Row(
+                    children: [
+                      Text(
+                        'Made for You',
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w800,
+                          color: Colors.white,
+                          letterSpacing: -0.5,
+                        ),
+                      ),
+                      const Spacer(),
+                      Icon(Icons.auto_awesome_rounded,
+                          color: cs.primary.withValues(alpha: 0.92), size: 18),
+                    ],
+                  ),
+                ),
+              ),
+              const SliverToBoxAdapter(child: SizedBox(height: 10)),
+              SliverToBoxAdapter(
+                child: _RecommendationShelf(
+                  title: 'Inspired by your recent listening',
+                  tracks: _buildRecommendationTracks(
+                    historyRows: historyRows,
+                    favoritesRows: favoritesRows,
+                    trendingTracks: trendingTracks,
+                  ),
+                  onTap: (idx, tracks) {
+                    ref.read(playerProvider.notifier).setQueue(tracks);
+                    ref.read(playerProvider.notifier).playIndex(idx);
+                    ref.read(localStoreProvider.notifier).addHistory(tracks[idx]);
+                  },
+                  cs: cs,
+                ),
+              ),
+              const SliverToBoxAdapter(child: SizedBox(height: 24)),
               SliverToBoxAdapter(
                 child: Padding(
                   padding: EdgeInsets.symmetric(horizontal: hPad),
                   child: Text(
-                    'Recently Played',
+                    'Jump Back In',
                     style: TextStyle(
-                      fontSize: 22,
+                      fontSize: 20,
                       fontWeight: FontWeight.w800,
                       color: Colors.white,
                       letterSpacing: -0.5,
@@ -370,7 +533,7 @@ class HomeScreen extends HookConsumerWidget {
                   ),
                 ),
               ),
-              const SliverToBoxAdapter(child: SizedBox(height: 16)),
+              const SliverToBoxAdapter(child: SizedBox(height: 10)),
               SliverList(
                 delegate: SliverChildBuilderDelegate(
                   (context, index) {
@@ -405,28 +568,29 @@ class HomeScreen extends HookConsumerWidget {
 
             // ── Recent Favorites ──────────────────────────────────────────
             if (favoritesRows.isNotEmpty) ...[
-              const SliverToBoxAdapter(child: SizedBox(height: 36)),
+              const SliverToBoxAdapter(child: SizedBox(height: 24)),
               SliverToBoxAdapter(
                 child: Padding(
                   padding: EdgeInsets.symmetric(horizontal: hPad),
                   child: Row(
                     children: [
                       Text(
-                        'Recent Favorites',
+                        'Recently Liked',
                         style: TextStyle(
-                          fontSize: 22,
+                          fontSize: 20,
                           fontWeight: FontWeight.w800,
                           color: Colors.white,
                           letterSpacing: -0.5,
                         ),
                       ),
                       const Spacer(),
-                      Icon(Icons.favorite_rounded, color: cs.primary, size: 20),
+                      Icon(Icons.favorite_rounded,
+                          color: cs.primary.withValues(alpha: 0.92), size: 18),
                     ],
                   ),
                 ),
               ),
-              const SliverToBoxAdapter(child: SizedBox(height: 16)),
+              const SliverToBoxAdapter(child: SizedBox(height: 10)),
               SliverToBoxAdapter(
                 child: _FavoritesRow(
                   favorites: favoritesRows,
@@ -445,16 +609,16 @@ class HomeScreen extends HookConsumerWidget {
 
             // ── Recently Listened (ListenBrainz) ──────────────────────────
             if (lbEnabled && lbRecent.value.isNotEmpty) ...[
-              const SliverToBoxAdapter(child: SizedBox(height: 36)),
+              const SliverToBoxAdapter(child: SizedBox(height: 24)),
               SliverToBoxAdapter(
                 child: Padding(
                   padding: EdgeInsets.symmetric(horizontal: hPad),
                   child: Row(
                     children: [
                       Text(
-                        'Recently Listened',
+                        'Recently Played',
                         style: TextStyle(
-                          fontSize: 22,
+                          fontSize: 20,
                           fontWeight: FontWeight.w800,
                           color: Colors.white,
                           letterSpacing: -0.5,
@@ -545,7 +709,7 @@ class HomeScreen extends HookConsumerWidget {
                       Text(
                         'My Top Tracks',
                         style: TextStyle(
-                          fontSize: 22,
+                          fontSize: 21,
                           fontWeight: FontWeight.w800,
                           color: Colors.white,
                           letterSpacing: -0.5,
@@ -557,14 +721,14 @@ class HomeScreen extends HookConsumerWidget {
                   ),
                 ),
               ),
-              const SliverToBoxAdapter(child: SizedBox(height: 12)),
+              const SliverToBoxAdapter(child: SizedBox(height: 10)),
               SliverToBoxAdapter(
                 child: _RangePills(
                   current: lbRange.value,
                   onChanged: (r) => lbRange.value = r,
                 ),
               ),
-              const SliverToBoxAdapter(child: SizedBox(height: 12)),
+              const SliverToBoxAdapter(child: SizedBox(height: 10)),
               if (lbTopLoading.value)
                 SliverToBoxAdapter(child: _LBListShimmer(isDark: isDark))
               else if (lbTop.value.isEmpty)
@@ -637,6 +801,408 @@ class HomeScreen extends HookConsumerWidget {
               child: SizedBox(height: shellScrollBottomPadding(context)),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+List<Track> _tracksForCloneTab({
+  required String selectedTab,
+  required List<Track> trendingTracks,
+  required List<Track> historyRows,
+  required List<Track> favoritesRows,
+}) {
+  switch (selectedTab) {
+    case 'Videos':
+      return historyRows.isNotEmpty ? historyRows : trendingTracks;
+    case 'Artist':
+      return favoritesRows.isNotEmpty ? favoritesRows : trendingTracks;
+    case 'Podcasts':
+      return trendingTracks.reversed.toList();
+    case 'News':
+    default:
+      return trendingTracks;
+  }
+}
+
+class _CloneInspiredHeroCard extends StatelessWidget {
+  const _CloneInspiredHeroCard({
+    required this.featured,
+    required this.onPlay,
+  });
+
+  final Track featured;
+  final VoidCallback onPlay;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return InkWell(
+      onTap: onPlay,
+      borderRadius: BorderRadius.circular(20),
+      hoverColor: Colors.white.withValues(alpha: 0.06),
+      splashColor: Colors.white.withValues(alpha: 0.09),
+      highlightColor: Colors.white.withValues(alpha: 0.05),
+      child: Container(
+        height: 150,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(20),
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              cs.primary.withValues(alpha: 0.8),
+              cs.primary.withValues(alpha: 0.35),
+              const Color(0xFF1A1A1A),
+            ],
+          ),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      'New Album',
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.86),
+                        fontWeight: FontWeight.w600,
+                        fontSize: 12,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      featured.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 24,
+                        letterSpacing: -0.6,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      featured.artist,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.85),
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(14),
+                child: SizedBox(
+                  width: 96,
+                  height: 96,
+                  child: FireballPlayerArtwork(
+                    networkUrl: featured.artwork,
+                    fit: BoxFit.cover,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _CloneInspiredTabs extends StatelessWidget {
+  const _CloneInspiredTabs({
+    required this.tabs,
+    required this.selected,
+    required this.onSelect,
+  });
+
+  final List<String> tabs;
+  final String selected;
+  final ValueChanged<String> onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 38,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: tabs.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 8),
+        itemBuilder: (context, i) {
+          final tab = tabs[i];
+          final isSelected = selected == tab;
+          return InkWell(
+            onTap: () => onSelect(tab),
+            borderRadius: BorderRadius.circular(999),
+            hoverColor: Colors.white.withValues(alpha: 0.08),
+            splashColor: Colors.white.withValues(alpha: 0.10),
+            highlightColor: Colors.white.withValues(alpha: 0.06),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              decoration: BoxDecoration(
+                color: isSelected
+                    ? Colors.white.withValues(alpha: 0.14)
+                    : FireballTokens.blackElevated,
+                borderRadius: BorderRadius.circular(999),
+                border: Border.all(
+                  color: isSelected
+                      ? Colors.white.withValues(alpha: 0.18)
+                      : Colors.white.withValues(alpha: 0.12),
+                  width: 0.8,
+                ),
+              ),
+              child: Text(
+                tab,
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: isSelected ? 0.95 : 0.78),
+                  fontSize: 12,
+                  fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+List<Track> _buildRecommendationTracks({
+  required List<Track> historyRows,
+  required List<Track> favoritesRows,
+  required List<Track> trendingTracks,
+}) {
+  final seen = <String>{};
+  final ordered = <Track>[];
+  void pushAll(List<Track> source) {
+    for (final t in source) {
+      if (t.title.trim().isEmpty || t.artist.trim().isEmpty) continue;
+      final key = '${t.title}::${t.artist}'.toLowerCase();
+      if (seen.add(key)) ordered.add(t);
+      if (ordered.length >= 30) return;
+    }
+  }
+
+  pushAll(historyRows);
+  pushAll(favoritesRows);
+  pushAll(trendingTracks);
+  return ordered.take(20).toList();
+}
+
+class _RecommendationShelf extends StatelessWidget {
+  const _RecommendationShelf({
+    required this.title,
+    required this.tracks,
+    required this.onTap,
+    required this.cs,
+  });
+  final String title;
+  final List<Track> tracks;
+  final void Function(int index, List<Track> tracks) onTap;
+  final ColorScheme cs;
+
+  @override
+  Widget build(BuildContext context) {
+    if (tracks.isEmpty) return const SizedBox.shrink();
+    return SizedBox(
+      height: 252,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        itemCount: tracks.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 14),
+        itemBuilder: (context, i) {
+          final t = tracks[i];
+          return InkWell(
+            borderRadius: BorderRadius.circular(20),
+            onTap: () => onTap(i, tracks),
+            child: GlassCard(
+              padding: const EdgeInsets.all(10),
+              opacity: 0.08,
+              borderRadius: BorderRadius.circular(20),
+              child: SizedBox(
+                width: 164,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: t.artwork != null
+                          ? CachedNetworkImage(
+                              imageUrl: t.artwork!,
+                              width: 164,
+                              height: 164,
+                              fit: BoxFit.cover,
+                              errorWidget: (_, __, ___) =>
+                                  _TrendingGridPlaceholder(cs: cs),
+                            )
+                          : _TrendingGridPlaceholder(cs: cs),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      t.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 13,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '$title · ${t.artist}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.5),
+                        fontSize: 11,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _QuickPicksGrid extends StatelessWidget {
+  const _QuickPicksGrid({
+    required this.tracks,
+    required this.onTap,
+    required this.cs,
+  });
+  final List<Track> tracks;
+  final void Function(int index, List<Track> tracks) onTap;
+  final ColorScheme cs;
+
+  @override
+  Widget build(BuildContext context) {
+    if (tracks.isEmpty) return const SizedBox.shrink();
+    final width = MediaQuery.sizeOf(context).width;
+    final crossAxisCount = width >= 1300
+        ? 4
+        : width >= 980
+            ? 3
+            : 2;
+    return GridView.builder(
+      itemCount: tracks.length,
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: crossAxisCount,
+        crossAxisSpacing: 8,
+        mainAxisSpacing: 8,
+        mainAxisExtent: 64,
+      ),
+      itemBuilder: (context, i) {
+        final t = tracks[i];
+        return InkWell(
+          borderRadius: BorderRadius.circular(8),
+          onTap: () => onTap(i, tracks),
+          child: Container(
+            decoration: BoxDecoration(
+              color: FireballTokens.blackElevatedHigh,
+              borderRadius: BorderRadius.circular(FireballTokens.radiusSm),
+            ),
+            child: Row(
+              children: [
+                ClipRRect(
+                  borderRadius: const BorderRadius.only(
+                    topLeft: Radius.circular(8),
+                    bottomLeft: Radius.circular(8),
+                  ),
+                  child: t.artwork != null
+                      ? CachedNetworkImage(
+                          imageUrl: t.artwork!,
+                          width: 66,
+                          height: double.infinity,
+                          fit: BoxFit.cover,
+                          errorWidget: (_, __, ___) => _TrendingGridPlaceholder(cs: cs),
+                        )
+                      : SizedBox(
+                          width: 66,
+                          child: _TrendingGridPlaceholder(cs: cs),
+                        ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    t.title,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 6),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _HomeHeaderChip extends StatelessWidget {
+  const _HomeHeaderChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(999),
+      hoverColor: Colors.white.withValues(alpha: 0.08),
+      splashColor: Colors.white.withValues(alpha: 0.10),
+      highlightColor: Colors.white.withValues(alpha: 0.06),
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(
+          color: selected
+              ? Colors.white.withValues(alpha: 0.14)
+              : FireballTokens.blackElevated,
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(
+            color: selected
+                ? Colors.white.withValues(alpha: 0.18)
+                : Colors.white.withValues(alpha: 0.12),
+            width: 0.8,
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: Colors.white.withValues(alpha: selected ? 0.95 : 0.78),
+            fontSize: 12,
+            fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
+          ),
         ),
       ),
     );
@@ -1081,8 +1647,11 @@ class _HistoryTile extends StatelessWidget {
     return InkWell(
       onTap: onTap,
       onLongPress: onLongPress,
+      hoverColor: Colors.white.withValues(alpha: 0.06),
+      splashColor: Colors.white.withValues(alpha: 0.09),
+      highlightColor: Colors.white.withValues(alpha: 0.05),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 5),
         child: Row(
           children: [
             ClipRRect(
@@ -1126,7 +1695,7 @@ class _HistoryTile extends StatelessWidget {
                 ],
               ),
             ),
-            Icon(Icons.play_circle_outline_rounded,
+            Icon(Icons.play_circle_fill_rounded,
                 size: 28, color: cs.primary),
           ],
         ),
@@ -1157,9 +1726,9 @@ class _TrendingShimmer extends StatelessWidget {
         itemCount: 6,
         separatorBuilder: (_, __) => const SizedBox(width: 12),
         itemBuilder: (_, __) => Shimmer.fromColors(
-          baseColor: isDark ? const Color(0xFF1E1E1E) : const Color(0xFFE0E0E0),
+          baseColor: isDark ? const Color(0xFF191919) : const Color(0xFFE0E0E0),
           highlightColor:
-              isDark ? const Color(0xFF2A2A2A) : const Color(0xFFEEEEEE),
+              isDark ? const Color(0xFF242424) : const Color(0xFFEEEEEE),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [

@@ -6,6 +6,7 @@ import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/ui/messenger_service.dart';
 import '../../core/store/providers.dart';
 import '../../remote/remote_client.dart';
 import '../../remote/remote_server.dart';
@@ -240,7 +241,6 @@ class _ControlMode extends HookWidget {
                                   // the slider doesn't snap back prematurely.
                                   await _send(
                                       context,
-                                      cs,
                                       () =>
                                           client.sendCommand('seek', value: v));
                                   seeking.value = false;
@@ -267,35 +267,31 @@ class _ControlMode extends HookWidget {
                     children: [
                       IconButton(
                         iconSize: 40,
-                        onPressed: () => _send(
-                            context, cs, () => client.sendCommand('prev')),
+                        onPressed: () =>
+                            _send(context, () => client.sendCommand('prev')),
                         icon: const Icon(Icons.skip_previous_rounded),
                       ),
                       const SizedBox(width: 8),
-                      GestureDetector(
-                        onTap: () => _send(
-                            context, cs, () => client.sendCommand('toggle')),
-                        child: Container(
-                          width: 64,
-                          height: 64,
-                          decoration: BoxDecoration(
-                            color: cs.primary,
-                            shape: BoxShape.circle,
-                          ),
-                          child: Icon(
-                            s.isPlaying
-                                ? Icons.pause_rounded
-                                : Icons.play_arrow_rounded,
-                            color: cs.onPrimary,
-                            size: 36,
-                          ),
+                      IconButton.filled(
+                        style: IconButton.styleFrom(
+                          backgroundColor: cs.primary,
+                          foregroundColor: cs.onPrimary,
+                          fixedSize: const Size(64, 64),
+                        ),
+                        onPressed: () =>
+                            _send(context, () => client.sendCommand('toggle')),
+                        icon: Icon(
+                          s.isPlaying
+                              ? Icons.pause_rounded
+                              : Icons.play_arrow_rounded,
+                          size: 36,
                         ),
                       ),
                       const SizedBox(width: 8),
                       IconButton(
                         iconSize: 40,
-                        onPressed: () => _send(
-                            context, cs, () => client.sendCommand('next')),
+                        onPressed: () =>
+                            _send(context, () => client.sendCommand('next')),
                         icon: const Icon(Icons.skip_next_rounded),
                       ),
                     ],
@@ -316,21 +312,14 @@ class _ControlMode extends HookWidget {
 
   /// Executes [cmd] and shows a SnackBar on failure so the user knows
   /// a command didn't reach the host.
-  static Future<void> _send(
-    BuildContext context,
-    ColorScheme cs,
-    Future<void> Function() cmd,
-  ) async {
+  static Future<void> _send(BuildContext context, Future<void> Function() cmd) async {
     try {
       await cmd();
     } catch (_) {
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('Could not reach remote device'),
-          backgroundColor: cs.error,
-          duration: const Duration(seconds: 2),
-        ),
+      MessengerService.instance.showError(
+        'Could not reach remote device',
+        duration: const Duration(seconds: 2),
       );
     }
   }

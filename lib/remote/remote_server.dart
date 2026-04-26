@@ -2,6 +2,8 @@ import 'dart:convert';
 import 'dart:developer' as dev;
 import 'dart:io';
 
+import '../core/diagnostics/soft_error_reporter.dart';
+
 /// Local-network HTTP server (port 7771) that exposes the Fireball player
 /// state and accepts control commands.
 ///
@@ -171,7 +173,13 @@ class RemoteServer {
       if (private.isNotEmpty) return private.first;
       other.sort();
       if (other.isNotEmpty) return other.first;
-    } catch (_) {}
+    } catch (e, st) {
+      SoftErrorReporter.report(
+        'remote_server.detectLocalIp',
+        e,
+        st,
+      );
+    }
     return null;
   }
 }

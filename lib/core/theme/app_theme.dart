@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../models/models.dart';
 import 'flex_scheme_key.dart';
+import 'fireball_tokens.dart';
 
 /// Maps persisted [FireballSettings.flexScheme] to [FlexScheme].
 FlexScheme flexSchemeFromKey(String key) {
@@ -41,7 +42,27 @@ ThemeData buildFireballLightTheme(FireballSettings settings) {
     );
     td = td.copyWith(colorScheme: cs, scaffoldBackgroundColor: cs.surface);
   }
-  return td;
+  final cs = td.colorScheme;
+  return td.copyWith(
+    colorScheme: cs,
+    textTheme: td.textTheme.apply(
+      bodyColor: cs.onSurface,
+      displayColor: cs.onSurface,
+    ),
+    navigationBarTheme: NavigationBarThemeData(
+      indicatorColor: cs.primary.withValues(alpha: 0.2),
+      backgroundColor: cs.surfaceContainer,
+      elevation: 0,
+      height: FireballTokens.navHeight,
+      labelTextStyle: WidgetStateProperty.resolveWith(
+        (states) => TextStyle(
+          fontSize: 11,
+          fontWeight:
+              states.contains(WidgetState.selected) ? FontWeight.w700 : FontWeight.w500,
+        ),
+      ),
+    ),
+  );
 }
 
 ThemeData buildFireballDarkTheme(FireballSettings settings) {
@@ -65,7 +86,37 @@ ThemeData buildFireballDarkTheme(FireballSettings settings) {
       scaffoldBackgroundColor: const Color(0xFF050505),
     );
   }
-  return td;
+  final cs = td.colorScheme.copyWith(
+    surface: FireballTokens.black,
+    surfaceContainer: FireballTokens.blackElevated,
+    surfaceContainerHigh: const Color(0xFF202020),
+  );
+  return td.copyWith(
+    colorScheme: cs,
+    scaffoldBackgroundColor: const Color(0xFF0A0A0A),
+    textTheme: td.textTheme.apply(
+      bodyColor: FireballTokens.textPrimary,
+      displayColor: FireballTokens.textPrimary,
+    ),
+    navigationBarTheme: NavigationBarThemeData(
+      indicatorColor: cs.primary.withValues(alpha: 0.22),
+      backgroundColor: FireballTokens.black,
+      elevation: 0,
+      height: FireballTokens.navHeight,
+      labelTextStyle: WidgetStateProperty.resolveWith(
+        (states) => TextStyle(
+          fontSize: 11,
+          fontWeight:
+              states.contains(WidgetState.selected) ? FontWeight.w700 : FontWeight.w500,
+        ),
+      ),
+    ),
+    cardTheme: const CardThemeData(
+      color: FireballTokens.blackElevated,
+      elevation: 0,
+      margin: EdgeInsets.zero,
+    ),
+  );
 }
 
 /// Curated schemes for the settings picker (key = [FlexScheme.name]).

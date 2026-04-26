@@ -7,9 +7,11 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import '../../core/models/models.dart';
 import '../../core/models/track.dart';
 import '../../core/store/providers.dart';
+import '../../core/theme/fireball_tokens.dart';
 import '../../core/ui/shell_content_insets.dart';
 import '../../core/widgets/empty_state.dart';
 import '../../core/widgets/glass_widgets.dart';
+import '../../core/widgets/songs_table.dart';
 import '../../core/widgets/track_options_sheet.dart';
 import '../../core/audio/download_manager.dart';
 import '../../core/audio/stream_cache_manager.dart';
@@ -68,19 +70,31 @@ class LibraryScreen extends HookConsumerWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(24, 32, 24, 16),
+          padding: const EdgeInsets.fromLTRB(20, 22, 20, 10),
           child: Row(
             children: [
               Expanded(
                 child: Text(
                   'Your Library',
                   style: const TextStyle(
-                    fontSize: 34,
+                    fontSize: 30,
                     fontWeight: FontWeight.w900,
                     color: Colors.white,
                     letterSpacing: -1,
                   ),
                 ),
+              ),
+              IconButton(
+                tooltip: 'Remote',
+                onPressed: () => context.push('/remote'),
+                icon: Icon(Icons.cast_rounded,
+                    color: Colors.white.withValues(alpha: 0.78)),
+              ),
+              IconButton(
+                tooltip: 'Settings',
+                onPressed: () => context.push('/settings'),
+                icon: Icon(Icons.settings_rounded,
+                    color: Colors.white.withValues(alpha: 0.78)),
               ),
               if (tab.value == _LibTab.playlists)
                 GlassCard(
@@ -95,14 +109,14 @@ class LibraryScreen extends HookConsumerWidget {
           ),
         ),
         SizedBox(
-          height: 48,
+          height: 40,
           child: ListView(
             scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 24),
+            padding: const EdgeInsets.symmetric(horizontal: 20),
             children: _LibTab.values
                 .map((t) => Padding(
                       padding: const EdgeInsets.only(right: 10),
-                      child: GlassPill(
+                      child: _LibraryTabChip(
                         label: _tabLabel(t),
                         selected: tab.value == t,
                         onTap: () => tab.value = t,
@@ -111,7 +125,7 @@ class LibraryScreen extends HookConsumerWidget {
                 .toList(),
           ),
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 8),
         Expanded(
           child: _buildTabContent(
               context, ref, tab.value, library, cs, isDark, playerState),
@@ -135,16 +149,16 @@ class LibraryScreen extends HookConsumerWidget {
       children: [
         // Sidebar
         SizedBox(
-          width: 220,
+          width: 206,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Padding(
-                padding: const EdgeInsets.fromLTRB(20, 32, 20, 24),
+                padding: const EdgeInsets.fromLTRB(16, 24, 16, 18),
                 child: Text(
                   'Your Library',
                   style: const TextStyle(
-                    fontSize: 28,
+                    fontSize: 24,
                     fontWeight: FontWeight.w900,
                     color: Colors.white,
                     letterSpacing: -0.8,
@@ -154,18 +168,18 @@ class LibraryScreen extends HookConsumerWidget {
               Expanded(
                 child: ListView(
                   padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   children: _LibTab.values.map((t) {
                     final selected = tab.value == t;
                     return GestureDetector(
                       behavior: HitTestBehavior.opaque,
                       onTap: () => tab.value = t,
                       child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 200),
-                        curve: Curves.easeOutCubic,
+                        duration: FireballTokens.motionBase,
+                        curve: FireballTokens.motionCurve,
                         margin: const EdgeInsets.symmetric(vertical: 3),
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 14, vertical: 12),
+                        padding:
+                            const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                         decoration: BoxDecoration(
                           color: selected
                               ? cs.primary.withValues(alpha: 0.15)
@@ -243,24 +257,24 @@ class LibraryScreen extends HookConsumerWidget {
   String _tabLabel(_LibTab t) {
     switch (t) {
       case _LibTab.favorites:
-        return '♥ Favorites';
+        return 'Liked Songs';
       case _LibTab.playlists:
-        return '≡ Playlists';
+        return 'Playlists';
       case _LibTab.artists:
-        return '👤 Artists';
+        return 'Artists';
       case _LibTab.albums:
-        return '💿 Albums';
+        return 'Albums';
       case _LibTab.downloads:
-        return '💾 Downloads';
+        return 'Downloads';
       case _LibTab.cached:
-        return '🗂️ Cached';
+        return 'Cached';
     }
   }
 
   String _tabLabelShort(_LibTab t) {
     switch (t) {
       case _LibTab.favorites:
-        return 'Favorites';
+        return 'Liked Songs';
       case _LibTab.playlists:
         return 'Playlists';
       case _LibTab.artists:
@@ -306,7 +320,7 @@ class LibraryScreen extends HookConsumerWidget {
           tracks: library.favorites,
           cs: cs,
           isDark: isDark,
-          emptyMessage: 'No favorites yet.\nHeart a track while it plays.',
+          emptyMessage: 'No liked songs yet.\nTap heart on any track to save it.',
           emptyIcon: Icons.favorite_border_rounded,
           onTap: (index) {
             ref.read(playerProvider.notifier).setQueue(library.favorites);
@@ -338,8 +352,26 @@ class LibraryScreen extends HookConsumerWidget {
           return const FireballEmptyState(
             onDarkGlass: true,
             title: 'No playlists yet',
-            subtitle: 'Tap + to create one.',
+            subtitle: 'Create a playlist to organize your music.',
             icon: Icons.queue_music_rounded,
+          );
+        }
+        final isDesktopWide = MediaQuery.sizeOf(context).width >= 1000;
+        if (isDesktopWide) {
+          final pl = library.playlists.first;
+          return _DesktopPlaylistView(
+            playlist: pl,
+            cs: cs,
+            onPlay: () {
+              if (pl.videos.isEmpty) return;
+              ref.read(playerProvider.notifier).setQueue(pl.videos);
+              ref.read(playerProvider.notifier).playIndex(0);
+            },
+            onTrackTap: (index) {
+              ref.read(playerProvider.notifier).setQueue(pl.videos);
+              ref.read(playerProvider.notifier).playIndex(index);
+            },
+            onTrackLongPress: (track) => showTrackOptions(context, ref, track),
           );
         }
         return ListView.builder(
@@ -401,7 +433,7 @@ class LibraryScreen extends HookConsumerWidget {
         if (library.artists.isEmpty) {
           return const FireballEmptyState(
             onDarkGlass: true,
-            title: 'No artists saved yet',
+            title: 'No followed artists yet',
             icon: Icons.person_outline_rounded,
           );
         }
@@ -536,11 +568,12 @@ class LibraryScreen extends HookConsumerWidget {
       final title = await showDialog<String>(
         context: context,
         builder: (ctx) => AlertDialog(
-          title: const Text('New Playlist'),
+          title: const Text('Create playlist'),
           content: TextField(
             controller: ctrl,
             autofocus: true,
-            decoration: const InputDecoration(hintText: 'Playlist name'),
+            decoration:
+                const InputDecoration(hintText: 'Give your playlist a name'),
           ),
           actions: [
             TextButton(
@@ -770,6 +803,49 @@ class LibraryScreen extends HookConsumerWidget {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (ctx) => _PlaylistDetailSheet(pl: pl, ref: ref, cs: cs),
+    );
+  }
+}
+
+class _LibraryTabChip extends StatelessWidget {
+  const _LibraryTabChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(999),
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(
+          color: selected
+              ? Colors.white.withValues(alpha: 0.14)
+              : FireballTokens.blackElevated,
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(
+            color: selected
+                ? Colors.white.withValues(alpha: 0.18)
+                : Colors.white.withValues(alpha: 0.12),
+            width: 0.8,
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: Colors.white.withValues(alpha: selected ? 0.95 : 0.78),
+            fontSize: 12,
+            fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
+          ),
+        ),
+      ),
     );
   }
 }
@@ -1062,6 +1138,134 @@ class _CachedTab extends HookConsumerWidget {
       );
 }
 
+class _DesktopPlaylistView extends StatelessWidget {
+  const _DesktopPlaylistView({
+    required this.playlist,
+    required this.cs,
+    required this.onPlay,
+    required this.onTrackTap,
+    required this.onTrackLongPress,
+  });
+
+  final Playlist playlist;
+  final ColorScheme cs;
+  final VoidCallback onPlay;
+  final ValueChanged<int> onTrackTap;
+  final ValueChanged<Track> onTrackLongPress;
+
+  @override
+  Widget build(BuildContext context) {
+    final tracks = playlist.videos;
+    final firstArt = tracks.isNotEmpty ? tracks.first.artwork : null;
+    return ListView(
+      padding: EdgeInsets.fromLTRB(22, 18, 22, shellScrollBottomPadding(context)),
+      children: [
+        Container(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 18),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(10),
+            gradient: const LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [Color(0xFF3A2C17), Color(0xFF121212)],
+            ),
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(6),
+                child: firstArt != null && firstArt.isNotEmpty
+                    ? CachedNetworkImage(
+                        imageUrl: firstArt,
+                        width: 192,
+                        height: 192,
+                        fit: BoxFit.cover,
+                        errorWidget: (_, __, ___) => _squarePlaceholder(),
+                      )
+                    : _squarePlaceholder(),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Playlist',
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.85),
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      playlist.title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 58,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: -1.6,
+                        height: 0.96,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Fireball • ${tracks.length} songs',
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.72),
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 14),
+        Row(
+          children: [
+            IconButton.filled(
+              style: IconButton.styleFrom(
+                backgroundColor: cs.primary,
+                foregroundColor: cs.onPrimary,
+                fixedSize: const Size(62, 62),
+              ),
+              onPressed: onPlay,
+              icon: const Icon(Icons.play_arrow_rounded, size: 36),
+            ),
+            const SizedBox(width: 8),
+            Icon(Icons.check_circle_rounded,
+                size: 28, color: Colors.green.withValues(alpha: 0.95)),
+            const SizedBox(width: 8),
+            Icon(Icons.more_horiz_rounded,
+                size: 26, color: Colors.white.withValues(alpha: 0.75)),
+          ],
+        ),
+        const SizedBox(height: 10),
+        SongsTable(
+          tracks: tracks,
+          onTrackTap: onTrackTap,
+          onTrackLongPress: onTrackLongPress,
+        ),
+      ],
+    );
+  }
+
+  Widget _squarePlaceholder() => Container(
+        width: 180,
+        height: 180,
+        color: const Color(0xFF242424),
+        child: Icon(Icons.music_note_rounded,
+            color: Colors.white.withValues(alpha: 0.45), size: 42),
+      );
+
+}
+
 class _TrackList extends ConsumerWidget {
   const _TrackList({
     required this.tracks,
@@ -1085,6 +1289,7 @@ class _TrackList extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final downloadedIds = ref.watch(downloadManagerProvider).downloadedIds;
+    final isDesktopWide = MediaQuery.sizeOf(context).width >= 1000;
 
     if (tracks.isEmpty) {
       final parts = emptyMessage.split('\n');
@@ -1093,6 +1298,15 @@ class _TrackList extends ConsumerWidget {
         subtitle: parts.length > 1 ? parts.sublist(1).join('\n') : null,
         icon: emptyIcon,
         onDarkGlass: true,
+      );
+    }
+    if (isDesktopWide) {
+      return SongsTable(
+        tracks: tracks,
+        onTrackTap: onTap,
+        onTrackLongPress: (track) {
+          if (onLongPress != null) onLongPress!(track);
+        },
       );
     }
     return ListView.builder(

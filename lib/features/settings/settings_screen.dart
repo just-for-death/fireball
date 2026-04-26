@@ -549,6 +549,19 @@ class SettingsScreen extends HookConsumerWidget {
               padding: const EdgeInsets.fromLTRB(24, 32, 24, 16),
               child: Row(
                 children: [
+                  IconButton(
+                    tooltip: 'Back',
+                    onPressed: () {
+                      if (Navigator.of(context).canPop()) {
+                        context.pop();
+                      } else {
+                        context.go('/home');
+                      }
+                    },
+                    icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
+                    color: Colors.white.withValues(alpha: 0.9),
+                  ),
+                  const SizedBox(width: 6),
                   Text(
                     'Settings',
                     style: TextStyle(

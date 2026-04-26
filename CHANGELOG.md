@@ -2,6 +2,43 @@
 
 All notable changes to **Fireball** are documented here. Release binaries live on [GitHub Releases](https://github.com/just-for-death/fireball/releases).
 
+## [5.0.0] — 2026-04-26
+
+### UI & Navigation Polish
+
+- Refined collapsed sidebar / rail navigation visuals to reduce sharp, boxy selection states and improve spacing.
+- Removed non-functional desktop top-bar controls and placeholder header actions.
+- Removed broken home shell search bar control and simplified desktop header interactions.
+- Improved desktop mini-player tap behavior to reliably open full player.
+
+### Theming & Branding
+
+- Migrated app-side naming from Spotify-branded symbols to Fireball-native symbols (`FireballTokens`, `FireballBackendBridge`).
+- Added Fireball import wrappers for token/bridge usage and updated app imports accordingly.
+- Removed forced accent green usage on primary actions and key surfaces; now follows selected theme color scheme (`colorScheme.primary` / `onPrimary`).
+- Improved contrast consistency for filled primary controls in light/dark/dynamic themes.
+
+### Background Playback & Notifications
+
+- Improved Android background media service behavior for more reliable lock-screen/headset controls.
+- Enabled Android 13+ notification permission declaration (`POST_NOTIFICATIONS`) for media notification support.
+- Retained iOS background audio support (`UIBackgroundModes: audio`) and verified media session integration.
+
+### Reliability & Cleanup
+
+- Replaced silent no-op interactions (e.g., fake volume controls / dead taps) with functional actions or disabled states.
+- Added/retained structured non-fatal diagnostics in recovery paths for sync/download/remote/cache/player flows.
+- Updated project version metadata to `5.0.0+5`.
+
+### Release Assets (v5.0.0)
+
+| Platform | Asset name |
+|----------|------------|
+| Android | `Fireball-5.0.0-android.apk` |
+| iOS | `Fireball-5.0.0-ios-unsigned.ipa` (unsigned — sideload / your signing) |
+
+---
+
 ## [3.0.0] — 2026-04-25
 
 ### Downloads & Offline
@@ -184,6 +221,7 @@ Verify downloads with `SHA256SUMS.txt` on the release.
 
 Initial public release: Invidious playback, library, lyrics, ListenBrainz, Google Drive & WebDAV backup, tablet UI, Material 3 / dynamic color. See GitHub release [v1.0.0](https://github.com/just-for-death/fireball/releases/tag/v1.0.0) for assets and checksums.
 
+[5.0.0]: https://github.com/just-for-death/fireball/releases/tag/v5.0.0
 [3.0.0]: https://github.com/just-for-death/fireball/releases/tag/v3.0.0
 [2.0.0]: https://github.com/just-for-death/fireball/releases/tag/v2.0.0
 [1.6.0]: https://github.com/just-for-death/fireball/releases/tag/v1.6.0

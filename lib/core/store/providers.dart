@@ -10,6 +10,7 @@ import 'package:media_kit/media_kit.dart' hide PlayerState, Track;
 import '../api/fireball_api.dart';
 import '../audio/media_session_bridge.dart';
 import '../audio/media_session_player.dart';
+import '../diagnostics/soft_error_reporter.dart';
 import '../models/models.dart';
 import '../models/sponsor_segment.dart';
 import '../models/track.dart';
@@ -345,7 +346,14 @@ class PlayerNotifier extends StateNotifier<PlayerState>
         try {
           await _p.open(Media(track.url!));
           return;
-        } catch (_) {}
+        } catch (fallbackError, fallbackStack) {
+          SoftErrorReporter.report(
+            'player_notifier.playTrack.fallbackOpenOriginalUrl',
+            fallbackError,
+            fallbackStack,
+            details: <String, Object?>{'trackId': track.effectiveId},
+          );
+        }
       }
       state = state.copyWith(playbackError: errMsg);
       _syncMediaSession();
@@ -611,7 +619,12 @@ class PlayerNotifier extends StateNotifier<PlayerState>
           : (hasHost ? uri.query : '${uri.query}&$hostPair');
       final newUri = Uri.parse('$base/videoplayback?$query');
       return newUri.toString();
-    } catch (_) {
+    } catch (e, st) {
+      SoftErrorReporter.report(
+        'player_notifier.resolveProxiedGoogleVideoUrl',
+        e,
+        st,
+      );
       return url;
     }
   }

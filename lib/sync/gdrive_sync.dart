@@ -4,6 +4,8 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:googleapis/drive/v3.dart' as drive;
 import 'package:http/http.dart' as http;
 
+import '../core/diagnostics/soft_error_reporter.dart';
+
 const _kFileName = 'fireball_library.json';
 const _kMimeType = 'application/json';
 
@@ -64,7 +66,14 @@ class GDriveSync {
       for (final id in allIds.skip(1)) {
         try {
           await api.files.delete(id);
-        } catch (_) {}
+        } catch (e, st) {
+          SoftErrorReporter.report(
+            'gdrive_sync.uploadLibrary.deleteDuplicate',
+            e,
+            st,
+            details: <String, Object?>{'fileId': id},
+          );
+        }
       }
     } else {
       final file = drive.File()
@@ -102,7 +111,12 @@ class GDriveSync {
         $fields: 'modifiedTime',
       ) as drive.File;
       return file.modifiedTime;
-    } catch (_) {
+    } catch (e, st) {
+      SoftErrorReporter.report(
+        'gdrive_sync.getLastBackupTime',
+        e,
+        st,
+      );
       return null;
     }
   }

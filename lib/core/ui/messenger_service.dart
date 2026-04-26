@@ -24,23 +24,56 @@ class MessengerService {
 
   void showError(String message,
       {Duration duration = const Duration(seconds: 4)}) {
-    _messenger?.showSnackBar(
-      SnackBar(
-        content: Text(message),
-        duration: duration,
-        behavior: SnackBarBehavior.floating,
-        backgroundColor: Colors.red.shade800,
-      ),
+    _show(
+      message,
+      duration: duration,
+      backgroundColor: Colors.red.shade800,
+      icon: Icons.error_outline_rounded,
     );
   }
 
   void showInfo(String message,
       {Duration duration = const Duration(seconds: 3)}) {
-    _messenger?.showSnackBar(
+    _show(
+      message,
+      duration: duration,
+      icon: Icons.info_outline_rounded,
+    );
+  }
+
+  void showSuccess(String message,
+      {Duration duration = const Duration(seconds: 2)}) {
+    _show(
+      message,
+      duration: duration,
+      backgroundColor: Colors.green.shade700,
+      icon: Icons.check_circle_outline_rounded,
+    );
+  }
+
+  void _show(
+    String message, {
+    required Duration duration,
+    Color? backgroundColor,
+    IconData? icon,
+  }) {
+    final messenger = _messenger;
+    if (messenger == null) return;
+    messenger.hideCurrentSnackBar();
+    messenger.showSnackBar(
       SnackBar(
-        content: Text(message),
         duration: duration,
         behavior: SnackBarBehavior.floating,
+        backgroundColor: backgroundColor,
+        content: Row(
+          children: [
+            if (icon != null) ...[
+              Icon(icon, size: 18),
+              const SizedBox(width: 8),
+            ],
+            Expanded(child: Text(message)),
+          ],
+        ),
       ),
     );
   }
