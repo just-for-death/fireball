@@ -8,9 +8,11 @@ import '../../core/models/models.dart';
 import '../../core/models/track.dart';
 import '../../core/store/providers.dart';
 import '../../core/theme/fireball_tokens.dart';
+import '../../core/theme/suv_ui_tokens.dart';
 import '../../core/ui/shell_content_insets.dart';
 import '../../core/widgets/empty_state.dart';
 import '../../core/widgets/glass_widgets.dart';
+import '../../core/widgets/suv_motion.dart';
 import '../../core/widgets/songs_table.dart';
 import '../../core/widgets/track_options_sheet.dart';
 import '../../core/audio/download_manager.dart';
@@ -42,16 +44,22 @@ class LibraryScreen extends HookConsumerWidget {
       return null;
     }, [library.favorites]);
 
-    final isTablet = MediaQuery.sizeOf(context).width >= 600;
+    final width = MediaQuery.sizeOf(context).width;
+    final isTablet = width >= 600;
+    final sectionPad = width >= 1200
+        ? 28.0
+        : width >= 900
+            ? 22.0
+            : 20.0;
 
     return PremiumBackground(
       child: SafeArea(
         bottom: false,
         child: isTablet
             ? _buildTabletLayout(
-                context, ref, library, cs, isDark, playerState, tab)
+                context, ref, library, cs, isDark, playerState, tab, sectionPad)
             : _buildPhoneLayout(
-                context, ref, library, cs, isDark, playerState, tab),
+                context, ref, library, cs, isDark, playerState, tab, sectionPad),
       ),
     );
   }
@@ -65,54 +73,57 @@ class LibraryScreen extends HookConsumerWidget {
     bool isDark,
     PlayerState playerState,
     ValueNotifier<_LibTab> tab,
+    double sectionPad,
   ) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(20, 22, 20, 10),
-          child: Row(
-            children: [
-              Expanded(
-                child: Text(
-                  'Your Library',
-                  style: const TextStyle(
-                    fontSize: 30,
-                    fontWeight: FontWeight.w900,
-                    color: Colors.white,
-                    letterSpacing: -1,
+          padding: EdgeInsets.fromLTRB(sectionPad, 22, sectionPad, 10),
+          child: SuvFadeSlideIn(
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Your Library',
+                    style: const TextStyle(
+                      fontSize: 32,
+                      fontWeight: FontWeight.w900,
+                      color: Colors.white,
+                      letterSpacing: -1,
+                    ),
                   ),
                 ),
-              ),
-              IconButton(
-                tooltip: 'Remote',
-                onPressed: () => context.push('/remote'),
-                icon: Icon(Icons.cast_rounded,
-                    color: Colors.white.withValues(alpha: 0.78)),
-              ),
-              IconButton(
-                tooltip: 'Settings',
-                onPressed: () => context.push('/settings'),
-                icon: Icon(Icons.settings_rounded,
-                    color: Colors.white.withValues(alpha: 0.78)),
-              ),
-              if (tab.value == _LibTab.playlists)
-                GlassCard(
-                  padding: EdgeInsets.zero,
-                  borderRadius: BorderRadius.circular(12),
-                  child: IconButton(
-                    icon: Icon(Icons.add_rounded, color: cs.primary),
-                    onPressed: () => _createPlaylistDialog(context, ref),
-                  ),
+                IconButton(
+                  tooltip: 'Remote',
+                  onPressed: () => context.push('/remote'),
+                  icon: Icon(Icons.cast_rounded,
+                      color: Colors.white.withValues(alpha: 0.78)),
                 ),
-            ],
+                IconButton(
+                  tooltip: 'Settings',
+                  onPressed: () => context.push('/settings'),
+                  icon: Icon(Icons.settings_rounded,
+                      color: Colors.white.withValues(alpha: 0.78)),
+                ),
+                if (tab.value == _LibTab.playlists)
+                  GlassCard(
+                    padding: EdgeInsets.zero,
+                    borderRadius: BorderRadius.circular(SuvUiTokens.cardRadiusMd),
+                    child: IconButton(
+                      icon: Icon(Icons.add_rounded, color: cs.primary),
+                      onPressed: () => _createPlaylistDialog(context, ref),
+                    ),
+                  ),
+              ],
+            ),
           ),
         ),
         SizedBox(
-          height: 40,
+          height: SuvUiTokens.chipHeight,
           child: ListView(
             scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 20),
+            padding: EdgeInsets.symmetric(horizontal: sectionPad),
             children: _LibTab.values
                 .map((t) => Padding(
                       padding: const EdgeInsets.only(right: 10),
@@ -128,7 +139,7 @@ class LibraryScreen extends HookConsumerWidget {
         const SizedBox(height: 8),
         Expanded(
           child: _buildTabContent(
-              context, ref, tab.value, library, cs, isDark, playerState),
+              context, ref, tab.value, library, cs, isDark, playerState, sectionPad),
         ),
       ],
     );
@@ -143,13 +154,20 @@ class LibraryScreen extends HookConsumerWidget {
     bool isDark,
     PlayerState playerState,
     ValueNotifier<_LibTab> tab,
+    double sectionPad,
   ) {
+    final width = MediaQuery.sizeOf(context).width;
+    final sidebarWidth = width >= 1300
+        ? 252.0
+        : width >= 1024
+            ? 224.0
+            : 196.0;
     final isDarkMode = Theme.of(context).brightness == Brightness.dark;
     return Row(
       children: [
         // Sidebar
         SizedBox(
-          width: 206,
+          width: sidebarWidth,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -158,7 +176,7 @@ class LibraryScreen extends HookConsumerWidget {
                 child: Text(
                   'Your Library',
                   style: const TextStyle(
-                    fontSize: 24,
+                    fontSize: 26,
                     fontWeight: FontWeight.w900,
                     color: Colors.white,
                     letterSpacing: -0.8,
@@ -184,7 +202,7 @@ class LibraryScreen extends HookConsumerWidget {
                           color: selected
                               ? cs.primary.withValues(alpha: 0.15)
                               : Colors.transparent,
-                          borderRadius: BorderRadius.circular(12),
+                          borderRadius: BorderRadius.circular(SuvUiTokens.cardRadiusMd),
                         ),
                         child: Row(
                           children: [
@@ -224,7 +242,7 @@ class LibraryScreen extends HookConsumerWidget {
                   padding: const EdgeInsets.fromLTRB(12, 8, 12, 20),
                   child: GlassCard(
                     padding: EdgeInsets.zero,
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(SuvUiTokens.cardRadiusMd),
                     child: ListTile(
                       leading: Icon(Icons.add_rounded, color: cs.primary),
                       title: Text('New Playlist',
@@ -248,7 +266,7 @@ class LibraryScreen extends HookConsumerWidget {
         // Content
         Expanded(
           child: _buildTabContent(
-              context, ref, tab.value, library, cs, isDark, playerState),
+              context, ref, tab.value, library, cs, isDark, playerState, sectionPad),
         ),
       ],
     );
@@ -313,6 +331,7 @@ class LibraryScreen extends HookConsumerWidget {
     ColorScheme cs,
     bool isDark,
     PlayerState playerState,
+    double sectionPad,
   ) {
     switch (tab) {
       case _LibTab.favorites:
@@ -376,9 +395,9 @@ class LibraryScreen extends HookConsumerWidget {
         }
         return ListView.builder(
           padding: EdgeInsets.fromLTRB(
-            16,
+            sectionPad,
             8,
-            16,
+            sectionPad,
             shellScrollBottomPadding(context),
           ),
           itemCount: library.playlists.length,
@@ -439,9 +458,9 @@ class LibraryScreen extends HookConsumerWidget {
         }
         return GridView.builder(
           padding: EdgeInsets.fromLTRB(
-            16,
+            sectionPad,
             8,
-            16,
+            sectionPad,
             shellScrollBottomPadding(context),
           ),
           gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
@@ -498,9 +517,9 @@ class LibraryScreen extends HookConsumerWidget {
         }
         return GridView.builder(
           padding: EdgeInsets.fromLTRB(
-            16,
+            sectionPad,
             8,
-            16,
+            sectionPad,
             shellScrollBottomPadding(context),
           ),
           gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
@@ -821,7 +840,10 @@ class _LibraryTabChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return InkWell(
-      borderRadius: BorderRadius.circular(999),
+      borderRadius: BorderRadius.circular(SuvUiTokens.pillRadius),
+      hoverColor: Colors.white.withValues(alpha: SuvUiTokens.hoverAlpha),
+      splashColor: Colors.white.withValues(alpha: SuvUiTokens.splashAlpha),
+      highlightColor: Colors.white.withValues(alpha: SuvUiTokens.highlightAlpha),
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
@@ -829,7 +851,7 @@ class _LibraryTabChip extends StatelessWidget {
           color: selected
               ? Colors.white.withValues(alpha: 0.14)
               : FireballTokens.blackElevated,
-          borderRadius: BorderRadius.circular(999),
+          borderRadius: BorderRadius.circular(SuvUiTokens.pillRadius),
           border: Border.all(
             color: selected
                 ? Colors.white.withValues(alpha: 0.18)
@@ -1213,7 +1235,7 @@ class _DesktopPlaylistView extends StatelessWidget {
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      'Fireball • ${tracks.length} songs',
+                      'SuvMusic • ${tracks.length} songs',
                       style: TextStyle(
                         color: Colors.white.withValues(alpha: 0.72),
                         fontSize: 13,
@@ -1314,52 +1336,55 @@ class _TrackList extends ConsumerWidget {
       itemCount: tracks.length,
       itemBuilder: (context, i) {
         final track = tracks[i];
-        return ListTile(
-          contentPadding:
-              const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-          leading: ClipRRect(
-            borderRadius: BorderRadius.circular(8),
-            child: track.artwork != null
-                ? CachedNetworkImage(
-                    imageUrl: track.artwork!,
-                    width: 50,
-                    height: 50,
-                    fit: BoxFit.cover,
-                    errorWidget: (_, __, ___) => _placeholder(cs),
-                  )
-                : _placeholder(cs),
-          ),
-          title: Row(
-            children: [
-              Expanded(
-                child: Text(
-                  track.title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontWeight: FontWeight.w700,
-                    fontSize: 14,
-                    color: isDark ? Colors.white : cs.onSurface,
+        return SuvFadeSlideIn.staggered(
+          index: i,
+          child: ListTile(
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            leading: ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: track.artwork != null
+                  ? CachedNetworkImage(
+                      imageUrl: track.artwork!,
+                      width: 50,
+                      height: 50,
+                      fit: BoxFit.cover,
+                      errorWidget: (_, __, ___) => _placeholder(cs),
+                    )
+                  : _placeholder(cs),
+            ),
+            title: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    track.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 14,
+                      color: isDark ? Colors.white : cs.onSurface,
+                    ),
                   ),
                 ),
-              ),
-              if (downloadedIds.contains(track.effectiveId))
-                Padding(
-                  padding: const EdgeInsets.only(left: 6),
-                  child: Icon(Icons.offline_pin_rounded,
-                      size: 14, color: cs.primary),
-                ),
-            ],
+                if (downloadedIds.contains(track.effectiveId))
+                  Padding(
+                    padding: const EdgeInsets.only(left: 6),
+                    child: Icon(Icons.offline_pin_rounded,
+                        size: 14, color: cs.primary),
+                  ),
+              ],
+            ),
+            subtitle: Text(
+              '${track.artist}${track.album != null ? " • ${track.album}" : ""}${track.year != null ? " (${track.year})" : ""}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+            ),
+            trailing: trailing(track),
+            onTap: () => onTap(i),
+            onLongPress: onLongPress != null ? () => onLongPress!(track) : null,
           ),
-          subtitle: Text(
-            '${track.artist}${track.album != null ? " • ${track.album}" : ""}${track.year != null ? " (${track.year})" : ""}',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
-          ),
-          trailing: trailing(track),
-          onTap: () => onTap(i),
-          onLongPress: onLongPress != null ? () => onLongPress!(track) : null,
         );
       },
     );

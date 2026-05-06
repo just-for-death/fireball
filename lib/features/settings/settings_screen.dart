@@ -1316,6 +1316,47 @@ class SettingsScreen extends HookConsumerWidget {
                             ),
                           ],
                         ),
+                        if (settings.listenBrainzEnabled) ...[
+                          const SizedBox(height: 12),
+                          _SettingsLabel(
+                            'SCROBBLE THRESHOLD: ${settings.listenBrainzScrobblePercent}%',
+                          ),
+                          Slider(
+                            value: settings.listenBrainzScrobblePercent
+                                .toDouble()
+                                .clamp(5, 95),
+                            min: 5,
+                            max: 95,
+                            divisions: 18,
+                            activeColor: cs.primary,
+                            onChanged: (v) => saveSettings({
+                              'listenBrainzScrobblePercent': v.round(),
+                            }),
+                          ),
+                          const SizedBox(height: 4),
+                          _SettingsLabel(
+                            'OR AFTER ${settings.listenBrainzScrobbleMaxSeconds}s',
+                          ),
+                          Slider(
+                            value: settings.listenBrainzScrobbleMaxSeconds
+                                .toDouble()
+                                .clamp(10, 240),
+                            min: 10,
+                            max: 240,
+                            divisions: 23,
+                            activeColor: cs.primary,
+                            onChanged: (v) => saveSettings({
+                              'listenBrainzScrobbleMaxSeconds': v.round(),
+                            }),
+                          ),
+                          Text(
+                            'Scrobble when either threshold is reached first.',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Colors.white.withValues(alpha: 0.45),
+                            ),
+                          ),
+                        ],
                       ],
                     ),
 
@@ -1549,6 +1590,36 @@ class SettingsScreen extends HookConsumerWidget {
                               activeThumbColor: cs.primary,
                             ),
                           ],
+                        ),
+                        const SizedBox(height: 12),
+                        _SettingsLabel('DEFAULT PLAYLIST PRIVACY'),
+                        Wrap(
+                          spacing: 10,
+                          runSpacing: 10,
+                          children: [
+                            ('private', 'Private'),
+                            ('unlisted', 'Unlisted'),
+                            ('public', 'Public'),
+                          ]
+                              .map(
+                                (p) => GlassPill(
+                                  label: p.$2,
+                                  selected:
+                                      settings.invidiousPlaylistPrivacy == p.$1,
+                                  onTap: () => saveSettings(
+                                    {'invidiousPlaylistPrivacy': p.$1},
+                                  ),
+                                ),
+                              )
+                              .toList(),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          'Used when creating new playlists on Invidious.',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.white.withValues(alpha: 0.45),
+                          ),
                         ),
                       ],
                     ),
@@ -2279,8 +2350,8 @@ class SettingsScreen extends HookConsumerWidget {
                         const SizedBox(height: 10),
                         Text(
                           packageInfo.hasData
-                              ? 'Fireball v${packageInfo.data!.version} (${packageInfo.data!.buildNumber})'
-                              : 'Fireball',
+                              ? 'SuvMusic v${packageInfo.data!.version} (${packageInfo.data!.buildNumber})'
+                              : 'SuvMusic',
                           style: TextStyle(
                               color: Colors.white.withValues(alpha: 0.2),
                               fontSize: 12),

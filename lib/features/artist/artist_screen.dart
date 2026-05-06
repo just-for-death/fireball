@@ -1,16 +1,16 @@
-import 'dart:ui';
-
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-import '../../core/adapters/fireball_backend_bridge.dart';
+import '../../core/contracts/music_contracts.dart';
 import '../../core/models/models.dart';
 import '../../core/models/track.dart';
 import '../../core/store/providers.dart';
+import '../../core/theme/suv_ui_tokens.dart';
 import '../../core/ui/messenger_service.dart';
+import '../../core/widgets/suv_motion.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Route entry point: /artist?name=XYZ
@@ -21,14 +21,14 @@ class ArtistScreen extends HookConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final bridge = useMemoized(() => FireballBackendBridge());
+    final repo = ref.read(musicRepositoryProvider);
     final cs = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     // State
-    final artistData = useState<Map<String, dynamic>?>(null);
-    final topSongs = useState<List<Map<String, dynamic>>>([]);
-    final albums = useState<List<Map<String, dynamic>>>([]);
+    final artistData = useState<ArtistProfile?>(null);
+    final topSongs = useState<List<MusicDiscoveryItem>>([]);
+    final albums = useState<List<MusicDiscoveryItem>>([]);
     final isLoading = useState(true);
     final error = useState<String?>(null);
 
@@ -39,19 +39,16 @@ class ArtistScreen extends HookConsumerWidget {
           isLoading.value = true;
           error.value = null;
 
-          final artist = await bridge.findArtist(artistName);
+          final artist = await repo.findArtist(artistName);
           artistData.value = artist;
 
-          if (artist != null) {
-            final id = artist['artistId'] as int?;
-            if (id != null) {
-              final results = await Future.wait<List<Map<String, dynamic>>>([
-                bridge.artistTopSongs(id, limit: 20),
-                bridge.artistAlbums(id, limit: 20),
-              ]);
-              topSongs.value = results[0];
-              albums.value = results[1];
-            }
+          if (artist != null && artist.id > 0) {
+            final results = await Future.wait<List<MusicDiscoveryItem>>([
+              repo.artistTopSongs(artist.id, limit: 20),
+              repo.artistAlbums(artist.id, limit: 20),
+            ]);
+            topSongs.value = results[0];
+            albums.value = results[1];
           }
         } catch (e) {
           error.value = 'Failed to load artist: $e';
@@ -63,7 +60,7 @@ class ArtistScreen extends HookConsumerWidget {
     }, const []);
 
     final artworkUrl = _bestArtistArt(topSongs.value, albums.value);
-    final genre = artistData.value?['primaryGenreName'] as String?;
+    final genre = artistData.value?.primaryGenreName;
 
     return Scaffold(
       backgroundColor: const Color(0xFF0D0D10),
@@ -111,11 +108,14 @@ class ArtistScreen extends HookConsumerWidget {
                         padding: const EdgeInsets.symmetric(horizontal: 16),
                         sliver: SliverList.builder(
                           itemCount: topSongs.value.length,
-                          itemBuilder: (context, i) => _SongTile(
-                            index: i + 1,
-                            song: topSongs.value[i],
-                            cs: cs,
-                            ref: ref,
+                          itemBuilder: (context, i) => SuvFadeSlideIn.staggered(
+                            index: i,
+                            child: _SongTile(
+                              index: i + 1,
+                              song: topSongs.value[i],
+                              cs: cs,
+                              ref: ref,
+                            ),
                           ),
                         ),
                       ),
@@ -145,11 +145,14 @@ class ArtistScreen extends HookConsumerWidget {
                             childAspectRatio: 0.75,
                           ),
                           delegate: SliverChildBuilderDelegate(
-                            (context, i) => _AlbumCard(
-                              album: albums.value[i],
-                              cs: cs,
-                              ref: ref,
-                              artistName: artistName,
+                            (context, i) => SuvFadeSlideIn.staggered(
+                              index: i,
+                              child: _AlbumCard(
+                                album: albums.value[i],
+                                cs: cs,
+                                ref: ref,
+                                artistName: artistName,
+                              ),
                             ),
                             childCount: albums.value.length,
                           ),
@@ -166,19 +169,19 @@ class ArtistScreen extends HookConsumerWidget {
 
   /// Pick the best available artwork URL from any song or album result.
   static String? _bestArtistArt(
-    List<Map<String, dynamic>> songs,
-    List<Map<String, dynamic>> albums,
+    List<MusicDiscoveryItem> songs,
+    List<MusicDiscoveryItem> albums,
   ) {
     for (final a in albums) {
-      final url = a['artworkUrl100'] as String?;
+      final url = a.artwork;
       if (url != null && url.isNotEmpty) {
-        return url.replaceAll('100x100bb', '600x600bb');
+        return url.replaceAll('400x400bb', '600x600bb');
       }
     }
     for (final s in songs) {
-      final url = s['artworkUrl100'] as String?;
+      final url = s.artwork;
       if (url != null && url.isNotEmpty) {
-        return url.replaceAll('100x100bb', '600x600bb');
+        return url.replaceAll('400x400bb', '600x600bb');
       }
     }
     return null;
@@ -220,23 +223,18 @@ class _ArtistHero extends ConsumerWidget {
         else
           _gradientBg(cs),
 
-        // Dark overlay + blur
-        ClipRect(
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 0, sigmaY: 0),
-            child: Container(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    Colors.black.withValues(alpha: 0.2),
-                    Colors.black.withValues(alpha: 0.75),
-                    const Color(0xFF0D0D10),
-                  ],
-                  stops: const [0.0, 0.6, 1.0],
-                ),
-              ),
+        // Dark overlay
+        Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                Colors.black.withValues(alpha: 0.2),
+                Colors.black.withValues(alpha: 0.75),
+                const Color(0xFF0D0D10),
+              ],
+              stops: const [0.0, 0.6, 1.0],
             ),
           ),
         ),
@@ -284,7 +282,7 @@ class _ArtistHero extends ConsumerWidget {
                       artistName,
                       style: const TextStyle(
                         color: Colors.white,
-                        fontSize: 28,
+                        fontSize: 30,
                         fontWeight: FontWeight.w900,
                         letterSpacing: -0.5,
                       ),
@@ -307,9 +305,9 @@ class _ArtistHero extends ConsumerWidget {
                         String? artwork = artworkUrl;
 
                         try {
-                          final resolved =
-                              await FireballBackendBridge()
-                                  .resolveArtistForFollow(
+                          final resolved = await ref
+                              .read(musicRepositoryProvider)
+                              .resolveArtistForFollow(
                             artistName: artistName,
                             fallbackArtwork: artwork,
                           );
@@ -357,7 +355,9 @@ class _ArtistHero extends ConsumerWidget {
                         width: 1.5,
                       ),
                       shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(20)),
+                        borderRadius:
+                            BorderRadius.circular(SuvUiTokens.cardRadiusLg),
+                      ),
                       padding: const EdgeInsets.symmetric(
                           horizontal: 16, vertical: 0),
                     ),
@@ -371,7 +371,8 @@ class _ArtistHero extends ConsumerWidget {
                       const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
                   decoration: BoxDecoration(
                     color: cs.primary.withValues(alpha: 0.25),
-                    borderRadius: BorderRadius.circular(20),
+                    borderRadius:
+                        BorderRadius.circular(SuvUiTokens.cardRadiusLg),
                     border: Border.all(
                         color: cs.primary.withValues(alpha: 0.4), width: 0.5),
                   ),
@@ -444,21 +445,19 @@ class _SongTile extends StatelessWidget {
     required this.ref,
   });
   final int index;
-  final Map<String, dynamic> song;
+  final MusicDiscoveryItem song;
   final ColorScheme cs;
   final WidgetRef ref;
 
   @override
   Widget build(BuildContext context) {
-    final title = song['trackName'] as String? ?? '—';
-    final artist = song['artistName'] as String? ?? '—';
-    final album = song['collectionName'] as String? ?? '';
-    final artUrl = (song['artworkUrl100'] as String? ?? '')
-        .replaceAll('100x100bb', '300x300bb');
-    final previewUrl = song['previewUrl'] as String?;
-    final trackId = song['trackId']?.toString() ?? '';
-    final yearStr = (song['releaseDate'] as String? ?? '').split('-').first;
-    final year = yearStr.length == 4 ? yearStr : null;
+    final title = song.title;
+    final artist = song.artist;
+    final album = song.album ?? '';
+    final artUrl = (song.artwork ?? '').replaceAll('400x400bb', '300x300bb');
+    final previewUrl = song.url;
+    final trackId = song.id;
+    final year = song.year;
 
     // Build a playable track from the iTunes data
     Track toTrack() => Track(
@@ -474,7 +473,7 @@ class _SongTile extends StatelessWidget {
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(SuvUiTokens.cardRadiusMd),
         onTap: () {
           final t = toTrack();
           ref.read(playerProvider.notifier).playTrackNow(t);
@@ -500,7 +499,7 @@ class _SongTile extends StatelessWidget {
               const SizedBox(width: 8),
               // Artwork
               ClipRRect(
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: BorderRadius.circular(SuvUiTokens.cardRadiusSm),
                 child: artUrl.isNotEmpty
                     ? CachedNetworkImage(
                         imageUrl: artUrl,
@@ -576,23 +575,22 @@ class _AlbumCard extends StatelessWidget {
     required this.ref,
     required this.artistName,
   });
-  final Map<String, dynamic> album;
+  final MusicDiscoveryItem album;
   final ColorScheme cs;
   final WidgetRef ref;
   final String artistName;
 
   @override
   Widget build(BuildContext context) {
-    final name = album['collectionName'] as String? ?? '—';
-    final year = _year(album['releaseDate'] as String?);
-    final artUrl = (album['artworkUrl100'] as String? ?? '')
-        .replaceAll('100x100bb', '400x400bb');
-    final trackCount = album['trackCount'] as int? ?? 0;
+    final name = album.title;
+    final year = album.year;
+    final artUrl = album.artwork ?? '';
+    final trackCount = album.trackCount ?? 0;
 
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(SuvUiTokens.cardRadiusMd),
         onTap: () {
           // Navigate to album detail — for now show a snack with the info.
           MessengerService.instance.showInfo(
@@ -606,7 +604,7 @@ class _AlbumCard extends StatelessWidget {
           // Cover art
           Expanded(
             child: ClipRRect(
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(SuvUiTokens.cardRadiusMd),
               child: artUrl.isNotEmpty
                   ? CachedNetworkImage(
                       imageUrl: artUrl,
@@ -647,10 +645,6 @@ class _AlbumCard extends StatelessWidget {
             color: cs.primary.withValues(alpha: 0.4), size: 36),
       );
 
-  static String? _year(String? date) {
-    if (date == null || date.length < 4) return null;
-    return date.substring(0, 4);
-  }
 }
 
 // ── Error state ───────────────────────────────────────────────────────────────

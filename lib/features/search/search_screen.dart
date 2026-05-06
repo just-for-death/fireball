@@ -6,16 +6,17 @@ import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../core/adapters/fireball_backend_bridge.dart';
-import '../../core/models/track.dart';
+import '../../core/contracts/music_contracts.dart';
 import '../../core/store/providers.dart';
 import '../../core/theme/fireball_tokens.dart';
+import '../../core/theme/suv_ui_tokens.dart';
 import '../../core/ui/messenger_service.dart';
 import '../../core/ui/shell_content_insets.dart';
 import '../../core/widgets/empty_state.dart';
 import '../../core/widgets/glass_widgets.dart';
 import '../../core/widgets/overflow_safe_text.dart';
 import '../../core/widgets/songs_table.dart';
+import '../../core/widgets/suv_motion.dart';
 import '../../core/widgets/track_options_sheet.dart';
 
 const _genres = [
@@ -49,17 +50,23 @@ class SearchScreen extends HookConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final settings = ref.watch(settingsProvider);
     final library = ref.watch(localStoreProvider);
-    final bridge = useMemoized(() => FireballBackendBridge());
+    final repo = ref.read(musicRepositoryProvider);
     final cs = Theme.of(context).colorScheme;
     final width = MediaQuery.sizeOf(context).width;
     final isTablet = width >= 700;
     final isDesktopWide = width >= 1000;
-    final hPad = isTablet ? 20.0 : 24.0;
+    final hPad = width >= 1200
+        ? 40.0
+        : width >= 900
+            ? 28.0
+            : width >= 700
+                ? 20.0
+                : 24.0;
     final recentSearchRows = library.history.take(6).toList();
 
     final query = useState('');
-    final results = useState<List<Map<String, dynamic>>>([]);
-    final trending = useState<List<Map<String, dynamic>>>([]);
+    final results = useState<List<MusicDiscoveryItem>>([]);
+    final trending = useState<List<MusicDiscoveryItem>>([]);
     final loading = useState(false);
     final selectedGenre = useState<String?>(null);
     final selectedFilter = useState<String>('All');
@@ -67,7 +74,7 @@ class SearchScreen extends HookConsumerWidget {
 
     // Load trending on mount
     useEffect(() {
-      bridge.fetchTopSongs(countryCode: 'us', limit: 20).then((data) {
+      repo.fetchTopSongs(countryCode: 'us', limit: 20).then((data) {
         trending.value = data;
       }).catchError((_) {});
       return null;
@@ -93,7 +100,7 @@ class SearchScreen extends HookConsumerWidget {
         try {
           // iTunes-first search with Invidious fallback through bridge.
           final mergedResults =
-              await bridge.searchAll(query: capturedQuery, settings: settings);
+              await repo.searchAll(query: capturedQuery, settings: settings);
           if (query.value != capturedQuery) return;
           results.value = mergedResults;
         } catch (e) {
@@ -114,31 +121,29 @@ class SearchScreen extends HookConsumerWidget {
       controller.clear();
       loading.value = true;
       try {
-        results.value = await bridge.searchGenre(genre);
+        final genreResults = await repo.searchGenre(genre);
+        results.value = genreResults;
       } finally {
         loading.value = false;
       }
     }
 
-    Future<void> playResult(List<Map<String, dynamic>> source, int index) async {
+    Future<void> playResult(List<MusicDiscoveryItem> source, int index) async {
       final selected = source[index];
-      if (selected['kind'] == 'artist') {
-        final name = selected['title']?.toString() ?? '';
+      if (selected.kind == MusicItemKind.artist) {
+        final name = selected.title;
         if (name.isNotEmpty) {
           context.push('/artist?name=${Uri.encodeComponent(name)}');
         }
         return;
       }
 
-      if (selected['kind'] == 'album') {
-        final collectionIdRaw = selected['collectionId'];
-        final collectionId = collectionIdRaw is int
-            ? collectionIdRaw
-            : int.tryParse(collectionIdRaw?.toString() ?? '');
+      if (selected.kind == MusicItemKind.album) {
+        final collectionId = selected.collectionId;
         if (collectionId == null) return;
         loading.value = true;
         try {
-          final albumTracks = await bridge.collectionTracks(collectionId);
+          final albumTracks = await repo.collectionTracks(collectionId);
           if (albumTracks.isNotEmpty) {
             ref.read(playerProvider.notifier).setQueue(albumTracks);
             ref.read(playerProvider.notifier).playIndex(0);
@@ -149,21 +154,17 @@ class SearchScreen extends HookConsumerWidget {
         }
       }
 
-      if (selected['kind'] == 'playlist') {
-        final collectionIdRaw = selected['collectionId'];
-        final collectionId = collectionIdRaw is int
-            ? collectionIdRaw
-            : int.tryParse(collectionIdRaw?.toString() ?? '');
+      if (selected.kind == MusicItemKind.playlist) {
+        final collectionId = selected.collectionId;
         if (collectionId == null) return;
 
         loading.value = true;
         try {
-          final playlistTracks = await bridge.collectionTracks(collectionId);
+          final playlistTracks = await repo.collectionTracks(collectionId);
           if (playlistTracks.isEmpty) {
             MessengerService.instance.showInfo('Playlist has no playable tracks');
             return;
           }
-          if (playlistTracks.isEmpty) return;
           ref.read(playerProvider.notifier).setQueue(playlistTracks);
           ref.read(playerProvider.notifier).playIndex(0);
           return;
@@ -172,19 +173,7 @@ class SearchScreen extends HookConsumerWidget {
         }
       }
 
-      final tracks = source
-          .map((r) => Track(
-                id: r['id'] ?? '',
-                videoId: r['videoId'],
-                title: r['title'] ?? '—',
-                artist: r['artist'] ?? '—',
-                artwork: r['artwork'],
-                url: r['url'] ?? '',
-                duration: r['duration'],
-                album: r['album'],
-                year: r['year'],
-              ))
-          .toList();
+      final tracks = source.map((r) => r.toTrack()).toList();
       ref.read(playerProvider.notifier).setQueue(tracks);
       ref.read(playerProvider.notifier).playIndex(index);
     }
@@ -195,16 +184,15 @@ class SearchScreen extends HookConsumerWidget {
     final displayList = selectedFilter.value == 'All'
         ? baseList
         : baseList.where((r) {
-            final kind = (r['kind']?.toString() ?? 'song').toLowerCase();
             switch (selectedFilter.value) {
               case 'Songs':
-                return kind == 'song';
+                return r.kind == MusicItemKind.song;
               case 'Playlists':
-                return kind == 'playlist';
+                return r.kind == MusicItemKind.playlist;
               case 'Artists':
-                return kind == 'artist';
+                return r.kind == MusicItemKind.artist;
               case 'Albums':
-                return kind == 'album';
+                return r.kind == MusicItemKind.album;
               default:
                 return true;
             }
@@ -217,7 +205,7 @@ class SearchScreen extends HookConsumerWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Padding(
-              padding: EdgeInsets.fromLTRB(hPad, isTablet ? 20 : 28, hPad, 14),
+              padding: EdgeInsets.fromLTRB(hPad, isTablet ? 20 : 26, hPad, 14),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -227,7 +215,7 @@ class SearchScreen extends HookConsumerWidget {
                         child: FireballLineText(
                           'Search',
                           style: TextStyle(
-                            fontSize: isTablet ? 27 : 31,
+                            fontSize: isTablet ? 28 : 32,
                             fontWeight: FontWeight.w900,
                             color: Colors.white,
                             letterSpacing: -1,
@@ -309,7 +297,7 @@ class SearchScreen extends HookConsumerWidget {
             ),
             if (isSearching) ...[
               SizedBox(
-                height: 42,
+                height: SuvUiTokens.chipHeight,
                 child: ListView.separated(
                   scrollDirection: Axis.horizontal,
                   padding: EdgeInsets.symmetric(horizontal: hPad),
@@ -319,10 +307,11 @@ class SearchScreen extends HookConsumerWidget {
                     final f = _searchFilters[i];
                     final selected = selectedFilter.value == f;
                     return InkWell(
-                      borderRadius: BorderRadius.circular(999),
-                      hoverColor: Colors.white.withValues(alpha: 0.08),
-                      splashColor: Colors.white.withValues(alpha: 0.10),
-                      highlightColor: Colors.white.withValues(alpha: 0.06),
+                      borderRadius: BorderRadius.circular(SuvUiTokens.pillRadius),
+                      hoverColor: Colors.white.withValues(alpha: SuvUiTokens.hoverAlpha),
+                      splashColor: Colors.white.withValues(alpha: SuvUiTokens.splashAlpha),
+                      highlightColor:
+                          Colors.white.withValues(alpha: SuvUiTokens.highlightAlpha),
                       onTap: () => selectedFilter.value = f,
                       child: Container(
                         padding: const EdgeInsets.symmetric(
@@ -331,7 +320,7 @@ class SearchScreen extends HookConsumerWidget {
                           color: selected
                               ? Colors.white.withValues(alpha: 0.14)
                               : FireballTokens.blackElevated,
-                          borderRadius: BorderRadius.circular(999),
+                          borderRadius: BorderRadius.circular(SuvUiTokens.pillRadius),
                           border: Border.all(
                             color: selected
                                 ? Colors.white.withValues(alpha: 0.18)
@@ -369,11 +358,13 @@ class SearchScreen extends HookConsumerWidget {
                             selectedGenre.value == null) ...[
                           Padding(
                             padding: EdgeInsets.fromLTRB(hPad, 0, hPad, 14),
-                            child: _SearchPromoBanner(
-                              item: trending.value.first,
-                              onTap: () async {
-                                await playResult(trending.value, 0);
-                              },
+                            child: SuvFadeSlideIn(
+                              child: _SearchPromoBanner(
+                                item: trending.value.first,
+                                onTap: () async {
+                                  await playResult(trending.value, 0);
+                                },
+                              ),
                             ),
                           ),
                         ],
@@ -399,24 +390,28 @@ class SearchScreen extends HookConsumerWidget {
                                 right: hPad - 8,
                                 bottom: 8,
                               ),
-                              child: _searchResultTile(
-                                item: {
-                                  'id': t.id,
-                                  'title': t.title,
-                                  'artist': t.artist,
-                                  'artwork': t.artwork,
-                                  'album': t.album,
-                                  'year': t.year,
-                                  'url': t.url,
-                                  'videoId': t.videoId,
-                                  'kind': 'song',
-                                },
-                                cs: cs,
-                                onTap: () async {
-                                  ref.read(playerProvider.notifier).playTrackNow(t);
-                                },
-                                onLongPress: () =>
-                                    showTrackOptions(context, ref, t),
+                              child: SuvFadeSlideIn.staggered(
+                                index: index,
+                                child: _searchResultTile(
+                                  item: MusicDiscoveryItem(
+                                    id: t.id,
+                                    title: t.title,
+                                    artist: t.artist,
+                                    kind: MusicItemKind.song,
+                                    artwork: t.artwork,
+                                    album: t.album,
+                                    year: t.year,
+                                    url: t.url,
+                                    videoId: t.videoId,
+                                    duration: t.duration,
+                                  ),
+                                  cs: cs,
+                                  onTap: () async {
+                                    ref.read(playerProvider.notifier).playTrackNow(t);
+                                  },
+                                  onLongPress: () =>
+                                      showTrackOptions(context, ref, t),
+                                ),
                               ),
                             );
                           }),
@@ -451,9 +446,12 @@ class SearchScreen extends HookConsumerWidget {
                               final color = _browseColors[i % _browseColors.length];
                               return InkWell(
                                 borderRadius: BorderRadius.circular(8),
-                                hoverColor: Colors.white.withValues(alpha: 0.08),
-                                splashColor: Colors.white.withValues(alpha: 0.10),
-                                highlightColor: Colors.white.withValues(alpha: 0.06),
+                                hoverColor:
+                                    Colors.white.withValues(alpha: SuvUiTokens.hoverAlpha),
+                                splashColor:
+                                    Colors.white.withValues(alpha: SuvUiTokens.splashAlpha),
+                                highlightColor: Colors.white.withValues(
+                                    alpha: SuvUiTokens.highlightAlpha),
                                 onTap: () => searchGenre(_genres[i]),
                                 child: Container(
                                   decoration: BoxDecoration(
@@ -509,24 +507,17 @@ class SearchScreen extends HookConsumerWidget {
                             padding:
                                 EdgeInsets.only(
                                     left: hPad - 8, right: hPad - 8, bottom: 8),
-                            child: _searchResultTile(
-                              item: item,
-                              cs: cs,
-                              onTap: () async => await playResult(displayList, index),
-                              onLongPress: () {
-                                final t = Track(
-                                  id: item['id'] ?? '',
-                                  videoId: item['videoId'],
-                                  title: item['title'] ?? '—',
-                                  artist: item['artist'] ?? '—',
-                                  artwork: item['artwork'],
-                                  url: item['url'] ?? '',
-                                  duration: item['duration'],
-                                  album: item['album'],
-                                  year: item['year'],
-                                );
-                                showTrackOptions(context, ref, t);
-                              },
+                            child: SuvFadeSlideIn.staggered(
+                              index: index,
+                              child: _searchResultTile(
+                                item: item,
+                                cs: cs,
+                                onTap: () async => await playResult(displayList, index),
+                                onLongPress: () {
+                                  final t = item.toTrack();
+                                  showTrackOptions(context, ref, t);
+                                },
+                              ),
                             ),
                           );
                         }),
@@ -553,17 +544,7 @@ class SearchScreen extends HookConsumerWidget {
                       : isDesktopWide
                           ? SongsTable(
                               tracks: displayList
-                                  .map((item) => Track(
-                                        id: item['id'] ?? '',
-                                        videoId: item['videoId'],
-                                        title: item['title'] ?? '—',
-                                        artist: item['artist'] ?? '—',
-                                        artwork: item['artwork'],
-                                        url: item['url'] ?? '',
-                                        duration: item['duration'],
-                                        album: item['album'],
-                                        year: item['year'],
-                                      ))
+                                  .map((item) => item.toTrack())
                                   .toList(),
                               onTrackTap: (index) async =>
                                   await playResult(displayList, index),
@@ -583,24 +564,17 @@ class SearchScreen extends HookConsumerWidget {
                             final item = displayList[index];
                             return Padding(
                               padding: const EdgeInsets.only(bottom: 8),
-                              child: _searchResultTile(
-                                item: item,
-                                cs: cs,
-                                onTap: () async => await playResult(displayList, index),
-                                onLongPress: () {
-                                  final t = Track(
-                                    id: item['id'] ?? '',
-                                    videoId: item['videoId'],
-                                    title: item['title'] ?? '—',
-                                    artist: item['artist'] ?? '—',
-                                    artwork: item['artwork'],
-                                    url: item['url'] ?? '',
-                                    duration: item['duration'],
-                                    album: item['album'],
-                                    year: item['year'],
-                                  );
-                                  showTrackOptions(context, ref, t);
-                                },
+                              child: SuvFadeSlideIn.staggered(
+                                index: index,
+                                child: _searchResultTile(
+                                  item: item,
+                                  cs: cs,
+                                  onTap: () async => await playResult(displayList, index),
+                                  onLongPress: () {
+                                    final t = item.toTrack();
+                                    showTrackOptions(context, ref, t);
+                                  },
+                                ),
                               ),
                             );
                           },
@@ -613,12 +587,12 @@ class SearchScreen extends HookConsumerWidget {
   }
 
   Widget _searchResultTile({
-    required Map<String, dynamic> item,
+    required MusicDiscoveryItem item,
     required ColorScheme cs,
     required VoidCallback onTap,
     required VoidCallback onLongPress,
   }) {
-    final kind = (item['kind'] ?? 'song').toString();
+    final kind = item.kind;
     return Container(
       decoration: BoxDecoration(
         color: FireballTokens.blackElevated,
@@ -633,9 +607,9 @@ class SearchScreen extends HookConsumerWidget {
         ),
         leading: ClipRRect(
           borderRadius: BorderRadius.circular(8),
-          child: item['artwork'] != null
+          child: item.artwork != null
               ? CachedNetworkImage(
-                  imageUrl: item['artwork']!,
+                  imageUrl: item.artwork!,
                   width: 54,
                   height: 54,
                   fit: BoxFit.cover,
@@ -644,7 +618,7 @@ class SearchScreen extends HookConsumerWidget {
               : _placeholder(cs),
         ),
         title: Text(
-          item['title'] ?? '—',
+          item.title,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: const TextStyle(
@@ -654,24 +628,28 @@ class SearchScreen extends HookConsumerWidget {
           ),
         ),
         subtitle: Text(
-          item['kind'] == 'playlist'
-              ? 'Playlist • ${item['artist'] ?? '—'}'
-              : item['kind'] == 'artist'
+          kind == MusicItemKind.playlist
+              ? 'Playlist • ${item.artist}'
+              : kind == MusicItemKind.artist
                   ? 'Artist'
-                  : item['kind'] == 'album'
-                      ? 'Album • ${item['artist'] ?? '—'}'
-                      : (item['artist'] ?? '—'),
+                  : kind == MusicItemKind.album
+                      ? 'Album • ${item.artist}'
+                      : item.artist,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: TextStyle(fontSize: 11, color: Colors.white.withValues(alpha: 0.5)),
         ),
         trailing: Icon(Icons.play_circle_fill_rounded,
             color: cs.primary,
-            size: (kind == 'playlist' || kind == 'artist' || kind == 'album') ? 23 : 26),
+            size: (kind == MusicItemKind.playlist ||
+                    kind == MusicItemKind.artist ||
+                    kind == MusicItemKind.album)
+                ? 23
+                : 26),
         onTap: onTap,
         onLongPress: onLongPress,
-        hoverColor: Colors.white.withValues(alpha: 0.06),
-        splashColor: Colors.white.withValues(alpha: 0.09),
+        hoverColor: Colors.white.withValues(alpha: SuvUiTokens.hoverAlpha),
+        splashColor: Colors.white.withValues(alpha: SuvUiTokens.splashAlpha),
         selectedTileColor: Colors.white.withValues(alpha: 0.04),
       ),
     );
@@ -692,87 +670,89 @@ class _SearchPromoBanner extends StatelessWidget {
     required this.onTap,
   });
 
-  final Map<String, dynamic> item;
+  final MusicDiscoveryItem item;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
-      hoverColor: Colors.white.withValues(alpha: 0.06),
-      splashColor: Colors.white.withValues(alpha: 0.09),
-      highlightColor: Colors.white.withValues(alpha: 0.05),
-      child: Container(
-        height: 92,
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(12),
-          gradient: LinearGradient(
-            colors: [
-              cs.primary.withValues(alpha: 0.75),
-              cs.primary.withValues(alpha: 0.35),
-              FireballTokens.blackElevated,
-            ],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
+    return SuvPressScale(
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(SuvUiTokens.cardRadiusMd),
+        hoverColor: Colors.white.withValues(alpha: SuvUiTokens.hoverAlpha),
+        splashColor: Colors.white.withValues(alpha: SuvUiTokens.splashAlpha),
+        highlightColor: Colors.white.withValues(alpha: SuvUiTokens.highlightAlpha),
+        child: Container(
+          height: 96,
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(SuvUiTokens.cardRadiusMd),
+            gradient: LinearGradient(
+              colors: [
+                cs.primary.withValues(alpha: 0.75),
+                cs.primary.withValues(alpha: 0.35),
+                FireballTokens.blackElevated,
+              ],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
           ),
-        ),
-        child: Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    'Search spotlight',
-                    style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.84),
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      'Search spotlight',
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.84),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    item['title']?.toString() ?? '—',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w800,
-                      fontSize: 18,
+                    const SizedBox(height: 4),
+                    Text(
+                    item.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 18,
+                      ),
                     ),
-                  ),
-                  Text(
-                    item['artist']?.toString() ?? '—',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.78),
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
+                    Text(
+                    item.artist,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.78),
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
-            const SizedBox(width: 10),
-            Container(
-              width: 34,
-              height: 34,
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                shape: BoxShape.circle,
+              const SizedBox(width: 10),
+              Container(
+                width: 34,
+                height: 34,
+                decoration: const BoxDecoration(
+                  color: Colors.white,
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.play_arrow_rounded,
+                  color: Colors.black,
+                  size: 20,
+                ),
               ),
-              child: const Icon(
-                Icons.play_arrow_rounded,
-                color: Colors.black,
-                size: 20,
-              ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

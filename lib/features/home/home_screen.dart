@@ -5,16 +5,18 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../core/adapters/fireball_backend_bridge.dart';
 import '../../core/api/fireball_api.dart';
+import '../../core/contracts/music_contracts.dart';
 import '../../core/countries.dart';
 import '../../core/models/track.dart';
 import '../../core/store/providers.dart';
 import '../../core/theme/fireball_tokens.dart';
+import '../../core/theme/suv_ui_tokens.dart';
 import '../../core/ui/shell_content_insets.dart';
 import '../../core/widgets/empty_state.dart';
 import '../../core/widgets/fireball_logo.dart';
 import '../../core/widgets/glass_widgets.dart';
+import '../../core/widgets/suv_motion.dart';
 import '../../core/widgets/track_options_sheet.dart';
 
 const _lbRanges = [
@@ -32,16 +34,16 @@ class HomeScreen extends HookConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final settings = ref.watch(settingsProvider);
     final currentTrack = ref.watch(playerProvider.select((p) => p.currentTrack));
-    final bridge = useMemoized(() => FireballBackendBridge());
+    final repo = ref.read(musicRepositoryProvider);
     const api = FireballApi();
     final cs = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     // ── Core state ─────────────────────────────────────────────────────────
     final country = useState('us');
-    final trending = useState<List<Map<String, dynamic>>>([]);
-    final lbRecent = useState<List<dynamic>>([]);
-    final lbTop = useState<List<dynamic>>([]);
+    final trending = useState<List<MusicDiscoveryItem>>([]);
+    final lbRecent = useState<List<ListenBrainzRecentListen>>([]);
+    final lbTop = useState<List<ListenBrainzTopTrack>>([]);
     final lbRange = useState('month');
     final loading = useState(true);
     final lbTopLoading = useState(false);
@@ -72,14 +74,17 @@ class HomeScreen extends HookConsumerWidget {
     Future<void> load() async {
       loading.value = true;
       try {
-        trending.value = await bridge
+        trending.value = await repo
             .fetchTopSongs(countryCode: country.value, limit: 20)
-            .catchError((_) => <Map<String, dynamic>>[]);
+            .catchError((_) => <MusicDiscoveryItem>[]);
 
         if (lbEnabled) {
-          lbRecent.value = await api
+          final listens = await api
               .getLBRecentListens(lbUsername, lbToken)
               .catchError((_) => <dynamic>[]);
+          lbRecent.value = listens
+              .map((e) => ListenBrainzRecentListen.fromApi(e))
+              .toList(growable: false);
         }
       } finally {
         loading.value = false;
@@ -90,9 +95,12 @@ class HomeScreen extends HookConsumerWidget {
       if (!lbEnabled) return;
       lbTopLoading.value = true;
       try {
-        lbTop.value = await api
+        final top = await api
             .getLBTopRecordings(lbUsername, lbToken, lbRange.value)
             .catchError((_) => <dynamic>[]);
+        lbTop.value = top
+            .map((e) => ListenBrainzTopTrack.fromApi(e))
+            .toList(growable: false);
       } finally {
         lbTopLoading.value = false;
       }
@@ -116,14 +124,14 @@ class HomeScreen extends HookConsumerWidget {
     final hPad = isTablet ? (screenWidth * 0.045).clamp(20.0, 56.0) : 20.0;
 
     final trendingTracks = trending.value
-        .map((t) => Track(
-              id: t['id'] ?? '',
-              title: t['title'] ?? '—',
-              artist: t['artist'] ?? '—',
-              artwork: t['artwork'],
-              url: t['url'] ?? '',
-            ))
+        .map((t) => t.toTrack())
         .toList();
+    final recommendedTracks = repo.buildRecommendations(
+      history: historyRows,
+      favorites: favoritesRows,
+      trending: trendingTracks,
+      maxItems: 20,
+    );
     final cloneTabTracks = _tracksForCloneTab(
       selectedTab: selectedCloneTab.value,
       trendingTracks: trendingTracks,
@@ -182,9 +190,9 @@ class HomeScreen extends HookConsumerWidget {
                                   ],
                                 ).createShader(bounds),
                                 child: Text(
-                                  'Fireball',
+                                  'SuvMusic',
                                   style: TextStyle(
-                                    fontSize: isTablet ? 42 : 38,
+                                    fontSize: isTablet ? 40 : 36,
                                     fontWeight: FontWeight.w900,
                                     color: Colors.white,
                                     letterSpacing: -1.4,
@@ -209,7 +217,7 @@ class HomeScreen extends HookConsumerWidget {
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          'Good evening',
+                          'Good music only',
                           style: TextStyle(
                             fontSize: 13,
                             fontWeight: FontWeight.w600,
@@ -269,15 +277,17 @@ class HomeScreen extends HookConsumerWidget {
               SliverToBoxAdapter(
                 child: Padding(
                   padding: EdgeInsets.symmetric(horizontal: hPad),
-                  child: _CloneInspiredHeroCard(
-                    featured: trendingTracks.first,
-                    onPlay: () {
-                      ref.read(playerProvider.notifier).setQueue(trendingTracks);
-                      ref.read(playerProvider.notifier).playIndex(0);
-                      ref.read(localStoreProvider.notifier).addHistory(
-                            trendingTracks.first,
-                          );
-                    },
+                  child: SuvFadeSlideIn(
+                    child: _CloneInspiredHeroCard(
+                      featured: trendingTracks.first,
+                      onPlay: () {
+                        ref.read(playerProvider.notifier).setQueue(trendingTracks);
+                        ref.read(playerProvider.notifier).playIndex(0);
+                        ref.read(localStoreProvider.notifier).addHistory(
+                              trendingTracks.first,
+                            );
+                      },
+                    ),
                   ),
                 ),
               ),
@@ -315,11 +325,7 @@ class HomeScreen extends HookConsumerWidget {
                 child: Padding(
                   padding: EdgeInsets.symmetric(horizontal: hPad),
                   child: _QuickPicksGrid(
-                    tracks: _buildRecommendationTracks(
-                      historyRows: historyRows,
-                      favoritesRows: favoritesRows,
-                      trendingTracks: trendingTracks,
-                    ).take(8).toList(),
+                    tracks: recommendedTracks.take(8).toList(),
                     onTap: (idx, tracks) {
                       ref.read(playerProvider.notifier).setQueue(tracks);
                       ref.read(playerProvider.notifier).playIndex(idx);
@@ -341,7 +347,7 @@ class HomeScreen extends HookConsumerWidget {
                     const Text(
                       'Top Charts',
                       style: TextStyle(
-                        fontSize: 20,
+                        fontSize: SuvUiTokens.sectionTitleSize,
                         fontWeight: FontWeight.w800,
                         color: Colors.white,
                         letterSpacing: -0.5,
@@ -395,7 +401,7 @@ class HomeScreen extends HookConsumerWidget {
                   ),
                   delegate: SliverChildBuilderDelegate(
                     (context, i) {
-                      final item = trending.value[i];
+                    final item = trending.value[i];
                       return GestureDetector(
                         onTap: () {
                           ref
@@ -416,9 +422,9 @@ class HomeScreen extends HookConsumerWidget {
                               Expanded(
                                 child: ClipRRect(
                                   borderRadius: BorderRadius.circular(10),
-                                  child: item['artwork'] != null
+                                  child: item.artwork != null
                                       ? CachedNetworkImage(
-                                          imageUrl: item['artwork']!,
+                                          imageUrl: item.artwork!,
                                           width: double.infinity,
                                           height: double.infinity,
                                           fit: BoxFit.cover,
@@ -430,7 +436,7 @@ class HomeScreen extends HookConsumerWidget {
                               ),
                               const SizedBox(height: 6),
                               Text(
-                                item['title'] ?? '—',
+                                item.title,
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: const TextStyle(
@@ -442,7 +448,7 @@ class HomeScreen extends HookConsumerWidget {
                               ),
                               const SizedBox(height: 1),
                               Text(
-                                item['artist'] ?? '—',
+                                item.artist,
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: TextStyle(
@@ -488,7 +494,7 @@ class HomeScreen extends HookConsumerWidget {
                       Text(
                         'Made for You',
                         style: TextStyle(
-                          fontSize: 20,
+                          fontSize: SuvUiTokens.sectionTitleSize,
                           fontWeight: FontWeight.w800,
                           color: Colors.white,
                           letterSpacing: -0.5,
@@ -505,11 +511,7 @@ class HomeScreen extends HookConsumerWidget {
               SliverToBoxAdapter(
                 child: _RecommendationShelf(
                   title: 'Inspired by your recent listening',
-                  tracks: _buildRecommendationTracks(
-                    historyRows: historyRows,
-                    favoritesRows: favoritesRows,
-                    trendingTracks: trendingTracks,
-                  ),
+                  tracks: recommendedTracks,
                   onTap: (idx, tracks) {
                     ref.read(playerProvider.notifier).setQueue(tracks);
                     ref.read(playerProvider.notifier).playIndex(idx);
@@ -525,7 +527,7 @@ class HomeScreen extends HookConsumerWidget {
                   child: Text(
                     'Jump Back In',
                     style: TextStyle(
-                      fontSize: 20,
+                      fontSize: SuvUiTokens.sectionTitleSize,
                       fontWeight: FontWeight.w800,
                       color: Colors.white,
                       letterSpacing: -0.5,
@@ -634,15 +636,8 @@ class HomeScreen extends HookConsumerWidget {
               SliverList(
                 delegate: SliverChildBuilderDelegate(
                   (context, index) {
-                    final rawListen = lbRecent.value[index];
-                    if (rawListen is! Map) return const SizedBox.shrink();
-                    final listen = rawListen;
-                    final rawMeta = listen['track_metadata'];
-                    final meta =
-                        rawMeta is Map ? rawMeta : const <String, dynamic>{};
-                    final mbidMapping = meta['mbid_mapping'] as Map?;
-                    final caaMbid = mbidMapping?['caa_release_mbid'] as String?;
-                    final listenedAt = listen['listened_at'] as int?;
+                    final listen = lbRecent.value[index];
+                    final listenedAt = listen.listenedAtEpochSec;
                     final date = listenedAt != null
                         ? _fmtDate(DateTime.fromMillisecondsSinceEpoch(
                             listenedAt * 1000))
@@ -656,10 +651,10 @@ class HomeScreen extends HookConsumerWidget {
                         borderRadius: BorderRadius.circular(16),
                         opacity: 0.04,
                         child: _LBTrackTile(
-                          title: meta['track_name']?.toString() ?? '—',
-                          artist: meta['artist_name']?.toString() ?? '—',
-                          caaMbid: caaMbid,
-                          album: meta['release_name']?.toString(),
+                          title: listen.title,
+                          artist: listen.artist,
+                          caaMbid: listen.caaReleaseMbid,
+                          album: listen.album,
                           cs: cs,
                           isDark: isDark,
                           right: date != null
@@ -672,21 +667,11 @@ class HomeScreen extends HookConsumerWidget {
                                 )
                               : null,
                           onTap: () {
-                            final t = Track(
-                              id: meta['track_name']?.toString() ?? '',
-                              title: meta['track_name']?.toString() ?? '—',
-                              artist: meta['artist_name']?.toString() ?? '—',
-                              album: meta['release_name']?.toString(),
-                            );
+                            final t = listen.toTrack();
                             ref.read(playerProvider.notifier).playTrackNow(t);
                           },
                           onLongPress: () {
-                            final t = Track(
-                              id: meta['track_name']?.toString() ?? '',
-                              title: meta['track_name']?.toString() ?? '—',
-                              artist: meta['artist_name']?.toString() ?? '—',
-                              album: meta['release_name']?.toString(),
-                            );
+                            final t = listen.toTrack();
                             showTrackOptions(context, ref, t);
                           },
                         ),
@@ -749,10 +734,7 @@ class HomeScreen extends HookConsumerWidget {
                 SliverList(
                   delegate: SliverChildBuilderDelegate(
                     (context, index) {
-                      final rec = lbTop.value[index] as Map;
-                      final listenCount =
-                          (rec['listen_count'] as num?)?.toInt() ?? 0;
-                      final caaMbid = rec['caa_release_mbid'] as String?;
+                      final rec = lbTop.value[index];
 
                       return Padding(
                         padding: const EdgeInsets.symmetric(
@@ -762,30 +744,20 @@ class HomeScreen extends HookConsumerWidget {
                           borderRadius: BorderRadius.circular(16),
                           opacity: 0.04,
                           child: _LBTrackTile(
-                            title: rec['track_name']?.toString() ?? '—',
-                            artist: rec['artist_name']?.toString() ?? '—',
-                            caaMbid: caaMbid,
-                            album: rec['release_name']?.toString(),
+                            title: rec.title,
+                            artist: rec.artist,
+                            caaMbid: rec.caaReleaseMbid,
+                            album: rec.album,
                             cs: cs,
                             isDark: isDark,
                             rank: index + 1,
-                            right: _PlayCountBadge(count: listenCount, cs: cs),
+                            right: _PlayCountBadge(count: rec.listenCount, cs: cs),
                             onTap: () {
-                              final t = Track(
-                                id: rec['track_name']?.toString() ?? '',
-                                title: rec['track_name']?.toString() ?? '—',
-                                artist: rec['artist_name']?.toString() ?? '—',
-                                album: rec['release_name']?.toString(),
-                              );
+                              final t = rec.toTrack();
                               ref.read(playerProvider.notifier).playTrackNow(t);
                             },
                             onLongPress: () {
-                              final t = Track(
-                                id: rec['track_name']?.toString() ?? '',
-                                title: rec['track_name']?.toString() ?? '—',
-                                artist: rec['artist_name']?.toString() ?? '—',
-                                album: rec['release_name']?.toString(),
-                              );
+                              final t = rec.toTrack();
                               showTrackOptions(context, ref, t);
                             },
                           ),
@@ -840,14 +812,14 @@ class _CloneInspiredHeroCard extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     return InkWell(
       onTap: onPlay,
-      borderRadius: BorderRadius.circular(20),
-      hoverColor: Colors.white.withValues(alpha: 0.06),
-      splashColor: Colors.white.withValues(alpha: 0.09),
-      highlightColor: Colors.white.withValues(alpha: 0.05),
+      borderRadius: BorderRadius.circular(SuvUiTokens.cardRadiusLg),
+      hoverColor: Colors.white.withValues(alpha: SuvUiTokens.hoverAlpha),
+      splashColor: Colors.white.withValues(alpha: SuvUiTokens.splashAlpha),
+      highlightColor: Colors.white.withValues(alpha: SuvUiTokens.highlightAlpha),
       child: Container(
-        height: 150,
+        height: 156,
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(SuvUiTokens.cardRadiusLg),
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
@@ -868,7 +840,7 @@ class _CloneInspiredHeroCard extends StatelessWidget {
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Text(
-                      'New Album',
+                      'Featured pick',
                       style: TextStyle(
                         color: Colors.white.withValues(alpha: 0.86),
                         fontWeight: FontWeight.w600,
@@ -944,17 +916,18 @@ class _CloneInspiredTabs extends StatelessWidget {
           final isSelected = selected == tab;
           return InkWell(
             onTap: () => onSelect(tab),
-            borderRadius: BorderRadius.circular(999),
-            hoverColor: Colors.white.withValues(alpha: 0.08),
-            splashColor: Colors.white.withValues(alpha: 0.10),
-            highlightColor: Colors.white.withValues(alpha: 0.06),
+            borderRadius: BorderRadius.circular(SuvUiTokens.pillRadius),
+            hoverColor: Colors.white.withValues(alpha: SuvUiTokens.hoverAlpha),
+            splashColor: Colors.white.withValues(alpha: SuvUiTokens.splashAlpha),
+            highlightColor:
+                Colors.white.withValues(alpha: SuvUiTokens.highlightAlpha),
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
               decoration: BoxDecoration(
                 color: isSelected
                     ? Colors.white.withValues(alpha: 0.14)
                     : FireballTokens.blackElevated,
-                borderRadius: BorderRadius.circular(999),
+                borderRadius: BorderRadius.circular(SuvUiTokens.pillRadius),
                 border: Border.all(
                   color: isSelected
                       ? Colors.white.withValues(alpha: 0.18)
@@ -978,28 +951,6 @@ class _CloneInspiredTabs extends StatelessWidget {
   }
 }
 
-List<Track> _buildRecommendationTracks({
-  required List<Track> historyRows,
-  required List<Track> favoritesRows,
-  required List<Track> trendingTracks,
-}) {
-  final seen = <String>{};
-  final ordered = <Track>[];
-  void pushAll(List<Track> source) {
-    for (final t in source) {
-      if (t.title.trim().isEmpty || t.artist.trim().isEmpty) continue;
-      final key = '${t.title}::${t.artist}'.toLowerCase();
-      if (seen.add(key)) ordered.add(t);
-      if (ordered.length >= 30) return;
-    }
-  }
-
-  pushAll(historyRows);
-  pushAll(favoritesRows);
-  pushAll(trendingTracks);
-  return ordered.take(20).toList();
-}
-
 class _RecommendationShelf extends StatelessWidget {
   const _RecommendationShelf({
     required this.title,
@@ -1016,7 +967,7 @@ class _RecommendationShelf extends StatelessWidget {
   Widget build(BuildContext context) {
     if (tracks.isEmpty) return const SizedBox.shrink();
     return SizedBox(
-      height: 252,
+      height: 258,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -1024,53 +975,55 @@ class _RecommendationShelf extends StatelessWidget {
         separatorBuilder: (_, __) => const SizedBox(width: 14),
         itemBuilder: (context, i) {
           final t = tracks[i];
-          return InkWell(
-            borderRadius: BorderRadius.circular(20),
-            onTap: () => onTap(i, tracks),
-            child: GlassCard(
-              padding: const EdgeInsets.all(10),
-              opacity: 0.08,
-              borderRadius: BorderRadius.circular(20),
-              child: SizedBox(
-                width: 164,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(12),
-                      child: t.artwork != null
-                          ? CachedNetworkImage(
-                              imageUrl: t.artwork!,
-                              width: 164,
-                              height: 164,
-                              fit: BoxFit.cover,
-                              errorWidget: (_, __, ___) =>
-                                  _TrendingGridPlaceholder(cs: cs),
-                            )
-                          : _TrendingGridPlaceholder(cs: cs),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      t.title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w700,
-                        fontSize: 13,
+          return SuvPressScale(
+            child: InkWell(
+              borderRadius: BorderRadius.circular(SuvUiTokens.cardRadiusLg),
+              onTap: () => onTap(i, tracks),
+              child: GlassCard(
+                padding: const EdgeInsets.all(10),
+                opacity: 0.08,
+                borderRadius: BorderRadius.circular(SuvUiTokens.cardRadiusLg),
+                child: SizedBox(
+                  width: 164,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(12),
+                        child: t.artwork != null
+                            ? CachedNetworkImage(
+                                imageUrl: t.artwork!,
+                                width: 164,
+                                height: 164,
+                                fit: BoxFit.cover,
+                                errorWidget: (_, __, ___) =>
+                                    _TrendingGridPlaceholder(cs: cs),
+                              )
+                            : _TrendingGridPlaceholder(cs: cs),
                       ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      '$title · ${t.artist}',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.5),
-                        fontSize: 11,
+                      const SizedBox(height: 8),
+                      Text(
+                        t.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 13,
+                        ),
                       ),
-                    ),
-                  ],
+                      const SizedBox(height: 2),
+                      Text(
+                        '$title · ${t.artist}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.5),
+                          fontSize: 11,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -1178,9 +1131,9 @@ class _HomeHeaderChip extends StatelessWidget {
   Widget build(BuildContext context) {
     return InkWell(
       borderRadius: BorderRadius.circular(999),
-      hoverColor: Colors.white.withValues(alpha: 0.08),
-      splashColor: Colors.white.withValues(alpha: 0.10),
-      highlightColor: Colors.white.withValues(alpha: 0.06),
+      hoverColor: Colors.white.withValues(alpha: SuvUiTokens.hoverAlpha),
+      splashColor: Colors.white.withValues(alpha: SuvUiTokens.splashAlpha),
+      highlightColor: Colors.white.withValues(alpha: SuvUiTokens.highlightAlpha),
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
@@ -1538,7 +1491,7 @@ class _TrendingRow extends StatelessWidget {
     required this.onTap,
     this.onLongPress,
   });
-  final List<Map<String, dynamic>> items;
+  final List<MusicDiscoveryItem> items;
   final ColorScheme cs;
   final bool isDark;
   final void Function(int) onTap;
@@ -1555,13 +1508,7 @@ class _TrendingRow extends StatelessWidget {
         separatorBuilder: (_, __) => const SizedBox(width: 16),
         itemBuilder: (context, i) {
           final item = items[i];
-          final track = Track(
-            id: item['id'] ?? '',
-            title: item['title'] ?? '—',
-            artist: item['artist'] ?? '—',
-            artwork: item['artwork'],
-            url: item['url'] ?? '',
-          );
+          final track = item.toTrack();
           return GestureDetector(
             onTap: () => onTap(i),
             onLongPress: onLongPress != null ? () => onLongPress!(track) : null,
@@ -1576,9 +1523,9 @@ class _TrendingRow extends StatelessWidget {
                   children: [
                     ClipRRect(
                       borderRadius: BorderRadius.circular(12),
-                      child: item['artwork'] != null
+                      child: item.artwork != null
                           ? CachedNetworkImage(
-                              imageUrl: item['artwork']!,
+                              imageUrl: item.artwork!,
                               width: 150,
                               height: 150,
                               fit: BoxFit.cover,
@@ -1588,7 +1535,7 @@ class _TrendingRow extends StatelessWidget {
                     ),
                     const SizedBox(height: 10),
                     Text(
-                      item['title'] ?? '—',
+                      item.title,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
@@ -1600,7 +1547,7 @@ class _TrendingRow extends StatelessWidget {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      item['artist'] ?? '—',
+                      item.artist,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
@@ -1647,9 +1594,9 @@ class _HistoryTile extends StatelessWidget {
     return InkWell(
       onTap: onTap,
       onLongPress: onLongPress,
-      hoverColor: Colors.white.withValues(alpha: 0.06),
-      splashColor: Colors.white.withValues(alpha: 0.09),
-      highlightColor: Colors.white.withValues(alpha: 0.05),
+      hoverColor: Colors.white.withValues(alpha: SuvUiTokens.hoverAlpha),
+      splashColor: Colors.white.withValues(alpha: SuvUiTokens.splashAlpha),
+      highlightColor: Colors.white.withValues(alpha: SuvUiTokens.highlightAlpha),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 5),
         child: Row(

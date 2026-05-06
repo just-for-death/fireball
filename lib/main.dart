@@ -154,7 +154,7 @@ class FireballApp extends ConsumerWidget {
             _withDynamic(baseDark, harmonizeDynamic ? darkDynamic : null, true);
 
         return MaterialApp.router(
-          title: 'Fireball',
+          title: 'SuvMusic',
           debugShowCheckedModeBanner: false,
           theme: lightTheme,
           darkTheme: darkTheme,

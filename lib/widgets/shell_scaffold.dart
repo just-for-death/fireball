@@ -9,6 +9,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 import '../core/store/providers.dart';
 import '../core/theme/fireball_tokens.dart';
+import '../core/theme/suv_shell_tokens.dart';
 import '../core/ui/messenger_service.dart';
 import '../core/widgets/fireball_logo.dart';
 import '../sync/webdav_live_sync.dart';
@@ -33,7 +34,36 @@ const _navItems = [
 /// Bottom offset for the floating mini-player: clears nav/tab chrome (~72–80)
 /// plus the device home-indicator / gesture inset (iOS + Android).
 double _miniPlayerBottomOffset(BuildContext context) {
-  return FireballTokens.navHeight + 8 + MediaQuery.viewPaddingOf(context).bottom;
+  return FireballTokens.navHeight +
+      SuvShellTokens.miniDockGap +
+      MediaQuery.viewPaddingOf(context).bottom;
+}
+
+double _miniPlayerCardHeight(BuildContext context) {
+  final width = MediaQuery.sizeOf(context).width;
+  return width >= 600 ? 62 : 58;
+}
+
+double _miniPlayerDockReserve(BuildContext context) {
+  // Mini-player card height + breathing room + side padding envelope.
+  return _miniPlayerCardHeight(context) +
+      SuvShellTokens.miniDockGap +
+      SuvShellTokens.miniDockEnvelope;
+}
+
+Widget _shellBranchViewport({
+  required BuildContext context,
+  required Widget branch,
+  required bool hideMini,
+}) {
+  return AnimatedPadding(
+    duration: FireballTokens.motionBase,
+    curve: FireballTokens.motionCurve,
+    padding: EdgeInsets.only(
+      bottom: hideMini ? 0 : _miniPlayerDockReserve(context),
+    ),
+    child: branch,
+  );
 }
 
 /// Fades the mini-player in/out so Remote / overlay toggles don’t pop harshly.
@@ -238,10 +268,14 @@ class _AndroidShell extends ConsumerWidget {
     return Scaffold(
       body: Stack(
         children: [
-          shell,
+          _shellBranchViewport(
+            context: context,
+            branch: shell,
+            hideMini: hideMini,
+          ),
           _shellMiniPlayerOverlay(
             hideMini: hideMini,
-            bottom: 12.0, // Floating just above the NavigationBar
+            bottom: SuvShellTokens.androidMiniBottom,
           ),
         ],
       ),
@@ -583,7 +617,11 @@ class _AndroidTabletShell extends ConsumerWidget {
           Expanded(
             child: Stack(
               children: [
-                shell,
+                _shellBranchViewport(
+                  context: context,
+                  branch: shell,
+                  hideMini: hideMini,
+                ),
                 _shellMiniPlayerOverlay(
                   hideMini: hideMini,
                   bottom: 8 + MediaQuery.viewPaddingOf(context).bottom,
@@ -631,14 +669,18 @@ class _IPhoneShell extends ConsumerWidget {
       extendBody: true,
       body: Stack(
         children: [
-          shell,
+          _shellBranchViewport(
+            context: context,
+            branch: shell,
+            hideMini: hideMini,
+          ),
           _shellMiniPlayerOverlay(
             hideMini: hideMini,
             bottom: _miniPlayerBottomOffset(context),
           ),
           Positioned(
             right: 18,
-            bottom: _miniPlayerBottomOffset(context) + 76,
+            bottom: _miniPlayerBottomOffset(context) + SuvShellTokens.iPhoneFabGap,
             child: FloatingActionButton(
               heroTag: 'create-fab-ios',
               backgroundColor: cs.primary,
@@ -751,7 +793,7 @@ class _IPadShell extends ConsumerWidget {
                                   const SizedBox(width: 8),
                                   Expanded(
                                     child: Text(
-                                      'Fireball',
+                                      'SuvMusic',
                                       maxLines: 1,
                                       overflow: TextOverflow.fade,
                                       softWrap: false,
@@ -1201,7 +1243,7 @@ class _NowPlayingSidePanel extends HookConsumerWidget {
                 ),
                 _deviceTile(
                   icon: Icons.cast_rounded,
-                  label: 'Fireball Remote',
+                  label: 'Suv Remote',
                   selected: false,
                 ),
                 _deviceTile(
