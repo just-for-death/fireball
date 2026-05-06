@@ -6,7 +6,6 @@ import 'dart:io';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 
-import '../adapters/fireball_backend_bridge.dart';
 import '../api/fireball_api.dart';
 import '../diagnostics/soft_error_reporter.dart';
 import '../models/models.dart';
@@ -349,7 +348,6 @@ class LocalStoreNotifier extends StateNotifier<LibraryData> {
     }
 
     final api = const FireballApi();
-    final bridge = FireballBackendBridge(api: api);
     var artistsChanged = false;
     final newArtists = List<Artist>.from(state.artists);
 
@@ -359,7 +357,7 @@ class LocalStoreNotifier extends StateNotifier<LibraryData> {
       if (artistIdNum == null) continue; // Not a valid iTunes numeric ID
 
       try {
-        final albums = await bridge.artistAlbums(artistIdNum, limit: 1);
+        final albums = await api.itunesArtistAlbums(artistIdNum, limit: 1);
         if (albums.isEmpty) continue;
 
         final latestAlbum = albums.first;

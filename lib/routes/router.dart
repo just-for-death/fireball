@@ -1,3 +1,4 @@
+import 'package:flutter/widgets.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -11,23 +12,41 @@ import '../features/settings/settings_screen.dart';
 import '../features/lbdl/lbdl_job_screen.dart';
 import '../widgets/shell_scaffold.dart';
 
+final _rootNavigatorKey = GlobalKey<NavigatorState>(debugLabel: 'rootNav');
+final _homeTabNavigatorKey =
+    GlobalKey<NavigatorState>(debugLabel: 'homeTabNav');
+final _searchTabNavigatorKey =
+    GlobalKey<NavigatorState>(debugLabel: 'searchTabNav');
+final _libraryTabNavigatorKey =
+    GlobalKey<NavigatorState>(debugLabel: 'libraryTabNav');
+
 final routerProvider = Provider<GoRouter>((ref) {
   return GoRouter(
+    navigatorKey: _rootNavigatorKey,
     initialLocation: '/home',
     routes: [
       StatefulShellRoute.indexedStack(
         builder: (context, state, shell) => ShellScaffold(shell: shell),
         branches: [
-          StatefulShellBranch(routes: [
+          StatefulShellBranch(
+            navigatorKey: _homeTabNavigatorKey,
+            routes: [
             GoRoute(path: '/home', builder: (_, __) => const HomeScreen()),
-          ]),
-          StatefulShellBranch(routes: [
+            ],
+          ),
+          StatefulShellBranch(
+            navigatorKey: _searchTabNavigatorKey,
+            routes: [
             GoRoute(path: '/search', builder: (_, __) => const SearchScreen()),
-          ]),
-          StatefulShellBranch(routes: [
+            ],
+          ),
+          StatefulShellBranch(
+            navigatorKey: _libraryTabNavigatorKey,
+            routes: [
             GoRoute(
                 path: '/library', builder: (_, __) => const LibraryScreen()),
-          ]),
+            ],
+          ),
         ],
       ),
       GoRoute(path: '/remote', builder: (_, __) => const RemoteScreen()),

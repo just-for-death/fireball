@@ -10,7 +10,6 @@ import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-import '../../core/adapters/fireball_backend_bridge.dart';
 import '../../core/api/fireball_api.dart';
 import '../../core/diagnostics/soft_error_reporter.dart';
 import '../../core/models/models.dart';
@@ -25,6 +24,7 @@ import '../../core/store/providers.dart';
 import '../../core/audio/download_manager.dart';
 import '../../core/ui/messenger_service.dart';
 import '../../core/theme/fireball_tokens.dart';
+import '../../core/theme/suv_ui_tokens.dart';
 
 enum _PlayerTab { cover, lyrics, queue }
 
@@ -423,7 +423,7 @@ class PlayerScreen extends HookConsumerWidget {
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                     color: Colors.white60,
-                    fontSize: 10,
+                    fontSize: 11,
                     fontWeight: FontWeight.w700,
                     letterSpacing: 1.2,
                   ),
@@ -435,7 +435,7 @@ class PlayerScreen extends HookConsumerWidget {
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                     color: Colors.white,
-                    fontSize: 12,
+                    fontSize: 13,
                     fontWeight: FontWeight.w700,
                     letterSpacing: 0.2,
                   ),
@@ -448,7 +448,7 @@ class PlayerScreen extends HookConsumerWidget {
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       color: cs.primary.withValues(alpha: 0.85),
-                      fontSize: 10,
+                      fontSize: 11,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
@@ -483,7 +483,8 @@ class PlayerScreen extends HookConsumerWidget {
                           .read(localStoreProvider.notifier)
                           .deleteArtist(a.artistId);
                     } else {
-                      final resolved = await FireballBackendBridge()
+                      final resolved = await ref
+                          .read(musicRepositoryProvider)
                           .resolveArtistForFollow(
                         artistName: track.artist,
                         fallbackArtwork: track.artwork,
@@ -713,7 +714,7 @@ class PlayerScreen extends HookConsumerWidget {
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                     color: Colors.white,
-                    fontSize: 17,
+                    fontSize: 18,
                     fontWeight: FontWeight.w800,
                     letterSpacing: -0.3,
                   ),
@@ -890,7 +891,7 @@ class PlayerScreen extends HookConsumerWidget {
             style: IconButton.styleFrom(
               backgroundColor: cs.primary,
               foregroundColor: cs.onPrimary,
-              fixedSize: const Size(60, 60),
+              fixedSize: const Size(64, 64),
             ),
             onPressed: () => ref.read(playerProvider.notifier).togglePlayPause(),
             icon: Icon(
@@ -924,7 +925,7 @@ class PlayerScreen extends HookConsumerWidget {
     List<_PlayerTab> tabs = _PlayerTab.values,
   }) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.symmetric(vertical: 10),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: tabs
@@ -1323,8 +1324,8 @@ class PlayerScreen extends HookConsumerWidget {
               tileColor: isActive
                   ? Colors.white.withValues(alpha: 0.06)
                   : Colors.transparent,
-              hoverColor: Colors.white.withValues(alpha: 0.05),
-              splashColor: Colors.white.withValues(alpha: 0.08),
+              hoverColor: Colors.white.withValues(alpha: SuvUiTokens.hoverAlpha),
+              splashColor: Colors.white.withValues(alpha: SuvUiTokens.splashAlpha),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(8),
               ),
@@ -1398,7 +1399,7 @@ class PlayerScreen extends HookConsumerWidget {
       aspectRatio: 1,
       child: Container(
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(SuvUiTokens.cardRadiusMd),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withValues(alpha: 0.45),
@@ -1408,7 +1409,7 @@ class PlayerScreen extends HookConsumerWidget {
           ],
         ),
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(SuvUiTokens.cardRadiusMd),
           child: FireballPlayerArtwork(
             networkUrl: artworkUrl,
             fit: BoxFit.cover,
@@ -1807,20 +1808,21 @@ class _PlayerTabPill extends StatelessWidget {
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          borderRadius: BorderRadius.circular(16),
-          hoverColor: Colors.white.withValues(alpha: 0.08),
-          splashColor: Colors.white.withValues(alpha: 0.10),
-          highlightColor: Colors.white.withValues(alpha: 0.05),
+          borderRadius: BorderRadius.circular(SuvUiTokens.cardRadiusMd),
+          hoverColor: Colors.white.withValues(alpha: SuvUiTokens.hoverAlpha),
+          splashColor: Colors.white.withValues(alpha: SuvUiTokens.splashAlpha),
+          highlightColor:
+              Colors.white.withValues(alpha: SuvUiTokens.highlightAlpha),
           onTap: onTap,
           child: AnimatedContainer(
-            duration: FireballTokens.motionFast,
-            margin: const EdgeInsets.symmetric(horizontal: 3),
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+            duration: SuvUiTokens.motionFast,
+            margin: const EdgeInsets.symmetric(horizontal: 4),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
             decoration: BoxDecoration(
               color: selected
                   ? Colors.white.withValues(alpha: 0.16)
                   : Colors.white.withValues(alpha: 0.06),
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: BorderRadius.circular(SuvUiTokens.cardRadiusMd),
               border: Border.all(
                 color: selected
                     ? Colors.white.withValues(alpha: 0.2)

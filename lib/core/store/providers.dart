@@ -14,6 +14,8 @@ import '../diagnostics/soft_error_reporter.dart';
 import '../models/models.dart';
 import '../models/sponsor_segment.dart';
 import '../models/track.dart';
+import '../repositories/fireball_music_repository.dart';
+import '../repositories/music_repository.dart';
 import '../../remote/remote_server.dart';
 import '../audio/download_manager.dart';
 import '../audio/stream_cache_manager.dart';
@@ -28,6 +30,10 @@ export 'player_state.dart' show PlayerState, ElysiumRepeatMode;
 // ── Settings convenience provider ────────────────────────────────────────────
 final settingsProvider = Provider<FireballSettings>((ref) {
   return ref.watch(localStoreProvider).settings;
+});
+
+final musicRepositoryProvider = Provider<MusicRepository>((ref) {
+  return FireballMusicRepository();
 });
 
 /// True while [RemoteScreen] is on the navigation stack (host or control mode),
@@ -145,7 +151,52 @@ class PlayerNotifier extends StateNotifier<PlayerState>
       case ElysiumRepeatMode.off:
         if (state.currentIndex < state.queue.length - 1) {
           playIndex(state.currentIndex + 1);
+        } else {
+          _handleQueueModeAtEnd();
         }
+    }
+  }
+
+  void _handleQueueModeAtEnd() {
+    final mode = _settings.queueMode;
+    if (mode == 'repeat' && state.queue.isNotEmpty) {
+      playIndex(0);
+      return;
+    }
+    if (mode == 'ai') {
+      _appendAiAtQueueEnd();
+    }
+  }
+
+  Future<void> _appendAiAtQueueEnd() async {
+    final settings = _settings;
+    final track = state.currentTrack;
+    if (!settings.ollamaEnabled ||
+        settings.ollamaUrl.isEmpty ||
+        settings.ollamaModel.isEmpty ||
+        track == null) {
+      return;
+    }
+    try {
+      final aiTrack = await _api.generateAIQueue(
+        track,
+        ollamaUrl: settings.ollamaUrl,
+        ollamaModel: settings.ollamaModel,
+      );
+      if (aiTrack == null) return;
+      final list = List<Track>.from(state.queue)..add(aiTrack);
+      state = state.copyWith(queue: list);
+      _syncMediaSession();
+      playIndex(list.length - 1);
+    } catch (e, st) {
+      SoftErrorReporter.report(
+        'player_notifier.appendAiAtQueueEnd',
+        e,
+        st,
+        details: <String, Object?>{
+          'currentTrackId': track.effectiveId,
+        },
+      );
     }
   }
 

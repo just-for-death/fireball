@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:share_plus/share_plus.dart';
 
-import '../adapters/fireball_backend_bridge.dart';
 import '../api/fireball_api.dart';
 import '../models/models.dart';
 import '../models/track.dart';
@@ -222,7 +221,8 @@ class _TrackOptionsSheet extends ConsumerWidget {
                               duration: const Duration(seconds: 1),
                             );
                           }
-                          final resolved = await FireballBackendBridge()
+                          final resolved = await watchRef
+                              .read(musicRepositoryProvider)
                               .resolveArtistForFollow(
                             artistName: track.artist,
                             fallbackArtwork: track.artwork,
