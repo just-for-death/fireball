@@ -150,8 +150,6 @@ class ArtistScreen extends HookConsumerWidget {
                               child: _AlbumCard(
                                 album: albums.value[i],
                                 cs: cs,
-                                ref: ref,
-                                artistName: artistName,
                               ),
                             ),
                             childCount: albums.value.length,
@@ -572,13 +570,9 @@ class _AlbumCard extends StatelessWidget {
   const _AlbumCard({
     required this.album,
     required this.cs,
-    required this.ref,
-    required this.artistName,
   });
   final MusicDiscoveryItem album;
   final ColorScheme cs;
-  final WidgetRef ref;
-  final String artistName;
 
   @override
   Widget build(BuildContext context) {
