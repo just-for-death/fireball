@@ -56,7 +56,7 @@ Future<void> _initMediaService() async {
         // Keep the media service alive so lock-screen / headset controls remain
         // reliable while paused or backgrounded.
         androidStopForegroundOnPause: false,
-        androidNotificationOngoing: true,
+        androidNotificationOngoing: false, // ongoing=true requires stopForeground=true; keep false so notification is dismissable while service stays alive
         preloadArtwork: true,
       ),
     );
