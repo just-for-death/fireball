@@ -30,17 +30,21 @@ final class FireballRepository {
         let cacheKey = Self.searchCachePrefix + normalizedQuery
         let downloaded = resolveLocalDownloadedMatches(normalizedQuery: normalizedQuery, settings: settings)
         if !downloaded.isEmpty { return downloaded }
-        if let cached = searchCache[cacheKey], !cached.isEmpty { return cached }
+
+        if settings.offlineModeEnabled {
+            return []
+        }
+        if settings.cacheEnabled, let cached = searchCache[cacheKey], !cached.isEmpty { return cached }
 
         if let iTunesTracks = await searchITunes(query: query), !iTunesTracks.isEmpty {
-            cache(query: cacheKey, tracks: iTunesTracks)
+            cache(query: cacheKey, tracks: iTunesTracks, settings: settings)
             return iTunesTracks
         }
 
         let invidiousList = await invidiousInstances(settings: settings)
         for instance in invidiousList {
             if let invidious = await searchInvidious(query: query, instance: instance, sid: settings.invidiousSid), !invidious.isEmpty {
-                cache(query: cacheKey, tracks: invidious)
+                cache(query: cacheKey, tracks: invidious, settings: settings)
                 return invidious
             }
         }
@@ -85,7 +89,26 @@ final class FireballRepository {
             }
         }
 
+        if let direct = await resolveViaYoutubeDirect(track: track, settings: settings),
+           let url = direct.url, !url.isEmpty {
+            return direct
+        }
+
         return track
+    }
+
+    private func resolveViaYoutubeDirect(track: Track, settings: FireballSettings) async -> Track? {
+        let highQuality = settings.highQuality
+        if let videoId = track.videoId?.trimmingCharacters(in: .whitespacesAndNewlines), !videoId.isEmpty,
+           let url = await YoutubeDirectStreamResolver.resolveAudioUrl(videoId: videoId, highQuality: highQuality) {
+            return trackWithUrl(track, url: url, videoId: videoId)
+        }
+        guard let found = await YoutubeDirectStreamResolver.searchAndResolveAudio(
+            artist: track.artist,
+            title: track.title,
+            highQuality: highQuality
+        ) else { return nil }
+        return trackWithUrl(track, url: found.1, videoId: found.0)
     }
 
     // MARK: - Invidious playlist (used by MainViewModel)
@@ -319,7 +342,7 @@ final class FireballRepository {
         guard !instance.isEmpty else { return url }
         guard let u = URL(string: url), let host = u.host, host.contains("googlevideo.com") else { return url }
         let base = instance.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-        var hostParam = "host=\(host.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? host)"
+        let hostParam = "host=\(host.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? host)"
         let existing = u.query ?? ""
         if existing.contains("host=") {
             return url
@@ -374,10 +397,11 @@ final class FireballRepository {
         return nil
     }
 
-    private func cache(query: String, tracks: [Track]) {
-        guard !query.isEmpty, !tracks.isEmpty else { return }
+    private func cache(query: String, tracks: [Track], settings: FireballSettings) {
+        guard settings.cacheEnabled, !query.isEmpty, !tracks.isEmpty else { return }
         searchCache[query] = tracks
-        if searchCache.count > 50, let first = searchCache.keys.first {
+        let limit = max(10, min(200, settings.localMusicCacheLimit * 10))
+        if searchCache.count > limit, let first = searchCache.keys.first {
             searchCache.removeValue(forKey: first)
         }
     }

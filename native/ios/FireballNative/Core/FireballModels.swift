@@ -95,6 +95,14 @@ struct FireballSettings: Codable, Hashable {
     var libraryUseGrid = false
 }
 
+/// Restored on launch so queue / shuffle / repeat survive app restarts.
+struct PlaybackSession: Codable, Hashable {
+    var queue: [Track] = []
+    var currentIndex: Int = 0
+    var shuffled: Bool = false
+    var repeatMode: String = "off"
+}
+
 struct LibrarySnapshot: Codable, Hashable {
     var version = 2
     var settings = FireballSettings()
@@ -103,4 +111,5 @@ struct LibrarySnapshot: Codable, Hashable {
     var playlists: [Playlist] = []
     var artists: [Artist] = []
     var albums: [Album] = []
+    var playbackSession = PlaybackSession()
 }

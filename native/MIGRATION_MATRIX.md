@@ -67,6 +67,7 @@
 - [x] Android ListenBrainz scrobble threshold timing (percent/max-seconds) baseline
 - [x] Android lyrics fallback pipeline baseline (LRCLIB -> NetEase) + surfaced current lyric text
 - [x] iOS repository + viewmodel + functional Home/Search/Library/Settings flows
+- [x] iOS fallback: portable InnerTube (`YoutubeInnerTubeClient`) + optional YouTubeKit on CI; Linux tests; Codemagic `fireball-native-ios`
 - [x] iOS playback semantics (shuffle/repeat/sleep controls) foundation
 - [x] iOS integrations foundation (ListenBrainz, SponsorBlock, WebDAV sync client)
 - [x] iOS native audio foundation (AVAudioSession + Now Playing + remote transport commands)

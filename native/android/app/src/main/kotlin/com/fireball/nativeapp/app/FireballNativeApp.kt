@@ -132,7 +132,7 @@ fun FireballNativeApp(viewModel: MainViewModel) {
                                 },
                                 onPlayPause = viewModel::togglePlayPause,
                                 onNext = viewModel::next,
-                                onClose = { viewModel.togglePlayPause() },
+                                onClose = { isPlayerOpen = false },
                                 onTap = { isPlayerOpen = true },
                             )
                         }
@@ -159,7 +159,7 @@ fun FireballNativeApp(viewModel: MainViewModel) {
                                         },
                                         onPlayPause = viewModel::togglePlayPause,
                                         onNext = viewModel::next,
-                                        onClose = { viewModel.togglePlayPause() },
+                                        onClose = { isPlayerOpen = false },
                                         onTap = { isPlayerOpen = true },
                                         modifier = Modifier.fillMaxWidth()
                                     )
@@ -212,6 +212,7 @@ fun FireballNativeApp(viewModel: MainViewModel) {
                                 results = uiState.searchResults,
                                 isSearching = uiState.isSearching,
                                 isPlaybackLoading = uiState.isPlaybackLoading,
+                                isFavorite = viewModel::isFavorite,
                                 onQueryChange = viewModel::updateQuery,
                                 onSearch = viewModel::search,
                                 onPlay = viewModel::play,
@@ -246,6 +247,7 @@ fun FireballNativeApp(viewModel: MainViewModel) {
                                 onInvidiousSyncPlaylist = viewModel::invidiousSyncPlaylist,
                                 onInvidiousPushPlaylist = viewModel::invidiousPushPlaylist,
                                 invidiousPlaylists = uiState.invidiousPlaylists,
+                                onGoogleDriveBackup = viewModel::backupToGoogleDrive,
                             )
                         }
                     }
@@ -260,6 +262,7 @@ fun FireballNativeApp(viewModel: MainViewModel) {
             ) {
                 com.fireball.nativeapp.ui.screens.NowPlayingScreen(
                     playbackState = playback,
+                    currentLyrics = uiState.currentLyrics,
                     onPlayPause = viewModel::togglePlayPause,
                     onNext = viewModel::next,
                     onPrevious = viewModel::previous,

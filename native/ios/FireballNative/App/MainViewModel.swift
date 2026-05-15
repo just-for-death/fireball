@@ -101,7 +101,39 @@ final class MainViewModel: ObservableObject {
         audioEngine.onRemotePrevious = { [weak self] in
             Task { @MainActor in await self?.userPressedPrevious() }
         }
+        audioEngine.onPlaybackFailed = { [weak self] message in
+            self?.error = message
+            self?.isPlaying = false
+        }
+        restorePlaybackSession()
         Task { await sleepTimerLoop() }
+    }
+
+    func isFavorite(_ track: Track) -> Bool {
+        library.favorites.contains { $0.effectiveId == track.effectiveId }
+    }
+
+    private func restorePlaybackSession() {
+        let session = library.playbackSession
+        if !session.queue.isEmpty {
+            queue = session.queue
+            if session.currentIndex >= 0, session.currentIndex < session.queue.count {
+                currentIndex = session.currentIndex
+            }
+        }
+        shuffled = session.shuffled
+        if let mode = RepeatMode(rawValue: session.repeatMode) {
+            repeatMode = mode
+        }
+    }
+
+    private func savePlaybackSession() {
+        library.playbackSession = PlaybackSession(
+            queue: queue,
+            currentIndex: currentIndex ?? 0,
+            shuffled: shuffled,
+            repeatMode: repeatMode.rawValue
+        )
     }
 
     var currentTrack: Track? {
@@ -125,7 +157,11 @@ final class MainViewModel: ObservableObject {
             return
         }
 
-        searchResults = await repository.searchTracks(query: query, settings: settings)
+        let tracks = await repository.searchTracks(query: query, settings: settings)
+        searchResults = tracks
+        if tracks.isEmpty && !settings.offlineModeEnabled {
+            error = "No results. Try another query or check Invidious / network."
+        }
         isSearching = false
     }
 
@@ -139,6 +175,7 @@ final class MainViewModel: ObservableObject {
 
             self.queue = queue
             currentIndex = idx
+            savePlaybackSession()
 
             let offline = settings.offlineModeEnabled
             let privacy = settings.privacyModeEnabled
@@ -148,7 +185,7 @@ final class MainViewModel: ObservableObject {
             }
 
             guard let url = resolvedTrack.url, !url.isEmpty else {
-                error = "Could not get a stream for this track. Public Invidious mirrors were tried; set a custom instance or sign in if required."
+                error = "Could not get a stream for this track. Invidious, public mirrors, and direct YouTube (InnerTube) were tried. Set a custom Invidious instance or check your network."
                 isPlaying = false
                 if !offline {
                     currentLyrics = await lyricsAi.fetchLyrics(track: resolvedTrack, settings: settings)
@@ -192,7 +229,7 @@ final class MainViewModel: ObservableObject {
     }
 
     func togglePlayPause() {
-        isPlaying.toggle()
+        guard currentTrack != nil else { return }
         audioEngine.togglePlayPause()
     }
 
@@ -215,7 +252,11 @@ final class MainViewModel: ObservableObject {
         persist()
     }
 
-    func toggleShuffle() { shuffled.toggle() }
+    func toggleShuffle() {
+        shuffled.toggle()
+        savePlaybackSession()
+        persist()
+    }
 
     func cycleRepeat() {
         repeatMode = switch repeatMode {
@@ -223,6 +264,8 @@ final class MainViewModel: ObservableObject {
         case .all: .one
         case .one: .off
         }
+        savePlaybackSession()
+        persist()
     }
 
     func setSleepTimer(minutes: Int?) {
@@ -237,13 +280,20 @@ final class MainViewModel: ObservableObject {
 
     func webDavPullMerge() async {
         let settings = library.settings
+        guard !settings.webDavUrl.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            integrationStatus = "webdav pull: missing URL"
+            return
+        }
         guard let json = await webDav.pullLibraryJson(
             baseURL: settings.webDavUrl,
             username: settings.webDavUsername,
             password: settings.webDavPassword
         ), let data = json.data(using: .utf8),
               let remote = try? JSONDecoder().decode(LibrarySnapshot.self, from: data)
-        else { return }
+        else {
+            integrationStatus = "webdav pull: failed"
+            return
+        }
 
         library.history = Array((library.history + remote.history).uniqued(by: \.effectiveId).prefix(200))
         library.favorites = (library.favorites + remote.favorites).uniqued(by: \.effectiveId)
@@ -251,18 +301,27 @@ final class MainViewModel: ObservableObject {
         library.artists = (library.artists + remote.artists).uniqued(by: \.artistId)
         library.albums = (library.albums + remote.albums).uniqued(by: \.id)
         persist()
+        integrationStatus = "webdav pull: success"
     }
 
     func webDavPush() async {
         let settings = library.settings
+        guard !settings.webDavUrl.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            integrationStatus = "webdav push: missing URL"
+            return
+        }
         guard let data = try? JSONEncoder().encode(library),
-              let json = String(data: data, encoding: .utf8) else { return }
-        _ = await webDav.pushLibraryJson(
+              let json = String(data: data, encoding: .utf8) else {
+            integrationStatus = "webdav push: encode failed"
+            return
+        }
+        let ok = await webDav.pushLibraryJson(
             baseURL: settings.webDavUrl,
             username: settings.webDavUsername,
             password: settings.webDavPassword,
             json: json
         )
+        integrationStatus = ok ? "webdav push: success" : "webdav push: failed"
     }
 
     private func addHistory(_ track: Track) {
@@ -273,7 +332,27 @@ final class MainViewModel: ObservableObject {
     }
 
     private func persist() {
+        savePlaybackSession()
         repository.saveLibrary(library)
+        scheduleWebDavLivePushIfNeeded()
+    }
+
+    private func scheduleWebDavLivePushIfNeeded() {
+        let settings = library.settings
+        guard settings.webDavLiveSync,
+              !settings.webDavUrl.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        else { return }
+        let snapshot = library
+        Task {
+            guard let data = try? JSONEncoder().encode(snapshot),
+                  let json = String(data: data, encoding: .utf8) else { return }
+            _ = await webDav.pushLibraryJson(
+                baseURL: settings.webDavUrl,
+                username: settings.webDavUsername,
+                password: settings.webDavPassword,
+                json: json
+            )
+        }
     }
 
     private func sleepTimerLoop() async {
@@ -340,6 +419,7 @@ final class MainViewModel: ObservableObject {
             )
         }
         queue.append(contentsOf: generated)
+        savePlaybackSession()
         persistAIQueue(generated)
     }
 
@@ -354,6 +434,10 @@ final class MainViewModel: ObservableObject {
     }
 
     func sendGotifyTest() async -> Bool {
+        guard library.settings.gotifyEnabled else {
+            integrationStatus = "gotify: disabled in settings"
+            return false
+        }
         let ok = await gotify.send(
             url: library.settings.gotifyUrl,
             token: library.settings.gotifyToken,
@@ -375,7 +459,18 @@ final class MainViewModel: ObservableObject {
     }
 
     func createLbdlJobFromQueue() async -> String? {
-        let links = queue.compactMap { $0.url }
+        var links: [String] = []
+        for track in queue {
+            if let url = track.url, !url.isEmpty {
+                links.append(url)
+            } else if let vid = track.videoId, !vid.isEmpty {
+                links.append("https://www.youtube.com/watch?v=\(vid)")
+            }
+        }
+        guard !links.isEmpty else {
+            integrationStatus = "lbdl job: no URLs in queue"
+            return nil
+        }
         let jobId = await lbdl.createJob(
             baseUrl: library.settings.lbdlUrl,
             username: library.settings.lbdlUsername,
@@ -387,6 +482,10 @@ final class MainViewModel: ObservableObject {
     }
 
     func sendRemoteCommand(_ action: String, value: String? = nil) async -> Bool {
+        guard library.settings.remoteServerEnabled else {
+            integrationStatus = "remote: disabled in settings"
+            return false
+        }
         let ok = await remoteLan.sendCommand(
             host: library.settings.remoteHostIp,
             port: library.settings.remotePeerPort,
@@ -398,6 +497,10 @@ final class MainViewModel: ObservableObject {
     }
 
     func pairRemote(code: String) async -> Bool {
+        guard library.settings.remoteServerEnabled else {
+            integrationStatus = "remote: disabled in settings"
+            return false
+        }
         let ok = await remoteLan.pair(
             host: library.settings.remoteHostIp,
             port: library.settings.remotePeerPort,
@@ -408,13 +511,28 @@ final class MainViewModel: ObservableObject {
     }
 
     func backupToGoogleDrive(accessToken: String) async -> Bool {
+        guard library.settings.gDriveEnabled else {
+            integrationStatus = "gdrive: disabled in settings"
+            return false
+        }
+        let token = accessToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !token.isEmpty else {
+            integrationStatus = "gdrive: missing access token"
+            return false
+        }
         guard let data = try? JSONEncoder().encode(library),
               let json = String(data: data, encoding: .utf8) else { return false }
         let ok = await gDrive.uploadAppDataJson(
-            accessToken: accessToken,
+            accessToken: token,
             fileName: "fireball_library.json",
             content: json
         )
+        if ok {
+            var s = library.settings
+            s.lastBackupAt = ISO8601DateFormatter().string(from: Date())
+            library.settings = s
+            persist()
+        }
         integrationStatus = ok ? Status.gdriveOk : Status.gdriveFail
         return ok
     }
@@ -470,9 +588,23 @@ final class MainViewModel: ObservableObject {
         }
         error = nil
         currentIndex = index
+        scrobbledTrackIds.removeAll()
         isPlaying = true
         audioEngine.playQueue(q, startIndex: index)
+        savePlaybackSession()
+        persist()
+        let settings = library.settings
+        if !settings.offlineModeEnabled && !settings.privacyModeEnabled {
+            currentLyrics = await lyricsAi.fetchLyrics(track: track, settings: settings)
+        }
         await loadSponsorSegmentsAfterPlay(for: track)
+        if settings.listenBrainzEnabled && settings.listenBrainzPlayingNow && !settings.listenBrainzToken.isEmpty {
+            await listenBrainz.submitPlayingNow(
+                token: settings.listenBrainzToken,
+                title: track.title,
+                artist: track.artist
+            )
+        }
     }
 
     private func advanceAfterTrackFinished() async {

@@ -38,12 +38,18 @@ class FireballRepository(
         val normalizedQuery = query.trim().lowercase()
         val cacheKey = "$SEARCH_CACHE_PREFIX$normalizedQuery"
 
-        searchCache[cacheKey]?.takeIf { it.isNotEmpty() }?.let { return it }
-
         val localMatches = resolveLocalDownloadedMatches(normalizedQuery, settings)
         if (localMatches.isNotEmpty()) {
-            cacheSearch(cacheKey, localMatches)
+            cacheSearch(cacheKey, localMatches, settings)
             return localMatches
+        }
+
+        if (settings.offlineModeEnabled) {
+            return emptyList()
+        }
+
+        if (settings.cacheEnabled) {
+            searchCache[cacheKey]?.takeIf { it.isNotEmpty() }?.let { return it }
         }
 
         val itunesResult = runCatching {
@@ -67,14 +73,14 @@ class FireballRepository(
         }.getOrDefault(emptyList())
 
         if (itunesResult.isNotEmpty()) {
-            cacheSearch(cacheKey, itunesResult)
+            cacheSearch(cacheKey, itunesResult, settings)
             return itunesResult
         }
 
         for (instance in invidiousInstances(settings)) {
             val invidiousResult = invidiousSearchOnInstance(instance, query, settings)
             if (invidiousResult.isNotEmpty()) {
-                cacheSearch(cacheKey, invidiousResult)
+                cacheSearch(cacheKey, invidiousResult, settings)
                 return invidiousResult
             }
         }
@@ -313,10 +319,11 @@ class FireballRepository(
         return null
     }
 
-    private fun cacheSearch(key: String, tracks: List<Track>) {
-        if (key.isBlank() || tracks.isEmpty()) return
+    private fun cacheSearch(key: String, tracks: List<Track>, settings: FireballSettings) {
+        if (!settings.cacheEnabled || key.isBlank() || tracks.isEmpty()) return
         searchCache[key] = tracks
-        if (searchCache.size > 50) {
+        val limit = settings.localMusicCacheLimit.coerceIn(1, 20) * 10
+        if (searchCache.size > limit) {
             val firstKey = searchCache.keys.firstOrNull()
             if (firstKey != null) searchCache.remove(firstKey)
         }

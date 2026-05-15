@@ -60,6 +60,40 @@ struct HomeScreen: View {
                     }
                 }
 
+                if !library.playlists.isEmpty {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Playlists")
+                            .font(.title2)
+                            .fontWeight(.bold)
+                            .padding(.horizontal)
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 16) {
+                                ForEach(library.playlists, id: \.id) { playlist in
+                                    Button {
+                                        guard let first = playlist.videos.first else { return }
+                                        onPlay(first, playlist.videos)
+                                    } label: {
+                                        VStack(alignment: .leading) {
+                                            Text(playlist.title)
+                                                .font(.headline)
+                                                .foregroundColor(dominantColors.onBackground)
+                                                .lineLimit(2)
+                                            Text("\(playlist.videos.count) tracks")
+                                                .font(.caption)
+                                                .foregroundColor(dominantColors.onBackground.opacity(0.7))
+                                        }
+                                        .frame(width: 140, alignment: .leading)
+                                        .padding(12)
+                                        .background(dominantColors.secondary.opacity(0.4), in: RoundedRectangle(cornerRadius: 16))
+                                    }
+                                    .disabled(playlist.videos.isEmpty)
+                                }
+                            }
+                            .padding(.horizontal)
+                        }
+                    }
+                }
+
                 // Favorites Carousel
                 if !library.favorites.isEmpty {
                     VStack(alignment: .leading, spacing: 12) {
@@ -116,6 +150,7 @@ struct SearchScreen: View {
     let results: [Track]
     let isSearching: Bool
     let error: String?
+    let isFavorite: (Track) -> Bool
     let onDismissError: () -> Void
     let onSearch: () async -> Void
     let onPlay: (Track, [Track]) -> Void
@@ -136,20 +171,43 @@ struct SearchScreen: View {
             }
             TextField("Search music", text: $query)
                 .textFieldStyle(.roundedBorder)
+                .onSubmit { Task { await onSearch() } }
             Button(isSearching ? "Searching..." : "Search") {
                 Task { await onSearch() }
             }
             .buttonStyle(.borderedProminent)
+            .disabled(isSearching || query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
 
-            List(results, id: \.effectiveId) { track in
-                HStack {
-                    VStack(alignment: .leading) {
-                        Text(track.title)
-                        Text(track.artist).font(.caption).foregroundStyle(.secondary)
+            if results.isEmpty && !isSearching {
+                VStack(spacing: 8) {
+                    Image(systemName: "magnifyingglass")
+                        .font(.largeTitle)
+                        .foregroundStyle(.secondary)
+                    Text("No results")
+                        .font(.headline)
+                    Text("Try another query or check Invidious / network settings.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                List(results, id: \.effectiveId) { track in
+                    HStack {
+                        VStack(alignment: .leading) {
+                            Text(track.title)
+                            Text(track.artist).font(.caption).foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Button("Play") { onPlay(track, results) }
+                        Button {
+                            onFavorite(track)
+                        } label: {
+                            Image(systemName: isFavorite(track) ? "heart.fill" : "heart")
+                                .foregroundStyle(isFavorite(track) ? .red : .secondary)
+                        }
+                        .buttonStyle(.borderless)
                     }
-                    Spacer()
-                    Button("Play") { onPlay(track, results) }
-                    Button("Fav") { onFavorite(track) }
                 }
             }
         }
@@ -160,12 +218,35 @@ struct SearchScreen: View {
 struct LibraryScreen: View {
     let library: LibrarySnapshot
     let useGrid: Bool
+    let isFavorite: (Track) -> Bool
     let onPlay: (Track, [Track]) -> Void
+    let onFavorite: (Track) -> Void
 
     var body: some View {
         Group {
             if useGrid {
                 ScrollView {
+                    if !library.playlists.isEmpty {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Playlists").font(.headline).padding(.horizontal)
+                            ForEach(library.playlists, id: \.id) { pl in
+                                Button {
+                                    guard let first = pl.videos.first else { return }
+                                    onPlay(first, pl.videos)
+                                } label: {
+                                    HStack {
+                                        Text(pl.title)
+                                        Spacer()
+                                        Text("\(pl.videos.count)").foregroundStyle(.secondary)
+                                    }
+                                    .padding(10)
+                                    .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12))
+                                }
+                                .disabled(pl.videos.isEmpty)
+                                .padding(.horizontal)
+                            }
+                        }
+                    }
                     LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
                         ForEach(library.favorites, id: \.effectiveId) { track in
                             Button {
@@ -179,33 +260,73 @@ struct LibraryScreen: View {
                                 .padding(10)
                                 .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12))
                             }
-                        }
-                    }
-                    .padding()
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Playlists: \(library.playlists.count)")
-                        Text("Artists followed: \(library.artists.count)")
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal)
-                }
-            } else {
-                List {
-                    Section("Favorites") {
-                        ForEach(library.favorites, id: \.effectiveId) { track in
-                            Button {
-                                onPlay(track, library.favorites)
-                            } label: {
-                                VStack(alignment: .leading) {
-                                    Text(track.title)
-                                    Text(track.artist).font(.caption).foregroundStyle(.secondary)
+                            .contextMenu {
+                                Button(isFavorite(track) ? "Remove favorite" : "Add favorite") {
+                                    onFavorite(track)
                                 }
                             }
                         }
                     }
-                    Section("Library Stats") {
-                        Text("Playlists: \(library.playlists.count)")
-                        Text("Artists followed: \(library.artists.count)")
+                    .padding()
+                }
+            } else {
+                List {
+                    if !library.playlists.isEmpty {
+                        Section("Playlists") {
+                            ForEach(library.playlists, id: \.id) { pl in
+                                Button {
+                                    guard let first = pl.videos.first else { return }
+                                    onPlay(first, pl.videos)
+                                } label: {
+                                    HStack {
+                                        Text(pl.title)
+                                        Spacer()
+                                        Text("\(pl.videos.count) tracks").font(.caption).foregroundStyle(.secondary)
+                                    }
+                                }
+                                .disabled(pl.videos.isEmpty)
+                            }
+                        }
+                    }
+                    Section("Favorites") {
+                        if library.favorites.isEmpty {
+                            Text("No favorites yet — use Search or the heart button while playing.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        ForEach(library.favorites, id: \.effectiveId) { track in
+                            HStack {
+                                Button {
+                                    onPlay(track, library.favorites)
+                                } label: {
+                                    VStack(alignment: .leading) {
+                                        Text(track.title)
+                                        Text(track.artist).font(.caption).foregroundStyle(.secondary)
+                                    }
+                                }
+                                Spacer()
+                                Button {
+                                    onFavorite(track)
+                                } label: {
+                                    Image(systemName: "heart.fill").foregroundStyle(.red)
+                                }
+                                .buttonStyle(.borderless)
+                            }
+                        }
+                    }
+                    if !library.history.isEmpty {
+                        Section("History") {
+                            ForEach(library.history.prefix(30), id: \.effectiveId) { track in
+                                Button {
+                                    onPlay(track, library.history)
+                                } label: {
+                                    VStack(alignment: .leading) {
+                                        Text(track.title)
+                                        Text(track.artist).font(.caption).foregroundStyle(.secondary)
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -236,14 +357,23 @@ struct SettingsScreen: View {
     let onInvidiousRefreshPlaylists: () -> Void
     let onInvidiousSyncPlaylist: (String) -> Void
     let onInvidiousPushPlaylist: (String, String?) -> Void
+    let onGoogleDriveBackup: (String) -> Void
 
     @State private var pairCode = ""
     @State private var invidiousPassword = ""
     @State private var pushLocalPlaylistId = ""
     @State private var pushRemotePlaylistId = ""
+    @State private var gDriveAccessToken = ""
 
     var body: some View {
         Form {
+            if let integrationStatus, !integrationStatus.isEmpty {
+                Section("Status") {
+                    Text(integrationStatus)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
             Section("Playback") {
                 Toggle("High Quality Playback", isOn: .init(
                     get: { settings.highQuality },
@@ -253,10 +383,13 @@ struct SettingsScreen: View {
                     get: { settings.cacheEnabled },
                     set: { value in onUpdateSettings { $0.cacheEnabled = value } }
                 ))
-                TextField("Queue mode", text: .init(
+                Picker("Queue mode", selection: .init(
                     get: { settings.queueMode },
                     set: { value in onUpdateSettings { $0.queueMode = value } }
-                ))
+                )) {
+                    Text("Off").tag("off")
+                    Text("Continuous").tag("continuous")
+                }
                 TextField("Local cache limit (GB)", text: .init(
                     get: { "\(settings.localMusicCacheLimit)" },
                     set: { value in if let parsed = Int(value) { onUpdateSettings { $0.localMusicCacheLimit = parsed } } }
@@ -401,7 +534,7 @@ struct SettingsScreen: View {
                         set: { value in onUpdateSettings { $0.invidiousSid = value.isEmpty ? nil : value } }
                     ))
                 }
-                Text("Playback resolves via your Invidious instance (optional), then public mirrors automatically. No separate proxy is required.")
+                Text("Playback resolves via your Invidious instance (optional), public mirrors, then on-device YouTube extraction when Invidious is unavailable.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
                 Toggle("ListenBrainz enabled", isOn: .init(
@@ -420,6 +553,24 @@ struct SettingsScreen: View {
                     get: { settings.listenBrainzUsername },
                     set: { value in onUpdateSettings { $0.listenBrainzUsername = value } }
                 ))
+                TextField("Scrobble at % of track", text: .init(
+                    get: { "\(settings.listenBrainzScrobblePercent)" },
+                    set: { value in
+                        if let n = Int(value), (1...100).contains(n) {
+                            onUpdateSettings { $0.listenBrainzScrobblePercent = n }
+                        }
+                    }
+                ))
+                .keyboardType(.numberPad)
+                TextField("Scrobble max seconds", text: .init(
+                    get: { "\(settings.listenBrainzScrobbleMaxSeconds)" },
+                    set: { value in
+                        if let n = Int(value), n > 0 {
+                            onUpdateSettings { $0.listenBrainzScrobbleMaxSeconds = n }
+                        }
+                    }
+                ))
+                .keyboardType(.numberPad)
                 Toggle("Enable AI queue", isOn: .init(
                     get: { settings.ollamaEnabled },
                     set: { value in onUpdateSettings { $0.ollamaEnabled = value } }
@@ -453,6 +604,21 @@ struct SettingsScreen: View {
                 Toggle("Google Drive backup", isOn: .init(
                     get: { settings.gDriveEnabled },
                     set: { value in onUpdateSettings { $0.gDriveEnabled = value } }
+                ))
+                if let last = settings.lastBackupAt, !last.isEmpty {
+                    Text("Last backup: \(last)").font(.caption).foregroundStyle(.secondary)
+                }
+                SecureField("Google Drive access token", text: $gDriveAccessToken)
+                Button("Backup library to Google Drive") {
+                    onGoogleDriveBackup(gDriveAccessToken)
+                    gDriveAccessToken = ""
+                }
+                .disabled(!settings.gDriveEnabled || gDriveAccessToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                TextField("Custom download folder path", text: .init(
+                    get: { settings.customDownloadPath ?? "" },
+                    set: { value in
+                        onUpdateSettings { $0.customDownloadPath = value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : value }
+                    }
                 ))
             }
             Section("Playback Behavior") {

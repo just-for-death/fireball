@@ -26,6 +26,22 @@ class PlayerManager {
     private val _state = MutableStateFlow(PlaybackState())
     val state: StateFlow<PlaybackState> = _state
 
+    fun restoreSession(
+        queue: List<Track>,
+        currentIndex: Int,
+        shuffled: Boolean,
+        repeatMode: RepeatMode,
+    ) {
+        if (queue.isEmpty()) return
+        _state.value = PlaybackState(
+            queue = queue,
+            currentIndex = currentIndex.coerceIn(0, queue.lastIndex),
+            shuffled = shuffled,
+            repeatMode = repeatMode,
+            isPlaying = false,
+        )
+    }
+
     fun playTracks(tracks: List<Track>, startIndex: Int = 0) {
         if (tracks.isEmpty()) return
         _state.value = PlaybackState(

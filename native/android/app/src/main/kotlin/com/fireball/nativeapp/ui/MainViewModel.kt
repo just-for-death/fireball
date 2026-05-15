@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.fireball.nativeapp.data.IntegrationOrchestrator
 import com.fireball.nativeapp.core.model.FireballSettings
 import com.fireball.nativeapp.core.model.LibrarySnapshot
+import com.fireball.nativeapp.core.model.PlaybackSession
 import com.fireball.nativeapp.core.model.Playlist
 import com.fireball.nativeapp.core.model.Track
 import com.fireball.nativeapp.data.FireballRepository
@@ -173,9 +174,24 @@ class MainViewModel(
         viewModelScope.launch {
             val lib = repository.loadLibrary()
             _uiState.update { it.copy(library = lib) }
+            val session = lib.playbackSession
+            if (session.queue.isNotEmpty()) {
+                val repeat = runCatching {
+                    RepeatMode.valueOf(session.repeatMode.uppercase())
+                }.getOrDefault(RepeatMode.OFF)
+                playerManager.restoreSession(
+                    queue = session.queue,
+                    currentIndex = session.currentIndex,
+                    shuffled = session.shuffled,
+                    repeatMode = repeat,
+                )
+            }
             fetchInvidiousPlaylists()
         }
     }
+
+    fun isFavorite(track: Track): Boolean =
+        _uiState.value.library.favorites.any { it.effectiveId == track.effectiveId }
 
     fun updateQuery(query: String) {
         _uiState.update { it.copy(query = query) }
@@ -216,7 +232,17 @@ class MainViewModel(
                 }
                 return@launch
             }
-            _uiState.update { it.copy(isSearching = false, searchResults = tracks) }
+            _uiState.update {
+                it.copy(
+                    isSearching = false,
+                    searchResults = tracks,
+                    error = if (tracks.isEmpty()) {
+                        "No results. Try another query or check Invidious / network."
+                    } else {
+                        it.error
+                    },
+                )
+            }
         }
     }
 
@@ -489,8 +515,27 @@ class MainViewModel(
     fun sleepAfterCurrent(enabled: Boolean) = playerManager.setSleepAfterCurrent(enabled)
 
     private fun persist(library: LibrarySnapshot) {
-        _uiState.update { it.copy(library = library) }
-        viewModelScope.launch { repository.saveLibrary(library) }
+        val ps = playbackState.value
+        val withPlayback = library.copy(
+            playbackSession = PlaybackSession(
+                queue = ps.queue,
+                currentIndex = ps.currentIndex.coerceAtLeast(0),
+                shuffled = ps.shuffled,
+                repeatMode = ps.repeatMode.name.lowercase(),
+            ),
+        )
+        _uiState.update { it.copy(library = withPlayback) }
+        viewModelScope.launch {
+            repository.saveLibrary(withPlayback)
+            scheduleWebDavLivePushIfNeeded(withPlayback)
+        }
+    }
+
+    private suspend fun scheduleWebDavLivePushIfNeeded(snapshot: LibrarySnapshot) {
+        val settings = snapshot.settings
+        if (!settings.webDavLiveSync) return
+        if (settings.webDavUrl.isBlank()) return
+        integrations.syncPush(settings, snapshot)
     }
 
     private suspend fun maybeSkipSponsor(state: PlaybackState) {
@@ -666,10 +711,18 @@ class MainViewModel(
 
     fun webDavPullMerge() {
         viewModelScope.launch {
-            val remote = integrations.syncPull(_uiState.value.library.settings) ?: return@launch
+            val remote = integrations.syncPull(_uiState.value.library.settings)
+            if (remote == null) {
+                _uiState.update { it.copy(integrationStatus = "webdav pull: failed") }
+                return@launch
+            }
             val merged = runCatching {
                 libraryJson.decodeFromString<LibrarySnapshot>(remote)
-            }.getOrNull() ?: return@launch
+            }.getOrNull()
+            if (merged == null) {
+                _uiState.update { it.copy(integrationStatus = "webdav pull: decode failed") }
+                return@launch
+            }
             val local = _uiState.value.library
             val combined = local.copy(
                 history = (local.history + merged.history).distinctBy { it.effectiveId }.take(200),
@@ -679,17 +732,26 @@ class MainViewModel(
                 albums = (local.albums + merged.albums).distinctBy { it.id }
             )
             persist(combined)
+            _uiState.update { it.copy(integrationStatus = "webdav pull: success") }
         }
     }
 
     fun webDavPush() {
         viewModelScope.launch {
-            integrations.syncPush(_uiState.value.library.settings, _uiState.value.library)
+            val ok = integrations.syncPush(_uiState.value.library.settings, _uiState.value.library)
+            _uiState.update {
+                it.copy(integrationStatus = if (ok) "webdav push: success" else "webdav push: failed")
+            }
         }
     }
 
     fun sendGotifyTest() {
         viewModelScope.launch {
+            val settings = _uiState.value.library.settings
+            if (!settings.gotifyEnabled) {
+                _uiState.update { it.copy(integrationStatus = "gotify: disabled") }
+                return@launch
+            }
             val ok = integrations.gotify(
                 settings = _uiState.value.library.settings,
                 title = "Fireball Native",
@@ -708,7 +770,14 @@ class MainViewModel(
 
     fun createLbdlJobFromQueue() {
         viewModelScope.launch {
-            val links = playbackState.value.queue.mapNotNull { it.url }
+            val links = playbackState.value.queue.mapNotNull { track ->
+                track.url?.takeIf { it.isNotBlank() }
+                    ?: track.videoId?.takeIf { it.isNotBlank() }?.let { "https://www.youtube.com/watch?v=$it" }
+            }
+            if (links.isEmpty()) {
+                _uiState.update { it.copy(integrationStatus = "lbdl job: no URLs in queue") }
+                return@launch
+            }
             val jobId = integrations.lbdlCreateJob(_uiState.value.library.settings, links)
             _uiState.update {
                 it.copy(integrationStatus = if (jobId != null) "$STATUS_LBDL_JOB_OK_PREFIX ($jobId)" else STATUS_LBDL_JOB_FAIL)
@@ -718,6 +787,10 @@ class MainViewModel(
 
     fun remoteTogglePlay() {
         viewModelScope.launch {
+            if (!_uiState.value.library.settings.remoteServerEnabled) {
+                _uiState.update { it.copy(integrationStatus = "remote: disabled") }
+                return@launch
+            }
             val ok = integrations.remoteCommand(_uiState.value.library.settings, action = "toggle")
             _uiState.update { it.copy(integrationStatus = if (ok) STATUS_REMOTE_CMD_OK else STATUS_REMOTE_CMD_FAIL) }
         }
@@ -734,7 +807,16 @@ class MainViewModel(
     fun backupToGoogleDrive(accessToken: String) {
         if (accessToken.isBlank()) return
         viewModelScope.launch {
+            val settings = _uiState.value.library.settings
+            if (!settings.gDriveEnabled) {
+                _uiState.update { it.copy(integrationStatus = "gdrive: disabled") }
+                return@launch
+            }
             val ok = integrations.gDriveBackup(accessToken, _uiState.value.library)
+            if (ok) {
+                val stamp = java.time.Instant.now().toString()
+                persist(_uiState.value.library.copy(settings = settings.copy(lastBackupAt = stamp)))
+            }
             _uiState.update { it.copy(integrationStatus = if (ok) STATUS_GDRIVE_OK else STATUS_GDRIVE_FAIL) }
         }
     }
