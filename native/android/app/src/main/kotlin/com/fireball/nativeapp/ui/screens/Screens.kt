@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -48,6 +49,8 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider as M3HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Button
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Card
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ListItem
@@ -721,6 +724,8 @@ fun SettingsScreen(
     onInvidiousPushPlaylist: (String, String?) -> Unit,
     invidiousPlaylists: List<Pair<String, String>>,
     onGoogleDriveBackup: (String) -> Unit,
+    onValidateLastFm: () -> Unit,
+    onConnectLastFm: (String) -> Unit,
 ) {
     var page by remember { mutableStateOf(SettingsPage.Root) }
 
@@ -787,6 +792,8 @@ fun SettingsScreen(
             settings = settings,
             onBack = { page = SettingsPage.Root },
             onSettingsChange = onSettingsChange,
+            onValidateLastFm = onValidateLastFm,
+            onConnectLastFm = onConnectLastFm,
         )
 
         SettingsPage.RemoteAndNotifications -> SettingsRemoteAndNotifications(
@@ -1125,23 +1132,53 @@ private fun SettingsAppearance(
                         onCheckedChange = { onSettingsChange(settings.copy(useDynamicColorWhenAvailable = it)) },
                     )
                     ThinDivider()
-                    OutlinedTextField(
-                        value = settings.themeMode,
-                        onValueChange = { onSettingsChange(settings.copy(themeMode = it)) },
-                        label = { Text("Theme mode") },
+                    Text(
+                        text = "Theme mode",
+                        style = MaterialTheme.typography.labelLarge,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                    )
+                    Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 8.dp)
-                    )
+                            .padding(horizontal = 16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        listOf("system", "light", "dark").forEach { mode ->
+                            FilterChip(
+                                selected = settings.themeMode.equals(mode, ignoreCase = true),
+                                onClick = { onSettingsChange(settings.copy(themeMode = mode)) },
+                                label = { Text(mode.replaceFirstChar { it.uppercase() }) },
+                            )
+                        }
+                    }
                     ThinDivider()
-                    OutlinedTextField(
-                        value = settings.flexScheme,
-                        onValueChange = { onSettingsChange(settings.copy(flexScheme = it)) },
-                        label = { Text("Color scheme") },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 8.dp)
+                    Text(
+                        text = "Color scheme",
+                        style = MaterialTheme.typography.labelLarge,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                     )
+                    LazyRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        val schemes = listOf(
+                            "deepPurple" to "Purple",
+                            "ocean" to "Ocean",
+                            "sunset" to "Sunset",
+                            "nature" to "Nature",
+                            "mandyRed" to "Love",
+                        )
+                        items(schemes.size) { index ->
+                            val (key, label) = schemes[index]
+                            FilterChip(
+                                selected = settings.flexScheme.equals(key, ignoreCase = true) ||
+                                    (key == "deepPurple" && settings.flexScheme.isBlank()),
+                                onClick = { onSettingsChange(settings.copy(flexScheme = key)) },
+                                label = { Text(label) },
+                            )
+                        }
+                    }
                 }
                 Spacer(modifier = Modifier.height(24.dp))
             }
@@ -1926,7 +1963,10 @@ private fun SettingsAdvanced(
     settings: FireballSettings,
     onBack: () -> Unit,
     onSettingsChange: (FireballSettings) -> Unit,
+    onValidateLastFm: () -> Unit,
+    onConnectLastFm: (String) -> Unit,
 ) {
+    var lastFmPassword by remember { mutableStateOf("") }
     SettingsScaffold(title = "Advanced", onBack = onBack) {
         LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 96.dp)) {
             item {
@@ -1961,6 +2001,50 @@ private fun SettingsAdvanced(
                             .fillMaxWidth()
                             .padding(horizontal = 16.dp, vertical = 8.dp)
                     )
+                    ThinDivider()
+                    OutlinedTextField(
+                        value = settings.lastFmApiSecret,
+                        onValueChange = { onSettingsChange(settings.copy(lastFmApiSecret = it)) },
+                        label = { Text("Last.fm shared secret") },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp)
+                    )
+                    ThinDivider()
+                    OutlinedTextField(
+                        value = settings.lastFmUsername,
+                        onValueChange = { onSettingsChange(settings.copy(lastFmUsername = it)) },
+                        label = { Text("Last.fm username") },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp)
+                    )
+                    ThinDivider()
+                    OutlinedTextField(
+                        value = lastFmPassword,
+                        onValueChange = { lastFmPassword = it },
+                        label = { Text("Last.fm password (not saved)") },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp)
+                    )
+                    if (settings.lastFmSessionKey.isNotBlank()) {
+                        ThinDivider()
+                        Text(
+                            text = "Last.fm session active",
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        TextButton(onClick = onValidateLastFm) { Text("Validate key") }
+                        TextButton(onClick = { onConnectLastFm(lastFmPassword) }) { Text("Connect") }
+                    }
                 }
                 Spacer(modifier = Modifier.height(24.dp))
             }

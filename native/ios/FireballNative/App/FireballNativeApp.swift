@@ -84,12 +84,13 @@ private struct RootShellView: View {
         }
         .dynamicTheme(
             artworkUrl: viewModel.currentTrack?.artwork,
-            useDynamicFromArtwork: viewModel.library.settings.useDynamicColorWhenAvailable
+            settings: viewModel.library.settings
         )
         .fullScreenCover(isPresented: $isPlayerOpen) {
             if let track = viewModel.currentTrack {
                 NowPlayingScreen(
                     track: track,
+                    settings: viewModel.library.settings,
                     isPlaying: viewModel.isPlaying,
                     positionSeconds: viewModel.positionSeconds,
                     durationSeconds: viewModel.durationSeconds,
@@ -176,7 +177,9 @@ private struct RootShellView: View {
                 onInvidiousPushPlaylist: viewModel.invidiousPushPlaylist,
                 onGoogleDriveBackup: { token in
                     Task { _ = await viewModel.backupToGoogleDrive(accessToken: token) }
-                }
+                },
+                onValidateLastFm: { Task { _ = await viewModel.validateLastFmKey() } },
+                onConnectLastFm: { password in Task { _ = await viewModel.connectLastFm(password: password) } }
             )
             .task {
                 await viewModel.refreshInvidiousPlaylists()

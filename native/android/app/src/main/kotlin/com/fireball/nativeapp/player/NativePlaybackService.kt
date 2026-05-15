@@ -16,8 +16,10 @@ import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 import com.fireball.nativeapp.MainActivity
 import android.net.Uri
+import com.fireball.nativeapp.core.data.PlaybackPreferences
 
 import androidx.media3.datasource.cache.SimpleCache
+import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.cache.LeastRecentlyUsedCacheEvictor
 import androidx.media3.database.StandaloneDatabaseProvider
 import androidx.media3.datasource.cache.CacheDataSource
@@ -34,24 +36,29 @@ class NativePlaybackService : MediaSessionService() {
         super.onCreate()
         setMediaNotificationProvider(DefaultMediaNotificationProvider.Builder(this).build())
 
-        val mediaCacheDir = java.io.File(cacheDir, "media_cache")
-        val evictor = LeastRecentlyUsedCacheEvictor(1024L * 1024L * 1024L) // 1GB limit
-        val dbProvider = StandaloneDatabaseProvider(this)
-        databaseProvider = dbProvider
-        
-        val cache = SimpleCache(mediaCacheDir, evictor, dbProvider)
-        simpleCache = cache
-        
+        PlaybackPreferences.load(this)
+
         val httpDataSourceFactory = DefaultHttpDataSource.Factory()
             .setUserAgent(STREAM_USER_AGENT)
             .setAllowCrossProtocolRedirects(true)
-        val cacheDataSourceFactory = CacheDataSource.Factory()
-            .setCache(cache)
-            .setUpstreamDataSourceFactory(httpDataSourceFactory)
-            .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
+
+        val playbackDataSourceFactory: DataSource.Factory = if (PlaybackPreferences.cacheEnabled) {
+            val mediaCacheDir = java.io.File(cacheDir, "media_cache")
+            val evictor = LeastRecentlyUsedCacheEvictor(PlaybackPreferences.cacheLimitBytes)
+            val dbProvider = StandaloneDatabaseProvider(this)
+            databaseProvider = dbProvider
+            val cache = SimpleCache(mediaCacheDir, evictor, dbProvider)
+            simpleCache = cache
+            CacheDataSource.Factory()
+                .setCache(cache)
+                .setUpstreamDataSourceFactory(httpDataSourceFactory)
+                .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
+        } else {
+            httpDataSourceFactory
+        }
 
         val mediaSourceFactory = DefaultMediaSourceFactory(this)
-            .setDataSourceFactory(cacheDataSourceFactory)
+            .setDataSourceFactory(playbackDataSourceFactory)
 
         player = ExoPlayer.Builder(this)
             .setMediaSourceFactory(mediaSourceFactory)

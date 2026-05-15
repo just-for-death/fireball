@@ -41,6 +41,9 @@ struct FireballSettings: Codable, Hashable {
     var ollamaUrl = ""
     var ollamaModel = "llama3.2:3b"
     var lastFmApiKey = ""
+    var lastFmApiSecret = ""
+    var lastFmUsername = ""
+    var lastFmSessionKey = ""
     var listenBrainzToken = ""
     var listenBrainzUsername = ""
     var highQuality = false

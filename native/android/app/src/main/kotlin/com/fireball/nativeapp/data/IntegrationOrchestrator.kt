@@ -1,5 +1,6 @@
 package com.fireball.nativeapp.data
 
+import com.fireball.nativeapp.core.data.integrations.LastFmClient
 import com.fireball.nativeapp.core.data.integrations.ListenBrainzClient
 import com.fireball.nativeapp.core.data.integrations.GoogleDriveBackupClient
 import com.fireball.nativeapp.core.data.integrations.GotifyClient
@@ -24,6 +25,7 @@ import kotlinx.serialization.json.jsonPrimitive
 class IntegrationOrchestrator(
     private val fireballApiClient: FireballApiClient,
     private val listenBrainzClient: ListenBrainzClient,
+    private val lastFmClient: LastFmClient,
     private val sponsorBlockClient: SponsorBlockClient,
     private val webDavSyncClient: WebDavSyncClient,
     private val gotifyClient: GotifyClient,
@@ -65,6 +67,46 @@ class IntegrationOrchestrator(
             title = track.title,
             artist = track.artist,
             listenedAtEpoch = listenedAtEpoch
+        )
+    }
+
+    suspend fun validateLastFmApiKey(apiKey: String): Boolean = lastFmClient.validateApiKey(apiKey)
+
+    suspend fun connectLastFm(settings: FireballSettings, password: String): String? =
+        lastFmClient.getMobileSession(
+            apiKey = settings.lastFmApiKey,
+            apiSecret = settings.lastFmApiSecret,
+            username = settings.lastFmUsername,
+            password = password,
+        )
+
+    private fun lastFmReady(settings: FireballSettings): Boolean =
+        settings.lastFmApiKey.isNotBlank() &&
+            settings.lastFmApiSecret.isNotBlank() &&
+            settings.lastFmSessionKey.isNotBlank()
+
+    suspend fun submitLastFmPlayingNow(settings: FireballSettings, track: Track) {
+        if (!lastFmReady(settings)) return
+        lastFmClient.updateNowPlaying(
+            apiKey = settings.lastFmApiKey,
+            apiSecret = settings.lastFmApiSecret,
+            sessionKey = settings.lastFmSessionKey,
+            title = track.title,
+            artist = track.artist,
+            album = track.album,
+        )
+    }
+
+    suspend fun submitLastFmScrobble(settings: FireballSettings, track: Track, listenedAtEpoch: Long) {
+        if (!lastFmReady(settings)) return
+        lastFmClient.scrobble(
+            apiKey = settings.lastFmApiKey,
+            apiSecret = settings.lastFmApiSecret,
+            sessionKey = settings.lastFmSessionKey,
+            title = track.title,
+            artist = track.artist,
+            timestampEpoch = listenedAtEpoch,
+            album = track.album,
         )
     }
 

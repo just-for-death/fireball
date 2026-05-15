@@ -48,6 +48,9 @@ final class MainViewModel: ObservableObject {
 
     private let repository: FireballRepository
     private let listenBrainz = ListenBrainzClient()
+    private let lastFm = LastFmClient()
+    private let bluetoothMonitor = BluetoothRouteMonitor()
+    private let speechAnnouncer = SpeechAnnouncer()
     private let webDav = WebDavSyncClient()
     private let gotify = GotifyClient()
     private let lbdl = LbdlClient()
@@ -73,6 +76,7 @@ final class MainViewModel: ObservableObject {
             self.positionSeconds = position
             self.durationSeconds = duration
             self.maybeAutoSkipSponsor(positionSeconds: position)
+            self.syncLiveActivity()
         }
         audioEngine.onTrackEnded = { [weak self] in
             guard let self else { return }
@@ -106,6 +110,14 @@ final class MainViewModel: ObservableObject {
             self?.isPlaying = false
         }
         restorePlaybackSession()
+        bluetoothMonitor.start(
+            isEnabled: { [weak self] in self?.library.settings.bluetoothAutoplayEnabled ?? false },
+            shouldResume: { [weak self] in
+                guard let self else { return false }
+                return !self.queue.isEmpty && self.currentTrack != nil && !self.isPlaying
+            },
+            onResume: { [weak self] in self?.togglePlayPause() }
+        )
         Task { await sleepTimerLoop() }
     }
 
@@ -205,13 +217,19 @@ final class MainViewModel: ObservableObject {
                 currentLyrics = nil
             }
 
-            if !offline && !privacy && settings.listenBrainzEnabled && settings.listenBrainzPlayingNow {
-                await listenBrainz.submitPlayingNow(
-                    token: settings.listenBrainzToken,
-                    title: resolvedTrack.title,
-                    artist: resolvedTrack.artist
-                )
+            if !offline && !privacy {
+                if settings.listenBrainzEnabled && settings.listenBrainzPlayingNow && !settings.listenBrainzToken.isEmpty {
+                    await listenBrainz.submitPlayingNow(
+                        token: settings.listenBrainzToken,
+                        title: resolvedTrack.title,
+                        artist: resolvedTrack.artist
+                    )
+                }
+                await submitLastFmPlayingNow(track: resolvedTrack, settings: settings)
             }
+            speechAnnouncer.announceIfNeeded(track: resolvedTrack, enabled: settings.speakSongDetailsEnabled)
+            syncLiveActivity()
+            FireballAnalytics.log("track_started", settings: settings, properties: ["id": resolvedTrack.effectiveId])
         }
     }
 
@@ -377,7 +395,11 @@ final class MainViewModel: ObservableObject {
         guard let track = currentTrack else { return }
         let settings = library.settings
         if settings.offlineModeEnabled || settings.privacyModeEnabled { return }
-        guard settings.listenBrainzEnabled, !settings.listenBrainzToken.isEmpty else { return }
+        let lbReady = settings.listenBrainzEnabled && !settings.listenBrainzToken.isEmpty
+        let lastFmReady = !settings.lastFmApiKey.isEmpty &&
+            !settings.lastFmApiSecret.isEmpty &&
+            !settings.lastFmSessionKey.isEmpty
+        guard lbReady || lastFmReady else { return }
         guard durationSeconds > 0 else { return }
 
         let thresholdByPercent = durationSeconds * Double(settings.listenBrainzScrobblePercent) / 100.0
@@ -386,12 +408,27 @@ final class MainViewModel: ObservableObject {
         guard positionSeconds >= threshold else { return }
         guard scrobbledTrackIds.insert(track.effectiveId).inserted else { return }
 
-        await listenBrainz.submitScrobble(
-            token: settings.listenBrainzToken,
-            title: track.title,
-            artist: track.artist,
-            listenedAt: Int64(Date().timeIntervalSince1970)
-        )
+        let listenedAt = Int64(Date().timeIntervalSince1970)
+        if lbReady {
+            await listenBrainz.submitScrobble(
+                token: settings.listenBrainzToken,
+                title: track.title,
+                artist: track.artist,
+                listenedAt: listenedAt
+            )
+        }
+        if lastFmReady {
+            _ = await lastFm.scrobble(
+                apiKey: settings.lastFmApiKey,
+                apiSecret: settings.lastFmApiSecret,
+                sessionKey: settings.lastFmSessionKey,
+                title: track.title,
+                artist: track.artist,
+                listenedAt: listenedAt,
+                album: track.album
+            )
+        }
+        FireballAnalytics.log("scrobble", settings: settings, properties: ["id": track.effectiveId])
     }
 
     private func maybeAppendAIQueue() async {
@@ -598,13 +635,71 @@ final class MainViewModel: ObservableObject {
             currentLyrics = await lyricsAi.fetchLyrics(track: track, settings: settings)
         }
         await loadSponsorSegmentsAfterPlay(for: track)
-        if settings.listenBrainzEnabled && settings.listenBrainzPlayingNow && !settings.listenBrainzToken.isEmpty {
-            await listenBrainz.submitPlayingNow(
-                token: settings.listenBrainzToken,
+        if !settings.offlineModeEnabled && !settings.privacyModeEnabled {
+            if settings.listenBrainzEnabled && settings.listenBrainzPlayingNow && !settings.listenBrainzToken.isEmpty {
+                await listenBrainz.submitPlayingNow(
+                    token: settings.listenBrainzToken,
+                    title: track.title,
+                    artist: track.artist
+                )
+            }
+            await submitLastFmPlayingNow(track: track, settings: settings)
+        }
+        speechAnnouncer.announceIfNeeded(track: track, enabled: settings.speakSongDetailsEnabled)
+        syncLiveActivity()
+    }
+
+    private func submitLastFmPlayingNow(track: Track, settings: FireballSettings) async {
+        guard !settings.lastFmApiKey.isEmpty,
+              !settings.lastFmApiSecret.isEmpty,
+              !settings.lastFmSessionKey.isEmpty
+        else { return }
+        _ = await lastFm.updateNowPlaying(
+            apiKey: settings.lastFmApiKey,
+            apiSecret: settings.lastFmApiSecret,
+            sessionKey: settings.lastFmSessionKey,
+            title: track.title,
+            artist: track.artist,
+            album: track.album
+        )
+    }
+
+    private func syncLiveActivity() {
+        guard let track = currentTrack else {
+            NowPlayingLiveActivityManager.end()
+            return
+        }
+        if #available(iOS 16.1, *) {
+            NowPlayingLiveActivityManager.update(
+                enabled: library.settings.dynamicIslandEnabled,
                 title: track.title,
-                artist: track.artist
+                artist: track.artist,
+                isPlaying: isPlaying
             )
         }
+    }
+
+    func validateLastFmKey() async -> Bool {
+        let ok = await lastFm.validateApiKey(library.settings.lastFmApiKey)
+        integrationStatus = ok ? "last.fm: api key valid" : "last.fm: api key invalid"
+        return ok
+    }
+
+    func connectLastFm(password: String) async -> Bool {
+        let settings = library.settings
+        guard let session = await lastFm.mobileSession(
+            apiKey: settings.lastFmApiKey,
+            apiSecret: settings.lastFmApiSecret,
+            username: settings.lastFmUsername,
+            password: password
+        ) else {
+            integrationStatus = "last.fm: login failed"
+            return false
+        }
+        library.settings.lastFmSessionKey = session
+        persist()
+        integrationStatus = "last.fm: connected"
+        return true
     }
 
     private func advanceAfterTrackFinished() async {

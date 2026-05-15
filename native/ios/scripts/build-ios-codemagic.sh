@@ -21,7 +21,7 @@ xcodegen generate
 SCHEME="FireballNative"
 DEST="${1:-generic/platform=iOS}"
 
-echo "==> Building $SCHEME for $DEST…"
+echo "==> Building $SCHEME (+ FireballWidgets extension) for $DEST…"
 xcodebuild \
   -project FireballNative.xcodeproj \
   -scheme "$SCHEME" \
@@ -31,4 +31,4 @@ xcodebuild \
   CODE_SIGNING_ALLOWED="${CODE_SIGNING_ALLOWED:-NO}" \
   build
 
-echo "OK: native iOS app built."
+echo "OK: native iOS app + widget extension built."

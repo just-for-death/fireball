@@ -19,7 +19,7 @@
   - Target: Fireball LRCLIB first, NetEase fallback, local `.lrc`
 - Scrobbling:
   - SuvMusic: Last.fm module
-  - Target: Fireball ListenBrainz primary + Last.fm key validation support
+  - Target: Fireball ListenBrainz primary + Last.fm scrobble (session via mobile auth)
 - Backup/sync:
   - SuvMusic: DataStore/Room local focus
   - Target: Fireball WebDAV live sync + Google Drive appData backup
@@ -86,5 +86,13 @@
 - [x] Remote pairing endpoint hooks on Android/iOS
 - [x] Network timeout+retry baseline for integrations on Android/iOS
 - [x] Unified integration status messaging across Android/iOS
+- [x] Android Picture-in-Picture (settings: Picture-in-Picture)
+- [x] iOS Live Activity + Dynamic Island widget extension (`FireballWidgets`)
+- [x] Bluetooth autoplay (Android A2DP + iOS route change)
+- [x] TTS song announcements (Android + iOS)
+- [x] Last.fm validate + connect + scrobble/now-playing (Android + iOS)
+- [x] Analytics/logging events gated by settings (Android + iOS)
+- [x] Exo disk cache tied to `cacheEnabled` + `localMusicCacheLimit` (Android)
+- [x] Flex/theme mode pickers + artwork dynamic color (Android + iOS)
 - [ ] Full SuvMusic animation parity
 - [ ] Full audio engine parity + OS background media service parity
