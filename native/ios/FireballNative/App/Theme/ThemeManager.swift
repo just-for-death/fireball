@@ -31,37 +31,32 @@ public extension EnvironmentValues {
 public struct DynamicThemeViewModifier: ViewModifier {
     @StateObject private var themeManager = ThemeManager.shared
     let artworkUrl: String?
-    let useDynamicFromArtwork: Bool
+    let settings: FireballSettings
     @Environment(\.colorScheme) var colorScheme
 
     public func body(content: Content) -> some View {
         content
             .environment(\.dominantColors, themeManager.colors)
-            .onChange(of: artworkUrl) { newUrl in
-                applyTheme(artworkUrl: newUrl)
-            }
-            .onChange(of: colorScheme) { _ in
-                applyTheme(artworkUrl: artworkUrl)
-            }
-            .onChange(of: useDynamicFromArtwork) { _ in
-                applyTheme(artworkUrl: artworkUrl)
-            }
-            .onAppear {
-                applyTheme(artworkUrl: artworkUrl)
-            }
+            .onChange(of: artworkUrl) { _ in applyTheme() }
+            .onChange(of: colorScheme) { _ in applyTheme() }
+            .onChange(of: settings.useDynamicColorWhenAvailable) { _ in applyTheme() }
+            .onChange(of: settings.flexScheme) { _ in applyTheme() }
+            .onChange(of: settings.themeMode) { _ in applyTheme() }
+            .onAppear { applyTheme() }
     }
 
-    private func applyTheme(artworkUrl: String?) {
-        if useDynamicFromArtwork {
-            themeManager.updateColors(from: artworkUrl, isDark: colorScheme == .dark)
+    private func applyTheme() {
+        let isDark = FlexTheme.isDark(themeMode: settings.themeMode, systemDark: colorScheme == .dark)
+        if settings.useDynamicColorWhenAvailable {
+            themeManager.updateColors(from: artworkUrl, isDark: isDark)
         } else {
-            themeManager.colors = .defaultColors
+            themeManager.colors = FlexTheme.colors(for: settings.flexScheme, isDark: isDark)
         }
     }
 }
 
 public extension View {
-    func dynamicTheme(artworkUrl: String?, useDynamicFromArtwork: Bool = true) -> some View {
-        modifier(DynamicThemeViewModifier(artworkUrl: artworkUrl, useDynamicFromArtwork: useDynamicFromArtwork))
+    func dynamicTheme(artworkUrl: String?, settings: FireballSettings) -> some View {
+        modifier(DynamicThemeViewModifier(artworkUrl: artworkUrl, settings: settings))
     }
 }

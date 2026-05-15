@@ -2,6 +2,7 @@ import SwiftUI
 
 public struct NowPlayingScreen: View {
     let track: Track
+    let settings: FireballSettings
     let isPlaying: Bool
     let positionSeconds: Double
     let durationSeconds: Double
@@ -160,7 +161,7 @@ public struct NowPlayingScreen: View {
                 .padding(.bottom, 48)
             }
         }
-        .dynamicTheme(artworkUrl: track.artwork)
+        .dynamicTheme(artworkUrl: track.artwork, settings: settings)
         .offset(y: dragOffset.height > 0 ? dragOffset.height : 0)
         .gesture(
             DragGesture()

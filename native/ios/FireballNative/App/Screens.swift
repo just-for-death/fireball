@@ -358,9 +358,12 @@ struct SettingsScreen: View {
     let onInvidiousSyncPlaylist: (String) -> Void
     let onInvidiousPushPlaylist: (String, String?) -> Void
     let onGoogleDriveBackup: (String) -> Void
+    let onValidateLastFm: () -> Void
+    let onConnectLastFm: (String) -> Void
 
     @State private var pairCode = ""
     @State private var invidiousPassword = ""
+    @State private var lastFmPassword = ""
     @State private var pushLocalPlaylistId = ""
     @State private var pushRemotePlaylistId = ""
     @State private var gDriveAccessToken = ""
@@ -404,7 +407,7 @@ struct SettingsScreen: View {
                     get: { settings.privacyModeEnabled },
                     set: { value in onUpdateSettings { $0.privacyModeEnabled = value } }
                 ))
-                Toggle("Dynamic Player", isOn: .init(
+                Toggle("Live Activity / Dynamic Island", isOn: .init(
                     get: { settings.dynamicIslandEnabled },
                     set: { value in onUpdateSettings { $0.dynamicIslandEnabled = value } }
                 ))
@@ -422,14 +425,24 @@ struct SettingsScreen: View {
                 ))
             }
             Section("Appearance") {
-                TextField("Theme mode", text: .init(
+                Picker("Theme mode", selection: .init(
                     get: { settings.themeMode },
                     set: { value in onUpdateSettings { $0.themeMode = value } }
-                ))
-                TextField("Color scheme", text: .init(
+                )) {
+                    Text("System").tag("system")
+                    Text("Light").tag("light")
+                    Text("Dark").tag("dark")
+                }
+                Picker("Color scheme", selection: .init(
                     get: { settings.flexScheme },
                     set: { value in onUpdateSettings { $0.flexScheme = value } }
-                ))
+                )) {
+                    Text("Deep purple").tag("deepPurple")
+                    Text("Ocean").tag("ocean")
+                    Text("Sunset").tag("sunset")
+                    Text("Nature").tag("nature")
+                    Text("Love").tag("mandyRed")
+                }
                 Toggle("Use Dynamic Color", isOn: .init(
                     get: { settings.useDynamicColorWhenAvailable },
                     set: { value in onUpdateSettings { $0.useDynamicColorWhenAvailable = value } }
@@ -553,6 +566,30 @@ struct SettingsScreen: View {
                     get: { settings.listenBrainzUsername },
                     set: { value in onUpdateSettings { $0.listenBrainzUsername = value } }
                 ))
+                Toggle("Analytics events", isOn: .init(
+                    get: { settings.analytics },
+                    set: { value in onUpdateSettings { $0.analytics = value } }
+                ))
+                TextField("Last.fm API key", text: .init(
+                    get: { settings.lastFmApiKey },
+                    set: { value in onUpdateSettings { $0.lastFmApiKey = value } }
+                ))
+                TextField("Last.fm shared secret", text: .init(
+                    get: { settings.lastFmApiSecret },
+                    set: { value in onUpdateSettings { $0.lastFmApiSecret = value } }
+                ))
+                TextField("Last.fm username", text: .init(
+                    get: { settings.lastFmUsername },
+                    set: { value in onUpdateSettings { $0.lastFmUsername = value } }
+                ))
+                SecureField("Last.fm password (not saved)", text: $lastFmPassword)
+                HStack {
+                    Button("Validate key") { onValidateLastFm() }
+                    Button("Connect") { onConnectLastFm(lastFmPassword) }
+                }
+                if !settings.lastFmSessionKey.isEmpty {
+                    Text("Last.fm session active").font(.caption).foregroundStyle(.secondary)
+                }
                 TextField("Scrobble at % of track", text: .init(
                     get: { "\(settings.listenBrainzScrobblePercent)" },
                     set: { value in

@@ -248,6 +248,12 @@ fun FireballNativeApp(viewModel: MainViewModel) {
                                 onInvidiousPushPlaylist = viewModel::invidiousPushPlaylist,
                                 invidiousPlaylists = uiState.invidiousPlaylists,
                                 onGoogleDriveBackup = viewModel::backupToGoogleDrive,
+                                onValidateLastFm = {
+                                    viewModel.validateLastFmKey { /* status via integrationStatus */ }
+                                },
+                                onConnectLastFm = { password ->
+                                    viewModel.connectLastFm(password) { /* status via integrationStatus */ }
+                                },
                             )
                         }
                     }

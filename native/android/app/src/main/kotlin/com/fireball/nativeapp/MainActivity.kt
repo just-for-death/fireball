@@ -4,8 +4,12 @@ import android.Manifest
 import android.bluetooth.BluetoothA2dp
 import android.bluetooth.BluetoothProfile
 import android.content.pm.PackageManager
+import android.app.PictureInPictureParams
+import android.util.Rational
 import android.os.Build
 import android.os.Bundle
+import com.fireball.nativeapp.core.data.PlaybackPreferences
+import com.fireball.nativeapp.core.data.integrations.LastFmClient
 import android.speech.tts.TextToSpeech
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -44,13 +48,19 @@ import io.ktor.serialization.kotlinx.json.json
 import kotlinx.serialization.json.Json
 
 class MainActivity : ComponentActivity() {
+    private lateinit var viewModel: MainViewModel
     private var bluetoothReceiver: BroadcastReceiver? = null
     private var textToSpeech: TextToSpeech? = null
     private var ttsCollectorJob: Job? = null
+    private var playbackPrefsJob: Job? = null
 
     private val requestPostNotificationsPermission = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { /* denied: media foreground notification may be suppressed on API 33+ */ }
+
+    private val requestBluetoothConnectPermission = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { /* denied: A2DP autoplay may not receive connection events on API 31+ */ }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -61,6 +71,13 @@ class MainActivity : ComponentActivity() {
                 != PackageManager.PERMISSION_GRANTED
             ) {
                 requestPostNotificationsPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT)
+                != PackageManager.PERMISSION_GRANTED
+            ) {
+                requestBluetoothConnectPermission.launch(Manifest.permission.BLUETOOTH_CONNECT)
             }
         }
 
@@ -88,9 +105,11 @@ class MainActivity : ComponentActivity() {
         val repository = FireballRepository(apiClient, store)
         val playerManager = PlayerManager()
         val playbackController = PlaybackController(this)
+        PlaybackPreferences.load(this)
         val integrations = IntegrationOrchestrator(
             fireballApiClient = apiClient,
             listenBrainzClient = ListenBrainzClient(httpClient),
+            lastFmClient = LastFmClient(httpClient),
             sponsorBlockClient = SponsorBlockClient(httpClient),
             webDavSyncClient = WebDavSyncClient(httpClient),
             gotifyClient = GotifyClient(httpClient),
@@ -99,18 +118,47 @@ class MainActivity : ComponentActivity() {
             googleDriveBackupClient = GoogleDriveBackupClient(httpClient)
         )
         val lyricsAndAi = LyricsAndAiOrchestrator(apiClient)
-        val viewModel = MainViewModel(
+        viewModel = MainViewModel(
+            applicationContext,
             repository,
             playerManager,
             integrations,
             playbackController,
-            lyricsAndAi
+            lyricsAndAi,
         )
 
         setupBluetoothAutoplay(viewModel)
         setupSongAnnounceTts(viewModel)
+        playbackPrefsJob = lifecycleScope.launch {
+            viewModel.uiState.collectLatest { state ->
+                PlaybackPreferences.save(this@MainActivity, state.library.settings)
+            }
+        }
 
         setContent { FireballNativeApp(viewModel = viewModel) }
+    }
+
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        if (!::viewModel.isInitialized) return
+        if (!PlaybackPreferences.pictureInPictureEnabled) return
+        if (!viewModel.playbackState.value.isPlaying) return
+        if (viewModel.playbackState.value.currentTrack == null) return
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        val builder = PictureInPictureParams.Builder()
+            .setAspectRatio(Rational(16, 9))
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            builder.setAutoEnterEnabled(false)
+            builder.setSeamlessResizeEnabled(true)
+        }
+        enterPictureInPictureMode(builder.build())
+    }
+
+    override fun onPictureInPictureModeChanged(
+        isInPictureInPictureMode: Boolean,
+        newConfig: android.content.res.Configuration,
+    ) {
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
     }
 
     private fun setupBluetoothAutoplay(viewModel: MainViewModel) {
@@ -177,6 +225,9 @@ class MainActivity : ComponentActivity() {
 
         ttsCollectorJob?.cancel()
         ttsCollectorJob = null
+
+        playbackPrefsJob?.cancel()
+        playbackPrefsJob = null
 
         textToSpeech?.stop()
         textToSpeech?.shutdown()

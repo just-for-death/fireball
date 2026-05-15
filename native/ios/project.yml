@@ -22,8 +22,12 @@ targets:
     platform: iOS
     sources:
       - path: FireballNative
+        excludes:
+          - "**/.build/**"
     dependencies:
       - package: YouTubeKit
+      - target: FireballWidgets
+        embed: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.fireball.nativeapp
@@ -36,5 +40,25 @@ targets:
       properties:
         UIBackgroundModes:
           - audio
+        NSSupportsLiveActivities: true
         NSAppTransportSecurity:
           NSAllowsArbitraryLoads: true
+
+  FireballWidgets:
+    type: app-extension
+    platform: iOS
+    deploymentTarget: "16.1"
+    sources:
+      - path: FireballNative/Shared
+      - path: FireballWidgets
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.fireball.nativeapp.widgets
+        GENERATE_INFOPLIST_FILE: YES
+        CODE_SIGN_STYLE: Automatic
+        INFOPLIST_KEY_CFBundleDisplayName: Fireball Widgets
+        INFOPLIST_KEY_NSExtension_NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    info:
+      properties:
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension

@@ -15,7 +15,10 @@ import com.fireball.nativeapp.player.PlaybackState
 import com.fireball.nativeapp.player.NativePlaybackService
 import com.fireball.nativeapp.player.PlaybackController
 import com.fireball.nativeapp.player.RepeatMode
+import com.fireball.nativeapp.core.data.FireballAnalytics
+import com.fireball.nativeapp.core.data.PlaybackPreferences
 import com.fireball.nativeapp.core.data.integrations.SponsorSegment
+import android.content.Context
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -50,6 +53,7 @@ data class MainUiState(
 )
 
 class MainViewModel(
+    private val appContext: Context,
     private val repository: FireballRepository,
     private val playerManager: PlayerManager,
     private val integrations: IntegrationOrchestrator,
@@ -173,6 +177,7 @@ class MainViewModel(
         }
         viewModelScope.launch {
             val lib = repository.loadLibrary()
+            PlaybackPreferences.save(appContext, lib.settings)
             _uiState.update { it.copy(library = lib) }
             val session = lib.playbackSession
             if (session.queue.isNotEmpty()) {
@@ -336,8 +341,14 @@ class MainViewModel(
         if (!offline && !privacy) {
             viewModelScope.launch {
                 integrations.submitPlayingNow(settings, nowPlaying)
+                integrations.submitLastFmPlayingNow(settings, nowPlaying)
             }
         }
+        FireballAnalytics.log(
+            "track_started",
+            settings,
+            mapOf("id" to nowPlaying.effectiveId, "title" to nowPlaying.title),
+        )
     }
 
     /** Resolves the rest of the queue and extends the Exo timeline without restarting playback. */
@@ -470,7 +481,34 @@ class MainViewModel(
 
     fun updateSettings(transform: (FireballSettings) -> FireballSettings) {
         val updated = transform(_uiState.value.library.settings)
+        PlaybackPreferences.save(appContext, updated)
         persist(_uiState.value.library.copy(settings = updated))
+    }
+
+    fun validateLastFmKey(onResult: (Boolean) -> Unit) {
+        val key = _uiState.value.library.settings.lastFmApiKey
+        viewModelScope.launch {
+            val ok = integrations.validateLastFmApiKey(key)
+            onResult(ok)
+            _uiState.update {
+                it.copy(integrationStatus = if (ok) "last.fm: api key valid" else "last.fm: api key invalid")
+            }
+        }
+    }
+
+    fun connectLastFm(password: String, onResult: (Boolean) -> Unit) {
+        val settings = _uiState.value.library.settings
+        viewModelScope.launch {
+            val session = integrations.connectLastFm(settings, password)
+            if (session.isNullOrBlank()) {
+                onResult(false)
+                _uiState.update { it.copy(integrationStatus = "last.fm: login failed") }
+                return@launch
+            }
+            updateSettings { it.copy(lastFmSessionKey = session) }
+            onResult(true)
+            _uiState.update { it.copy(integrationStatus = "last.fm: connected") }
+        }
     }
 
     fun togglePlayPause() {
@@ -562,7 +600,11 @@ class MainViewModel(
         val track = state.currentTrack ?: return
         val settings = _uiState.value.library.settings
         if (settings.offlineModeEnabled || settings.privacyModeEnabled) return
-        if (!settings.listenBrainzEnabled || settings.listenBrainzToken.isBlank()) return
+        val lbEnabled = settings.listenBrainzEnabled && settings.listenBrainzToken.isNotBlank()
+        val lastFmEnabled = settings.lastFmApiKey.isNotBlank() &&
+            settings.lastFmApiSecret.isNotBlank() &&
+            settings.lastFmSessionKey.isNotBlank()
+        if (!lbEnabled && !lastFmEnabled) return
         if (state.durationMs <= 0) return
 
         val thresholdByPercent = (state.durationMs * settings.listenBrainzScrobblePercent / 100.0).toLong()
@@ -571,12 +613,17 @@ class MainViewModel(
         if (state.positionMs < thresholdMs) return
 
         if (!scrobbledTrackIds.add(track.effectiveId)) return
+        val listenedAt = System.currentTimeMillis() / 1000L
         viewModelScope.launch {
-            integrations.submitScrobble(
-                settings = settings,
-                track = track,
-                listenedAtEpoch = System.currentTimeMillis() / 1000L
-            )
+            if (settings.listenBrainzEnabled && settings.listenBrainzToken.isNotBlank()) {
+                integrations.submitScrobble(
+                    settings = settings,
+                    track = track,
+                    listenedAtEpoch = listenedAt,
+                )
+            }
+            integrations.submitLastFmScrobble(settings, track, listenedAt)
+            FireballAnalytics.log("scrobble", settings, mapOf("id" to track.effectiveId))
         }
     }
 
