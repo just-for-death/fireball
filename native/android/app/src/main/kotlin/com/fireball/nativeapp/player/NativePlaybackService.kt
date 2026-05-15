@@ -2,12 +2,16 @@ package com.fireball.nativeapp.player
 
 import android.app.PendingIntent
 import android.content.Intent
+import android.util.Log
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
+import androidx.media3.common.util.Util
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
+import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.session.DefaultMediaNotificationProvider
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 import com.fireball.nativeapp.MainActivity
@@ -28,7 +32,8 @@ class NativePlaybackService : MediaSessionService() {
 
     override fun onCreate() {
         super.onCreate()
-        
+        setMediaNotificationProvider(DefaultMediaNotificationProvider.Builder(this).build())
+
         val mediaCacheDir = java.io.File(cacheDir, "media_cache")
         val evictor = LeastRecentlyUsedCacheEvictor(1024L * 1024L * 1024L) // 1GB limit
         val dbProvider = StandaloneDatabaseProvider(this)
@@ -37,7 +42,9 @@ class NativePlaybackService : MediaSessionService() {
         val cache = SimpleCache(mediaCacheDir, evictor, dbProvider)
         simpleCache = cache
         
-        val httpDataSourceFactory = DefaultHttpDataSource.Factory().setAllowCrossProtocolRedirects(true)
+        val httpDataSourceFactory = DefaultHttpDataSource.Factory()
+            .setUserAgent(STREAM_USER_AGENT)
+            .setAllowCrossProtocolRedirects(true)
         val cacheDataSourceFactory = CacheDataSource.Factory()
             .setCache(cache)
             .setUpstreamDataSourceFactory(httpDataSourceFactory)
@@ -58,18 +65,26 @@ class NativePlaybackService : MediaSessionService() {
             )
             setHandleAudioBecomingNoisy(true)
             repeatMode = Player.REPEAT_MODE_OFF
+            addListener(object : Player.Listener {
+                override fun onPlayerError(error: PlaybackException) {
+                    Log.e(TAG, "ExoPlayer error: ${error.errorCodeName} cause=${error.cause?.message}", error)
+                }
+            })
         }
         mediaSession = MediaSession.Builder(this, player!!)
             .setSessionActivity(sessionActivityIntent())
             .build()
+        // Required so MediaController can bind to this session; without it playback commands may not reach ExoPlayer.
+        addSession(mediaSession!!)
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? = mediaSession
 
     override fun onDestroy() {
-        mediaSession?.run {
-            player.release()
-            release()
+        mediaSession?.let { session ->
+            removeSession(session)
+            session.player.release()
+            session.release()
         }
         mediaSession = null
         player = null
@@ -91,6 +106,12 @@ class NativePlaybackService : MediaSessionService() {
     }
 
     companion object {
+        private const val TAG = "FireballPlayback"
+
+        /** Match OkHttp UA in [com.fireball.nativeapp.MainActivity] for CDN / Invidious proxy compatibility. */
+        const val STREAM_USER_AGENT =
+            "Mozilla/5.0 (Linux; Android) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36 FireballNative/1.0"
+
         fun mediaItem(
             id: String,
             title: String,

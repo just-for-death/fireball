@@ -1,8 +1,10 @@
 package com.fireball.nativeapp
 
+import android.Manifest
 import android.bluetooth.BluetoothA2dp
-import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothProfile
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import android.speech.tts.TextToSpeech
 import android.content.BroadcastReceiver
@@ -12,6 +14,8 @@ import android.content.IntentFilter
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.collectLatest
@@ -44,11 +48,33 @@ class MainActivity : ComponentActivity() {
     private var textToSpeech: TextToSpeech? = null
     private var ttsCollectorJob: Job? = null
 
+    private val requestPostNotificationsPermission = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { /* denied: media foreground notification may be suppressed on API 33+ */ }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
+                != PackageManager.PERMISSION_GRANTED
+            ) {
+                requestPostNotificationsPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
+        }
+
         val httpClient = HttpClient(OkHttp) {
+            engine {
+                config {
+                    addInterceptor { chain ->
+                        val req = chain.request().newBuilder()
+                            .header("User-Agent", "Mozilla/5.0 (Linux; Android) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36 FireballNative/1.0")
+                            .build()
+                        chain.proceed(req)
+                    }
+                }
+            }
             install(ContentNegotiation) {
                 json(Json {
                     ignoreUnknownKeys = true

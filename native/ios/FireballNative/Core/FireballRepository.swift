@@ -2,6 +2,13 @@ import Foundation
 
 @MainActor
 final class FireballRepository {
+    private static let searchCachePrefix = "v3:"
+
+    private static let publicPipedInstances = [
+        "https://pipedapi.kavin.rocks",
+        "https://pipedapi.in.projectsegfau.lt",
+    ]
+
     private let api: FireballAPIClient
     private let store: LibraryStore
     private var searchCache: [String: [Track]] = [:]
@@ -25,25 +32,30 @@ final class FireballRepository {
             return []
         }
 
+        let cacheKey = Self.searchCachePrefix + normalizedQuery
         let downloaded = resolveLocalDownloadedMatches(normalizedQuery: normalizedQuery, settings: settings)
         if !downloaded.isEmpty { return downloaded }
-        if let cached = searchCache[normalizedQuery] { return cached }
+        if let cached = searchCache[cacheKey], !cached.isEmpty { return cached }
 
         if let iTunesTracks = await searchITunes(query: query), !iTunesTracks.isEmpty {
-            cache(query: normalizedQuery, tracks: iTunesTracks)
+            cache(query: cacheKey, tracks: iTunesTracks)
             return iTunesTracks
         }
 
-        guard !settings.invidiousInstance.isEmpty else { return [] }
-        if let invidious = await searchInvidious(query: query, instance: settings.invidiousInstance, sid: settings.invidiousSid), !invidious.isEmpty {
-            cache(query: normalizedQuery, tracks: invidious)
-            return invidious
+        let invidiousList = await invidiousInstances(settings: settings)
+        for instance in invidiousList {
+            if let invidious = await searchInvidious(query: query, instance: instance, sid: settings.invidiousSid), !invidious.isEmpty {
+                cache(query: cacheKey, tracks: invidious)
+                return invidious
+            }
         }
 
-        if settings.fallbackToPiped && !settings.pipedInstance.isEmpty {
-            if let piped = await searchPiped(query: query, instance: settings.pipedInstance), !piped.isEmpty {
-                cache(query: normalizedQuery, tracks: piped)
-                return piped
+        if settings.fallbackToPiped {
+            for piped in pipedInstances(settings: settings) {
+                if let results = await searchPiped(query: query, instance: piped), !results.isEmpty {
+                    cache(query: cacheKey, tracks: results)
+                    return results
+                }
             }
         }
         return []
@@ -58,6 +70,195 @@ final class FireballRepository {
         return resolved
     }
 
+    /// Resolves one track to a stream URL (matches Android / Flutter: no iTunes preview as final URL).
+    func resolvePlayableTrack(_ track: Track, settings: FireballSettings) async -> Track {
+        if let local = resolveDownloadedPath(for: track, settings: settings) {
+            return Track(
+                id: track.id,
+                videoId: track.videoId,
+                title: track.title,
+                artist: track.artist,
+                artwork: track.artwork,
+                url: local,
+                duration: track.duration,
+                album: track.album,
+                year: track.year
+            )
+        }
+
+        if let url = track.url, !url.isEmpty, !isItunesPreviewUrl(url) {
+            return track
+        }
+
+        let invidiousList = await invidiousInstances(settings: settings)
+        for instance in invidiousList {
+            if let resolved = await resolveViaInvidious(track: track, instance: instance, settings: settings),
+               let url = resolved.url, !url.isEmpty {
+                return resolved
+            }
+        }
+
+        if settings.fallbackToPiped {
+            for piped in pipedInstances(settings: settings) {
+                if let resolved = await resolveViaPiped(track: track, instance: piped),
+                   let url = resolved.url, !url.isEmpty {
+                    return resolved
+                }
+            }
+        }
+
+        return track
+    }
+
+    // MARK: - Invidious playlist (used by MainViewModel)
+
+    func invidiousLogin(settings: FireballSettings, username: String, password: String) async throws -> (sid: String, username: String) {
+        try await api.invidiousLogin(instanceURL: settings.invidiousInstance, username: username, password: password)
+    }
+
+    func invidiousAuthPlaylists(settings: FireballSettings) async -> [(id: String, title: String)] {
+        guard let sid = settings.invidiousSid, !sid.isEmpty, !settings.invidiousInstance.isEmpty else { return [] }
+        guard let data = try? await api.invidiousAuthPlaylists(instanceURL: settings.invidiousInstance, sid: sid),
+              let arr = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]]
+        else { return [] }
+
+        return arr.compactMap { item in
+            guard let id = item["playlistId"] as? String else { return nil }
+            let title = item["title"] as? String ?? "Playlist"
+            return (id, title)
+        }
+    }
+
+    func invidiousSyncPlaylist(settings: FireballSettings, playlistId: String) async -> Playlist? {
+        guard !settings.invidiousInstance.isEmpty, !playlistId.isEmpty else { return nil }
+        guard let data = try? await api.invidiousPlaylistDetail(
+            instanceURL: settings.invidiousInstance,
+            sid: settings.invidiousSid,
+            playlistId: playlistId
+        ),
+            let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else { return nil }
+
+        let id = root["playlistId"] as? String ?? playlistId
+        let title = root["title"] as? String ?? "Playlist"
+        let videoArr = root["videos"] as? [[String: Any]] ?? []
+        let videos: [Track] = videoArr.compactMap { obj in
+            guard let videoId = obj["videoId"] as? String else { return nil }
+            let thumbs = obj["videoThumbnails"] as? [[String: Any]]
+            let art = thumbs?.first?["url"] as? String
+            return Track(
+                id: videoId,
+                videoId: videoId,
+                title: obj["title"] as? String ?? "Unknown",
+                artist: obj["author"] as? String ?? "Unknown",
+                artwork: art,
+                url: nil,
+                duration: nil,
+                album: nil,
+                year: nil
+            )
+        }
+        return Playlist(id: id, title: title, videos: videos)
+    }
+
+    func invidiousPushPlaylist(settings: FireballSettings, local: Playlist, existingInvidiousId: String?) async -> String? {
+        guard let sid = settings.invidiousSid, !sid.isEmpty, !settings.invidiousInstance.isEmpty, !local.videos.isEmpty else { return nil }
+
+        var invId = existingInvidiousId?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if invId.isEmpty {
+            invId = (try? await api.invidiousCreatePlaylist(
+                instanceURL: settings.invidiousInstance,
+                sid: sid,
+                title: local.title,
+                privacy: settings.invidiousPlaylistPrivacy
+            )) ?? ""
+        }
+        guard !invId.isEmpty else { return nil }
+
+        for track in local.videos {
+            let videoId = track.videoId ?? track.id
+            guard !videoId.isEmpty else { continue }
+            try? await api.invidiousAddVideoToPlaylist(
+                instanceURL: settings.invidiousInstance,
+                sid: sid,
+                playlistId: invId,
+                videoId: videoId
+            )
+        }
+        return invId
+    }
+
+    // MARK: - Private
+
+    private func invidiousInstances(settings: FireballSettings) async -> [String] {
+        let publicList = await InvidiousInstances.fetchHealthyPublicInstances()
+        return InvidiousInstances.ordered(userInstance: settings.invidiousInstance, publicInstances: publicList)
+    }
+
+    private func pipedInstances(settings: FireballSettings) -> [String] {
+        var out: [String] = []
+        let user = settings.pipedInstance.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !user.isEmpty { out.append(user) }
+        for mirror in Self.publicPipedInstances where !out.contains(mirror) {
+            out.append(mirror)
+        }
+        return out
+    }
+
+    private func resolveViaInvidious(track: Track, instance: String, settings: FireballSettings) async -> Track? {
+        if let videoId = track.videoId,
+           let stream = await resolveInvidiousAudioStream(instance: instance, videoId: videoId, settings: settings) {
+            return trackWithUrl(track, url: normalizePlaybackUrl(stream, instance: instance), videoId: track.videoId)
+        }
+
+        if let searchResult = await searchInvidious(
+            query: "\(track.artist) \(track.title) official audio",
+            instance: instance,
+            sid: settings.invidiousSid
+        ),
+            let first = searchResult.first,
+            let firstVideoId = first.videoId,
+            let stream = await resolveInvidiousAudioStream(instance: instance, videoId: firstVideoId, settings: settings) {
+            return trackWithUrl(track, url: normalizePlaybackUrl(stream, instance: instance), videoId: firstVideoId)
+        }
+        return nil
+    }
+
+    private func resolveViaPiped(track: Track, instance: String) async -> Track? {
+        if let videoId = track.videoId,
+           let stream = await resolvePipedAudioStream(instance: instance, videoId: videoId) {
+            return trackWithUrl(track, url: stream, videoId: track.videoId)
+        }
+
+        if let searchResult = await searchPiped(query: "\(track.title) \(track.artist)", instance: instance),
+           let first = searchResult.first,
+           let firstVideoId = first.videoId,
+           let stream = await resolvePipedAudioStream(instance: instance, videoId: firstVideoId) {
+            return trackWithUrl(track, url: stream, videoId: firstVideoId)
+        }
+        return nil
+    }
+
+    private func trackWithUrl(_ track: Track, url: String, videoId: String?) -> Track {
+        Track(
+            id: videoId ?? track.id,
+            videoId: videoId ?? track.videoId,
+            title: track.title,
+            artist: track.artist,
+            artwork: track.artwork,
+            url: url,
+            duration: track.duration,
+            album: track.album,
+            year: track.year
+        )
+    }
+
+    private func normalizePlaybackUrl(_ url: String, instance: String) -> String {
+        let base = instance.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        if url.hasPrefix(base) { return url }
+        return proxyStreamUrl(url, instance: instance)
+    }
+
     private func searchITunes(query: String) async -> [Track]? {
         guard let data = try? await api.iTunesSearch(term: query),
               let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -66,16 +267,18 @@ final class FireballRepository {
 
         return items.compactMap { item in
             guard let id = item["trackId"] as? Int else { return nil }
+            let rawArt = item["artworkUrl100"] as? String
+            let artwork = rawArt?.replacingOccurrences(of: "100x100", with: "600x600")
             return Track(
                 id: String(id),
                 videoId: nil,
                 title: item["trackName"] as? String ?? "Unknown",
                 artist: item["artistName"] as? String ?? "Unknown",
-                artwork: item["artworkUrl100"] as? String,
-                url: item["previewUrl"] as? String,
+                artwork: artwork,
+                url: nil,
                 duration: nil,
                 album: item["collectionName"] as? String,
-                year: (item["releaseDate"] as? String)?.prefix(4).description
+                year: (item["releaseDate"] as? String).map { String($0.prefix(4)) }
             )
         }
     }
@@ -101,107 +304,48 @@ final class FireballRepository {
         }
     }
 
-    private func resolvePlayableTrack(_ track: Track, settings: FireballSettings) async -> Track {
-        if let local = resolveDownloadedPath(for: track, settings: settings) {
-            return Track(
-                id: track.id,
-                videoId: track.videoId,
-                title: track.title,
-                artist: track.artist,
-                artwork: track.artwork,
-                url: local,
-                duration: track.duration,
-                album: track.album,
-                year: track.year
-            )
-        }
-
-        if let url = track.url, !url.isEmpty { return track }
-        guard !settings.invidiousInstance.isEmpty else { return track }
-
-        if let videoId = track.videoId,
-           let stream = await resolveInvidiousStream(instance: settings.invidiousInstance, videoId: videoId, sid: settings.invidiousSid) {
-            return Track(
-                id: track.id,
-                videoId: track.videoId,
-                title: track.title,
-                artist: track.artist,
-                artwork: track.artwork,
-                url: stream,
-                duration: track.duration,
-                album: track.album,
-                year: track.year
-            )
-        }
-
-        if let searchResult = await searchInvidious(query: "\(track.title) \(track.artist)", instance: settings.invidiousInstance, sid: settings.invidiousSid),
-           let first = searchResult.first,
-           let firstVideoId = first.videoId,
-           let stream = await resolveInvidiousStream(instance: settings.invidiousInstance, videoId: firstVideoId, sid: settings.invidiousSid) {
-            return Track(
-                id: firstVideoId,
-                videoId: firstVideoId,
-                title: track.title,
-                artist: track.artist,
-                artwork: track.artwork,
-                url: stream,
-                duration: track.duration,
-                album: track.album,
-                year: track.year
-            )
-        }
-
-        if settings.fallbackToPiped && !settings.pipedInstance.isEmpty {
-            if let videoId = track.videoId,
-               let stream = await resolvePipedStream(instance: settings.pipedInstance, videoId: videoId) {
-                return Track(
-                    id: track.id,
-                    videoId: track.videoId,
-                    title: track.title,
-                    artist: track.artist,
-                    artwork: track.artwork,
-                    url: stream,
-                    duration: track.duration,
-                    album: track.album,
-                    year: track.year
-                )
-            }
-
-            if let searchResult = await searchPiped(query: "\(track.title) \(track.artist)", instance: settings.pipedInstance),
-               let first = searchResult.first,
-               let firstVideoId = first.videoId,
-               let stream = await resolvePipedStream(instance: settings.pipedInstance, videoId: firstVideoId) {
-                return Track(
-                    id: firstVideoId,
-                    videoId: firstVideoId,
-                    title: track.title,
-                    artist: track.artist,
-                    artwork: track.artwork,
-                    url: stream,
-                    duration: track.duration,
-                    album: track.album,
-                    year: track.year
-                )
-            }
-        }
-
-        return track
-    }
-
-    private func resolveInvidiousStream(instance: String, videoId: String, sid: String?) async -> String? {
-        guard let data = try? await api.invidiousVideo(instanceURL: instance, videoId: videoId, sid: sid),
+    private func resolveInvidiousAudioStream(instance: String, videoId: String, settings: FireballSettings) async -> String? {
+        guard let data = try? await api.invidiousVideo(instanceURL: instance, videoId: videoId, sid: settings.invidiousSid),
               let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
         else { return nil }
 
         let adaptive = root["adaptiveFormats"] as? [[String: Any]]
-        if let url = adaptive?.first?["url"] as? String, !url.isEmpty {
-            return url
-        }
+        if let url = pickUrlFromAdaptive(adaptive, highQuality: settings.highQuality) { return url }
+
         let formats = root["formatStreams"] as? [[String: Any]]
-        if let url = formats?.first?["url"] as? String, !url.isEmpty {
-            return url
-        }
+        if let url = pickUrlFromFormatStreams(formats, highQuality: settings.highQuality) { return url }
+
         return nil
+    }
+
+    private func pickUrlFromAdaptive(_ formats: [[String: Any]]?, highQuality: Bool) -> String? {
+        guard let formats, !formats.isEmpty else { return nil }
+        let audioOnly = formats.filter { ($0["type"] as? String)?.hasPrefix("audio/") == true }
+        let bucket = audioOnly.isEmpty ? formats : audioOnly
+        let sorted = bucket.sorted { bitrate($0) > bitrate($1) }
+        guard let best = highQuality ? sorted.first : sorted.last else { return nil }
+        return (best["url"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+    }
+
+    private func pickUrlFromFormatStreams(_ formats: [[String: Any]]?, highQuality: Bool) -> String? {
+        guard let formats, !formats.isEmpty else { return nil }
+        let withUrl = formats.filter { ($0["url"] as? String).map { !$0.isEmpty } == true }
+        guard !withUrl.isEmpty else { return nil }
+        let audioPreferred = withUrl.filter {
+            let t = ($0["type"] as? String) ?? ""
+            return t.hasPrefix("audio/") || t.localizedCaseInsensitiveContains("audio")
+        }
+        let bucket = audioPreferred.isEmpty ? withUrl : audioPreferred
+        let sorted = bucket.sorted { bitrate($0) > bitrate($1) }
+        guard let best = highQuality ? sorted.first : sorted.last else { return nil }
+        return (best["url"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+    }
+
+    private func bitrate(_ format: [String: Any]) -> Int64 {
+        if let b = format["bitrate"] as? Int64 { return b }
+        if let s = format["bitrate"] as? String { return Int64(s) ?? 0 }
+        if let i = format["bitrate"] as? Int { return Int64(i) }
+        return 0
     }
 
     private func searchPiped(query: String, instance: String) async -> [Track]? {
@@ -228,16 +372,38 @@ final class FireballRepository {
         }
     }
 
-    private func resolvePipedStream(instance: String, videoId: String) async -> String? {
+    private func resolvePipedAudioStream(instance: String, videoId: String) async -> String? {
         guard let data = try? await api.pipedStream(instanceURL: instance, videoId: videoId),
-              let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+              let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let streams = root["audioStreams"] as? [[String: Any]],
+              !streams.isEmpty
         else { return nil }
 
-        let streams = root["audioStreams"] as? [[String: Any]]
-        if let url = streams?.first?["url"] as? String, !url.isEmpty {
+        let best = streams.max { bitrate($0) < bitrate($1) }
+        return (best?["url"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+    }
+
+    private func isItunesPreviewUrl(_ url: String) -> Bool {
+        url.contains("apple.com") || url.contains("itunes") || url.contains("mzstatic.com")
+    }
+
+    /// Proxies `googlevideo.com` stream URLs through Invidious (same idea as Android).
+    private func proxyStreamUrl(_ url: String, instance: String) -> String {
+        guard !instance.isEmpty else { return url }
+        guard let u = URL(string: url), let host = u.host, host.contains("googlevideo.com") else { return url }
+        let base = instance.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        var hostParam = "host=\(host.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? host)"
+        let existing = u.query ?? ""
+        if existing.contains("host=") {
             return url
         }
-        return nil
+        let query: String
+        if existing.isEmpty {
+            query = hostParam
+        } else {
+            query = "\(existing)&\(hostParam)"
+        }
+        return "\(base)/videoplayback?\(query)"
     }
 
     private func resolveLocalDownloadedMatches(normalizedQuery: String, settings: FireballSettings) -> [Track] {
@@ -282,7 +448,7 @@ final class FireballRepository {
     }
 
     private func cache(query: String, tracks: [Track]) {
-        guard !query.isEmpty else { return }
+        guard !query.isEmpty, !tracks.isEmpty else { return }
         searchCache[query] = tracks
         if searchCache.count > 50, let first = searchCache.keys.first {
             searchCache.removeValue(forKey: first)

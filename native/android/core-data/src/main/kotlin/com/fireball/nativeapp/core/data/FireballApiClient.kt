@@ -12,39 +12,68 @@ import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.contentType
 import io.ktor.http.encodeURLParameter
+import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import java.net.HttpURLConnection
 import java.net.URL
 
 class FireballApiClient(
-    private val httpClient: HttpClient
+    private val httpClient: HttpClient,
 ) {
+    suspend fun healthyInvidiousInstances(): List<String> =
+        InvidiousInstanceProvider.fetchHealthyInstances(httpClient)
+    /** iTunes returns JSON with Content-Type often `application/javascript`; avoid Ktor JSON negotiation missing it. */
+    private val looseJson = Json { ignoreUnknownKeys = true; isLenient = true }
+
     suspend fun itunesSearch(term: String, limit: Int = 25): JsonObject {
-        return httpClient.get("https://itunes.apple.com/search") {
+        val bodyText = httpClient.get("https://itunes.apple.com/search") {
             parameter("media", "music")
             parameter("entity", "song")
             parameter("term", term)
             parameter("limit", limit)
-        }.body()
+            parameter("country", "US")
+        }.bodyAsText()
+        return looseJson.parseToJsonElement(bodyText).jsonObject
     }
 
-    suspend fun invidiousSearch(instanceUrl: String, query: String): JsonArray {
+    suspend fun invidiousSearch(instanceUrl: String, query: String, sid: String? = null): JsonArray {
         val base = instanceUrl.trimEnd('/')
         return httpClient.get("$base/api/v1/search") {
             parameter("q", query)
             parameter("type", "video")
+            if (!sid.isNullOrBlank()) header(HttpHeaders.Cookie, "SID=$sid")
         }.body()
     }
 
-    suspend fun invidiousVideo(instanceUrl: String, videoId: String): JsonObject {
+    /**
+     * @param local When true, Invidious proxies stream URLs through the instance (recommended for mobile playback).
+     * See https://docs.invidious.io/url-parameters/
+     */
+    suspend fun invidiousVideo(
+        instanceUrl: String,
+        videoId: String,
+        sid: String? = null,
+        local: Boolean = true,
+    ): JsonObject {
         val base = instanceUrl.trimEnd('/')
-        return httpClient.get("$base/api/v1/videos/$videoId").body()
+        return httpClient.get("$base/api/v1/videos/$videoId") {
+            if (local) parameter("local", "true")
+            if (!sid.isNullOrBlank()) header(HttpHeaders.Cookie, "SID=$sid")
+        }.body()
     }
+
+    /** Lightweight health probe — https://docs.invidious.io/api/#get-apiv1stats */
+    suspend fun invidiousPing(instanceUrl: String): Boolean = runCatching {
+        val base = instanceUrl.trimEnd('/')
+        httpClient.get("$base/api/v1/stats").bodyAsText()
+        true
+    }.getOrDefault(false)
 
     suspend fun pipedSearch(instanceUrl: String, query: String): JsonArray {
         val base = instanceUrl.trimEnd('/')
@@ -79,12 +108,17 @@ class FireballApiClient(
             }
 
             val code = conn.responseCode
-            val setCookie = conn.headerFields["Set-Cookie"].orEmpty()
+            val setCookie = buildList {
+                conn.headerFields?.forEach { (key, values) ->
+                    if (key != null && key.equals("Set-Cookie", ignoreCase = true)) {
+                        addAll(values.orEmpty())
+                    }
+                }
+            }
             val sid = setCookie
                 .firstNotNullOfOrNull { Regex("""SID=([^;]+)""", RegexOption.IGNORE_CASE).find(it)?.groupValues?.getOrNull(1) }
                 ?.trim()
                 .orEmpty()
-            
             return sid to code
         }
 

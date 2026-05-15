@@ -13,13 +13,25 @@ import com.fireball.nativeapp.player.PlayerManager
 import com.fireball.nativeapp.player.PlaybackState
 import com.fireball.nativeapp.player.NativePlaybackService
 import com.fireball.nativeapp.player.PlaybackController
+import com.fireball.nativeapp.player.RepeatMode
+import com.fireball.nativeapp.core.data.integrations.SponsorSegment
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withLock
+import kotlin.random.Random
+import androidx.media3.common.MediaItem
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
 
@@ -28,6 +40,8 @@ data class MainUiState(
     val query: String = "",
     val searchResults: List<Track> = emptyList(),
     val isSearching: Boolean = false,
+    /** Resolving streams / handing off to ExoPlayer */
+    val isPlaybackLoading: Boolean = false,
     val error: String? = null,
     val currentLyrics: String? = null,
     val integrationStatus: String? = null,
@@ -62,19 +76,63 @@ class MainViewModel(
         const val STATUS_INVIDIOUS_PUSH_FAIL = "invidious playlist push: failed"
     }
 
+    private val libraryJson = Json { ignoreUnknownKeys = true }
+
     private val _uiState = MutableStateFlow(MainUiState())
     val uiState: StateFlow<MainUiState> = _uiState.asStateFlow()
     val playbackState: StateFlow<PlaybackState> = playerManager.state
     private val scrobbledTrackIds = mutableSetOf<String>()
     private val aiQueueExpandedForTrackIds = mutableSetOf<String>()
+    private val sponsorSkippedUuids = mutableSetOf<String>()
+    private var sponsorSegments: List<SponsorSegment> = emptyList()
+    private var sponsorSegmentsVideoId: String? = null
+
+    /** Cancels overlapping [play] work; only the latest play wins. */
+    private var activePlayJob: Job? = null
+
+    /** Serializes logical queue + Exo handoff vs [resyncEntireExoQueueFromLogicalState]. */
+    private val engineHandoffMutex = Mutex()
+
+    private var expandQueueJob: Job? = null
+
+    /** Exo timeline (subset of logical queue with resolved URLs). */
+    private var exoMediaItems: List<MediaItem> = emptyList()
+
+    private val resolveSemaphore = Semaphore(4)
+
+    /** Avoid duplicate history/lyrics when the same Exo media id is reported twice. */
+    private var lastStartedMediaId: String? = null
 
     init {
+        playbackController.onPlaybackError = { msg ->
+            _uiState.update { it.copy(error = "Playback failed: $msg") }
+        }
+        playbackController.onConnectFailed = { msg ->
+            _uiState.update { it.copy(error = msg) }
+        }
+        playbackController.onPlaybackEnded = {
+            viewModelScope.launch { advanceAfterTrackFinished() }
+        }
+        playbackController.onActiveMediaIdChanged = { mediaId ->
+            playerManager.setCurrentIndexByMediaId(mediaId)
+            if (!mediaId.isNullOrBlank() && mediaId != lastStartedMediaId) {
+                lastStartedMediaId = mediaId
+                val track = playbackState.value.currentTrack
+                if (track != null) {
+                    val settings = _uiState.value.library.settings
+                    viewModelScope.launch {
+                        refreshSponsorForTrack(track, settings)
+                        onTrackStarted(track, settings)
+                    }
+                }
+            }
+        }
         playbackController.connect()
         viewModelScope.launch {
             var lastIndex = -1
             playbackController.state.collectLatest { engine ->
                 playerManager.syncFromEngine(
-                    currentIndex = if (engine.currentIndex >= 0) engine.currentIndex else null,
+                    currentIndex = null,
                     isPlaying = engine.isPlaying,
                     positionMs = engine.positionMs,
                     durationMs = engine.durationMs
@@ -94,8 +152,7 @@ class MainViewModel(
                 if (sleepAt != null && System.currentTimeMillis() >= sleepAt) {
                     playerManager.setSleepTimer(null)
                     if (playbackState.value.isPlaying) {
-                        playerManager.togglePlayPause()
-                        playbackController.togglePlayPause()
+                        togglePlayPause()
                     }
                 }
                 val state = playbackState.value
@@ -104,12 +161,12 @@ class MainViewModel(
                     state.durationMs > 0 &&
                     state.positionMs >= state.durationMs - 1000
                 ) {
-                    playerManager.togglePlayPause()
-                    playbackController.togglePlayPause()
+                    togglePlayPause()
                     playerManager.setSleepAfterCurrent(false)
                 }
                 maybeScrobbleCurrent(state)
                 maybeAppendAiQueue(state)
+                maybeSkipSponsor(state)
                 delay(1000)
             }
         }
@@ -122,6 +179,10 @@ class MainViewModel(
 
     fun updateQuery(query: String) {
         _uiState.update { it.copy(query = query) }
+    }
+
+    fun dismissError() {
+        _uiState.update { it.copy(error = null) }
     }
 
     fun search() {
@@ -161,53 +222,212 @@ class MainViewModel(
 
     fun play(track: Track, source: List<Track>) {
         val settings = _uiState.value.library.settings
-        viewModelScope.launch {
-            // Resolve ONLY the clicked track (not the entire list).
-            // Matches Flutter behavior — other tracks resolve when ExoPlayer advances.
-            val resolvedTrack = repository.resolvePlayableTrack(track, settings)
+        activePlayJob?.cancel()
+        activePlayJob = viewModelScope.launch {
+            _uiState.update { it.copy(isPlaybackLoading = true, error = null) }
+            try {
+                val resolvedTrack = repository.resolvePlayableTrack(track, settings)
+                val startIndex = source.indexOfFirst { it.effectiveId == track.effectiveId }
+                    .let { if (it < 0) 0 else it }
+                val logicalQueue = source.map {
+                    if (it.effectiveId == track.effectiveId) resolvedTrack else it
+                }
+                lastStartedMediaId = null
 
-            // Build the queue: put the resolved track at the right position
-            val queue = source.map {
-                if (it.effectiveId == track.effectiveId) resolvedTrack else it
-            }
-            val index = queue.indexOfFirst { it.effectiveId == track.effectiveId }.coerceAtLeast(0)
+                val playableUrl = resolvedTrack.url
+                if (playableUrl.isNullOrBlank()) {
+                    clearSponsorState()
+                    val hint = if (settings.fallbackToPiped) {
+                        "Could not resolve a stream. Public Invidious mirrors were tried automatically; check network or enable a custom instance in Settings."
+                    } else {
+                        "Could not resolve a stream via Invidious. Enable Piped fallback in Settings or set your own Invidious instance."
+                    }
+                    _uiState.update { it.copy(error = hint) }
+                    return@launch
+                }
 
-            playerManager.playTracks(queue, index)
-
-            val playableUrl = resolvedTrack.url
-            if (!playableUrl.isNullOrBlank()) {
-                val mediaItem = NativePlaybackService.mediaItem(
+                val repeatMode = playbackState.value.repeatMode
+                val shuffle = playbackState.value.shuffled
+                val bootstrapItem = NativePlaybackService.mediaItem(
                     id = resolvedTrack.effectiveId,
                     title = resolvedTrack.title,
                     artist = resolvedTrack.artist,
                     url = playableUrl,
                     artworkUrl = resolvedTrack.artwork
                 )
-                playbackController.playQueue(listOf(mediaItem), 0)
+
+                exoMediaItems = listOf(bootstrapItem)
+                engineHandoffMutex.withLock {
+                    playerManager.replaceQueue(logicalQueue, startIndex)
+                    playbackController.setRepeatMode(repeatMode)
+                    playbackController.setShuffle(false)
+                    playbackController.playQueue(listOf(bootstrapItem), 0)
+                }
+
+                val nowPlaying = logicalQueue[startIndex]
+                refreshSponsorForTrack(nowPlaying, settings)
+                onTrackStarted(nowPlaying, settings)
+                lastStartedMediaId = nowPlaying.effectiveId
+
+                expandQueueJob?.cancel()
+                expandQueueJob = viewModelScope.launch {
+                    expandExoQueueInBackground(logicalQueue, resolvedTrack, settings)
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _uiState.update {
+                    it.copy(error = e.message ?: "Playback failed")
+                }
+            } finally {
+                _uiState.update { it.copy(isPlaybackLoading = false) }
+            }
+        }
+    }
+
+    private fun clearSponsorState() {
+        sponsorSegments = emptyList()
+        sponsorSegmentsVideoId = null
+        sponsorSkippedUuids.clear()
+    }
+
+    private suspend fun onTrackStarted(nowPlaying: Track, settings: FireballSettings) {
+        val offline = settings.offlineModeEnabled
+        val privacy = settings.privacyModeEnabled
+
+        if (!privacy) {
+            val history = listOf(nowPlaying) + _uiState.value.library.history
+                .filterNot { it.effectiveId == nowPlaying.effectiveId }
+            persist(_uiState.value.library.copy(history = history.take(200)))
+        }
+
+        if (offline) {
+            _uiState.update { it.copy(currentLyrics = null) }
+        } else {
+            viewModelScope.launch {
+                val lyrics = lyricsAndAi.fetchLyrics(nowPlaying, settings)
+                _uiState.update { it.copy(currentLyrics = lyrics) }
+            }
+        }
+
+        if (!offline && !privacy) {
+            viewModelScope.launch {
+                integrations.submitPlayingNow(settings, nowPlaying)
+            }
+        }
+    }
+
+    /** Resolves the rest of the queue and extends the Exo timeline without restarting playback. */
+    private suspend fun expandExoQueueInBackground(
+        logicalQueue: List<Track>,
+        anchor: Track,
+        settings: FireballSettings
+    ) {
+        if (logicalQueue.size <= 1) return
+
+        val fullyResolved = resolveQueueTracksParallel(logicalQueue, settings)
+        val playable = fullyResolved.filter { !it.url.isNullOrBlank() }
+        if (playable.isEmpty()) return
+
+        val currentIdx = playbackState.value.currentIndex.coerceAtLeast(0)
+        playerManager.updateQueueTracks(fullyResolved, currentIdx)
+
+        val items = playable.map { t -> toMediaItem(t) }
+        val anchorId = anchor.effectiveId
+        val exoStart = playable.indexOfFirst { it.effectiveId == anchorId }.let { if (it < 0) 0 else it }
+
+        exoMediaItems = items
+        engineHandoffMutex.withLock {
+            playbackController.setRepeatMode(playbackState.value.repeatMode)
+            playbackController.setShuffle(false)
+            playbackController.replaceMediaItems(items, exoStart, preservePosition = true)
+        }
+    }
+
+    private fun toMediaItem(t: Track): MediaItem =
+        NativePlaybackService.mediaItem(
+            id = t.effectiveId,
+            title = t.title,
+            artist = t.artist,
+            url = t.url!!,
+            artworkUrl = t.artwork
+        )
+
+    private suspend fun openQueueIndex(index: Int) {
+        val settings = _uiState.value.library.settings
+        var queue = playbackState.value.queue
+        if (queue.isEmpty() || index !in queue.indices) return
+
+        _uiState.update { it.copy(isPlaybackLoading = true, error = null) }
+        try {
+            var track = queue[index]
+            if (track.url.isNullOrBlank()) {
+                track = repository.resolvePlayableTrack(track, settings)
+                playerManager.updateTrackAt(index, track)
+                queue = playbackState.value.queue
             }
 
-            val offline = settings.offlineModeEnabled
-            val privacy = settings.privacyModeEnabled
-
-            if (!privacy) {
-                val history = listOf(resolvedTrack) + _uiState.value.library.history.filterNot { it.effectiveId == resolvedTrack.effectiveId }
-                persist(_uiState.value.library.copy(history = history.take(200)))
+            if (track.url.isNullOrBlank()) {
+                _uiState.update {
+                    it.copy(
+                        error = "No stream URL for this track. Public Invidious mirrors were tried automatically."
+                    )
+                }
+                return
             }
 
-            if (offline) {
-                _uiState.update { it.copy(currentLyrics = null) }
-            } else {
-                viewModelScope.launch {
-                    val lyrics = lyricsAndAi.fetchLyrics(resolvedTrack, settings)
-                    _uiState.update { it.copy(currentLyrics = lyrics) }
+            playerManager.setCurrentIndex(index)
+            lastStartedMediaId = null
+
+            val item = toMediaItem(track)
+            val exoIdx = exoMediaItems.indexOfFirst { it.mediaId == track.effectiveId }
+            engineHandoffMutex.withLock {
+                playbackController.setRepeatMode(playbackState.value.repeatMode)
+                playbackController.setShuffle(false)
+                if (exoIdx >= 0) {
+                    playbackController.seekToMediaIndex(exoIdx)
+                } else {
+                    exoMediaItems = listOf(item)
+                    playbackController.playQueue(listOf(item), 0)
                 }
             }
+            refreshSponsorForTrack(track, settings)
+            onTrackStarted(track, settings)
+            lastStartedMediaId = track.effectiveId
+        } finally {
+            _uiState.update { it.copy(isPlaybackLoading = false) }
+        }
+    }
 
-            if (!offline && !privacy) {
-                viewModelScope.launch {
-                    integrations.submitPlayingNow(settings, resolvedTrack)
-                }
+    private suspend fun advanceAfterTrackFinished() {
+        val st = playbackState.value
+        val idx = st.currentIndex
+        if (idx < 0) return
+        when {
+            st.repeatMode == RepeatMode.ONE -> playbackController.seekTo(0L)
+            st.shuffled && st.queue.size > 1 -> {
+                val choices = st.queue.indices.filter { it != idx }
+                if (choices.isNotEmpty()) openQueueIndex(choices[Random.nextInt(choices.size)])
             }
+            idx + 1 < st.queue.size -> openQueueIndex(idx + 1)
+            st.repeatMode == RepeatMode.ALL -> openQueueIndex(0)
+            else -> playerManager.syncFromEngine(isPlaying = false)
+        }
+    }
+
+    private suspend fun userPressedNext() {
+        val st = playbackState.value
+        val idx = st.currentIndex
+        if (idx < 0) return
+        if (st.shuffled && st.queue.size > 1) {
+            val choices = st.queue.indices.filter { it != idx }
+            if (choices.isNotEmpty()) openQueueIndex(choices[Random.nextInt(choices.size)])
+            return
+        }
+        if (idx + 1 < st.queue.size) {
+            openQueueIndex(idx + 1)
+        } else if (st.repeatMode == RepeatMode.ALL) {
+            openQueueIndex(0)
         }
     }
 
@@ -231,18 +451,28 @@ class MainViewModel(
     }
 
     fun togglePlayPause() {
-        playerManager.togglePlayPause()
-        playbackController.togglePlayPause()
+        if (!playbackController.togglePlayPause()) return
+        val enginePlaying = playbackController.state.value.isPlaying
+        playerManager.syncFromEngine(isPlaying = enginePlaying)
     }
 
     fun next() {
-        playerManager.next()
-        playbackController.next()
+        if (playbackState.value.repeatMode == RepeatMode.ONE) {
+            playbackController.seekTo(0L)
+            return
+        }
+        viewModelScope.launch { userPressedNext() }
     }
 
     fun previous() {
-        playerManager.previous()
-        playbackController.previous()
+        if (playbackState.value.repeatMode == RepeatMode.ONE) {
+            playbackController.seekTo(0L)
+            return
+        }
+        viewModelScope.launch {
+            val idx = playbackState.value.currentIndex.coerceAtLeast(0)
+            openQueueIndex((idx - 1).coerceAtLeast(0))
+        }
     }
 
     fun seekTo(positionMs: Long) {
@@ -251,7 +481,7 @@ class MainViewModel(
 
     fun toggleShuffle() {
         playerManager.toggleShuffle()
-        playbackController.setShuffle(playbackState.value.shuffled)
+        playbackController.setShuffle(false)
     }
 
     fun toggleRepeatMode() {
@@ -264,6 +494,26 @@ class MainViewModel(
     private fun persist(library: LibrarySnapshot) {
         _uiState.update { it.copy(library = library) }
         viewModelScope.launch { repository.saveLibrary(library) }
+    }
+
+    private suspend fun maybeSkipSponsor(state: PlaybackState) {
+        val settings = _uiState.value.library.settings
+        if (!settings.sponsorBlock || settings.sponsorBlockCategories.isEmpty()) return
+        val track = state.currentTrack ?: return
+        val vid = track.videoId ?: return
+        if (vid != sponsorSegmentsVideoId) return
+        if (sponsorSegments.isEmpty()) return
+        if (!state.isPlaying || state.durationMs <= 0L) return
+        val posSec = state.positionMs / 1000.0
+        for (seg in sponsorSegments) {
+            if (posSec < seg.start + 0.04) continue
+            if (posSec >= seg.end - 0.04) continue
+            if (!sponsorSkippedUuids.add(seg.uuid)) continue
+            runCatching { integrations.markSponsorViewed(seg.uuid) }
+            val targetMs = (seg.end * 1000.0).toLong().coerceIn(0L, state.durationMs)
+            playbackController.seekTo(targetMs)
+            break
+        }
     }
 
     private fun maybeScrobbleCurrent(state: PlaybackState) {
@@ -310,6 +560,7 @@ class MainViewModel(
             }
             playerManager.appendToQueue(generatedTracks)
             persistAiQueue(generatedTracks)
+            resyncEntireExoQueueFromLogicalState()
         }
     }
 
@@ -325,7 +576,93 @@ class MainViewModel(
         persist(library.copy(playlists = updatedPlaylists))
     }
 
+    private suspend fun resolveQueueTracksParallel(
+        queue: List<Track>,
+        settings: FireballSettings
+    ): List<Track> = coroutineScope {
+        queue.map { t ->
+            async {
+                resolveSemaphore.acquire()
+                try {
+                    runCatching { repository.resolvePlayableTrack(t, settings) }.getOrElse { t }
+                } finally {
+                    resolveSemaphore.release()
+                }
+            }
+        }.awaitAll()
+    }
+
+    private suspend fun refreshSponsorForTrack(track: Track, settings: FireballSettings) {
+        sponsorSkippedUuids.clear()
+        sponsorSegmentsVideoId = track.videoId
+        sponsorSegments = if (settings.sponsorBlock && !track.videoId.isNullOrBlank()) {
+            integrations.sponsorSegments(settings, track)
+        } else {
+            emptyList()
+        }
+    }
+
+    /**
+     * Rebuilds the ExoPlayer queue from [PlayerManager] after URLs were missing (e.g. AI suggestions)
+     * or the logical list was compacted to playable-only tracks.
+     */
+    private suspend fun resyncEntireExoQueueFromLogicalState() {
+        val settings = _uiState.value.library.settings
+        val snapshot = playbackState.value
+        if (snapshot.queue.isEmpty()) return
+
+        val resolved = resolveQueueTracksParallel(snapshot.queue, settings)
+        if (resolved.isEmpty()) return
+
+        val playable = resolved.filter { !it.url.isNullOrBlank() }
+        if (playable.isEmpty()) {
+            _uiState.update {
+                it.copy(
+                    error = "Could not get streams for tracks in the queue. Check Invidious / Piped settings."
+                )
+            }
+            return
+        }
+
+        val logicalIndex = snapshot.currentIndex.coerceIn(0, resolved.lastIndex)
+        fun firstPlayableResolvedIndexFrom(start: Int): Int? {
+            for (i in start until resolved.size) {
+                if (!resolved[i].url.isNullOrBlank()) return i
+            }
+            for (i in start downTo 0) {
+                if (!resolved[i].url.isNullOrBlank()) return i
+            }
+            return null
+        }
+
+        val chosenResolvedIdx = firstPlayableResolvedIndexFrom(logicalIndex) ?: return
+        val chosenTrack = resolved[chosenResolvedIdx]
+        val newIdx = playable.indexOfFirst { it.effectiveId == chosenTrack.effectiveId }
+            .let { if (it < 0) 0 else it }
+
+        val repeatMode = playbackState.value.repeatMode
+        val items = playable.map { t ->
+            NativePlaybackService.mediaItem(
+                id = t.effectiveId,
+                title = t.title,
+                artist = t.artist,
+                url = t.url!!,
+                artworkUrl = t.artwork
+            )
+        }
+        exoMediaItems = items
+        engineHandoffMutex.withLock {
+            playerManager.updateQueueTracks(resolved, chosenResolvedIdx)
+            playbackController.setRepeatMode(repeatMode)
+            playbackController.setShuffle(false)
+            playbackController.replaceMediaItems(items, newIdx, preservePosition = false)
+        }
+        refreshSponsorForTrack(chosenTrack, settings)
+    }
+
     override fun onCleared() {
+        activePlayJob?.cancel()
+        expandQueueJob?.cancel()
         playbackController.release()
         super.onCleared()
     }
@@ -334,7 +671,7 @@ class MainViewModel(
         viewModelScope.launch {
             val remote = integrations.syncPull(_uiState.value.library.settings) ?: return@launch
             val merged = runCatching {
-                Json { ignoreUnknownKeys = true }.decodeFromString<LibrarySnapshot>(remote)
+                libraryJson.decodeFromString<LibrarySnapshot>(remote)
             }.getOrNull() ?: return@launch
             val local = _uiState.value.library
             val combined = local.copy(

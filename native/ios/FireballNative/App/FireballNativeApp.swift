@@ -94,6 +94,10 @@ private struct RootShellView: View {
                     onPlayPause: viewModel.togglePlayPause,
                     onPrevious: viewModel.previous,
                     onNext: viewModel.next,
+                    onSeek: { ratio in
+                        let d = viewModel.durationSeconds
+                        if d > 0 { viewModel.seekTo(seconds: ratio * d) }
+                    },
                     onClose: { isPlayerOpen = false }
                 )
             }
@@ -126,6 +130,8 @@ private struct RootShellView: View {
                 query: $viewModel.query,
                 results: viewModel.searchResults,
                 isSearching: viewModel.isSearching,
+                error: viewModel.error,
+                onDismissError: { viewModel.clearError() },
                 onSearch: viewModel.search,
                 onPlay: viewModel.play,
                 onFavorite: viewModel.toggleFavorite
@@ -154,8 +160,16 @@ private struct RootShellView: View {
                 onLbdlStatus: { Task { _ = await viewModel.checkLbdl() } },
                 onLbdlCreateJob: { Task { _ = await viewModel.createLbdlJobFromQueue() } },
                 onRemoteToggle: { Task { _ = await viewModel.sendRemoteCommand("toggle") } },
-                onRemotePair: { code in Task { _ = await viewModel.pairRemote(code: code) } }
+                onRemotePair: { code in Task { _ = await viewModel.pairRemote(code: code) } },
+                invidiousPlaylists: viewModel.invidiousPlaylists,
+                onInvidiousLogin: { u, p in viewModel.invidiousLogin(username: u, password: p) },
+                onInvidiousRefreshPlaylists: { Task { await viewModel.refreshInvidiousPlaylists() } },
+                onInvidiousSyncPlaylist: viewModel.invidiousSyncPlaylist,
+                onInvidiousPushPlaylist: viewModel.invidiousPushPlaylist
             )
+            .task {
+                await viewModel.refreshInvidiousPlaylists()
+            }
         }
     }
 

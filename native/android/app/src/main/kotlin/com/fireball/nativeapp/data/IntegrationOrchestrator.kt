@@ -74,6 +74,10 @@ class IntegrationOrchestrator(
         return sponsorBlockClient.segments(videoId, settings.sponsorBlockCategories)
     }
 
+    suspend fun markSponsorViewed(uuid: String) {
+        sponsorBlockClient.markViewed(uuid)
+    }
+
     suspend fun syncPull(settings: FireballSettings): String? {
         if (settings.webDavUrl.isBlank()) return null
         return webDavSyncClient.pullLibraryJson(

@@ -9,6 +9,7 @@ public struct NowPlayingScreen: View {
     let onPlayPause: () -> Void
     let onPrevious: () -> Void
     let onNext: () -> Void
+    let onSeek: (Double) -> Void
     let onClose: () -> Void
     
     @Environment(\.dominantColors) var dominantColors
@@ -81,11 +82,17 @@ public struct NowPlayingScreen: View {
                 }
                 .padding(.horizontal, 32)
                 
-                // Seekbar (Simple implementation for now)
+                // Seek bar (scrub 0…1 of track duration)
                 VStack(spacing: 8) {
-                    ProgressView(value: durationSeconds > 0 ? positionSeconds / durationSeconds : 0.0)
-                        .tint(dominantColors.accent)
-                    
+                    Slider(
+                        value: Binding(
+                            get: { durationSeconds > 0 ? min(1, max(0, positionSeconds / durationSeconds)) : 0 },
+                            set: { onSeek($0) }
+                        ),
+                        in: 0...1
+                    )
+                    .tint(dominantColors.accent)
+
                     HStack {
                         Text(formatTime(positionSeconds))
                         Spacer()
@@ -95,7 +102,18 @@ public struct NowPlayingScreen: View {
                     .foregroundColor(dominantColors.onBackground.opacity(0.6))
                 }
                 .padding(.horizontal, 32)
-                
+
+                if let lyrics = currentLyrics, !lyrics.isEmpty {
+                    ScrollView {
+                        Text(lyrics)
+                            .font(.footnote)
+                            .foregroundColor(dominantColors.onBackground.opacity(0.85))
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .frame(maxHeight: 120)
+                    .padding(.horizontal, 24)
+                }
+
                 // Playback Controls
                 HStack(spacing: 40) {
                     Button(action: onPrevious) {

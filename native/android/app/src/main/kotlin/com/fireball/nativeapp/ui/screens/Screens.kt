@@ -23,6 +23,8 @@ import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForwardIos
+import androidx.compose.material.icons.automirrored.filled.Login
+import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
 import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Backup
@@ -30,8 +32,8 @@ import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.FastForward
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.LibraryMusic
-import androidx.compose.material.icons.filled.Login
 import androidx.compose.material.icons.filled.HeadsetMic
 import androidx.compose.material.icons.filled.Lyrics
 import androidx.compose.material.icons.filled.MusicNote
@@ -46,10 +48,10 @@ import androidx.compose.material3.HorizontalDivider as M3HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Shuffle
@@ -76,6 +78,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -446,12 +449,16 @@ fun SearchScreen(
     query: String,
     results: List<Track>,
     isSearching: Boolean,
+    isPlaybackLoading: Boolean,
     onQueryChange: (String) -> Unit,
     onSearch: () -> Unit,
     onPlay: (Track, List<Track>) -> Unit,
     onToggleFavorite: (Track) -> Unit
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
+        if (isPlaybackLoading) {
+            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+        }
         // Search bar area
         Row(
             modifier = Modifier
@@ -501,16 +508,17 @@ fun SearchScreen(
         ) {
             items(results) { track ->
                 Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { onPlay(track, results) },
+                    modifier = Modifier.fillMaxWidth(),
                     shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),
                     colors = androidx.compose.material3.CardDefaults.cardColors(
                         containerColor = MaterialTheme.colorScheme.surfaceContainerLow
                     )
                 ) {
                     Row(
-                        modifier = Modifier.fillMaxWidth().padding(10.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onPlay(track, results) }
+                            .padding(10.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
@@ -568,8 +576,8 @@ fun SearchScreen(
                         // Favorite button
                         androidx.compose.material3.IconButton(onClick = { onToggleFavorite(track) }) {
                             Icon(
-                                imageVector = Icons.Default.PlayArrow,
-                                contentDescription = "Play",
+                                imageVector = Icons.Default.FavoriteBorder,
+                                contentDescription = "Add to favorites",
                                 tint = MaterialTheme.colorScheme.primary
                             )
                         }
@@ -1408,7 +1416,7 @@ private fun SettingsIntegrations(
                         ListItem(
                             headlineContent = { Text("Login (optional)", fontWeight = FontWeight.Medium) },
                             supportingContent = { Text("Sign in to sync playlists") },
-                            leadingContent = { LeadingIconBox(Icons.Default.Login) },
+                            leadingContent = { LeadingIconBox(Icons.AutoMirrored.Filled.Login) },
                             colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                         )
                         OutlinedTextField(
@@ -1432,7 +1440,7 @@ private fun SettingsIntegrations(
                             onClick = { onInvidiousLogin(invidiousUser, invidiousPass) },
                             modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
                         ) {
-                            Icon(Icons.Default.Login, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Icon(Icons.AutoMirrored.Filled.Login, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(8.dp))
                             Text("Login")
                         }
@@ -1445,7 +1453,7 @@ private fun SettingsIntegrations(
                             ListItem(
                                 headlineContent = { Text(pl.second, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis) },
                                 supportingContent = { Text(pl.first) },
-                                leadingContent = { LeadingIconBox(Icons.Default.PlaylistPlay) },
+                                leadingContent = { LeadingIconBox(Icons.AutoMirrored.Filled.PlaylistPlay) },
                                 trailingContent = {
                                     androidx.compose.material3.TextButton(onClick = {
                                         onInvidiousSyncPlaylist(pl.first)

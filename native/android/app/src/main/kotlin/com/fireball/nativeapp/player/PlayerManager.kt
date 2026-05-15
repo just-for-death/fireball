@@ -4,7 +4,6 @@ import com.fireball.nativeapp.core.model.Track
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
-import kotlin.random.Random
 
 enum class RepeatMode { OFF, ALL, ONE }
 
@@ -44,8 +43,10 @@ class PlayerManager {
         _state.update {
             if (it.queue.isEmpty()) return@update it
             if (it.repeatMode == RepeatMode.ONE) return@update it.copy(isPlaying = true)
+            // Shuffle order is owned by ExoPlayer; [MainViewModel] advances the controller and
+            // [syncFromEngine] updates currentIndex from the engine.
+            if (it.shuffled) return@update it
             val nextIndex = when {
-                it.shuffled -> Random.nextInt(it.queue.size)
                 it.currentIndex < it.queue.lastIndex -> it.currentIndex + 1
                 it.repeatMode == RepeatMode.ALL -> 0
                 else -> it.currentIndex
@@ -58,6 +59,7 @@ class PlayerManager {
     fun previous() {
         _state.update {
             if (it.queue.isEmpty()) return@update it
+            if (it.shuffled) return@update it
             val previousIndex = (it.currentIndex - 1).coerceAtLeast(0)
             it.copy(currentIndex = previousIndex, isPlaying = true)
         }
@@ -112,6 +114,55 @@ class PlayerManager {
         _state.update { current ->
             val merged = (current.queue + tracks).distinctBy { it.effectiveId }
             current.copy(queue = merged)
+        }
+    }
+
+    /** Replaces the logical queue (e.g. after resolving URLs) while preserving shuffle/repeat/sleep. */
+    fun replaceQueue(tracks: List<Track>, currentIndex: Int) {
+        if (tracks.isEmpty()) return
+        _state.update { old ->
+            old.copy(
+                queue = tracks,
+                currentIndex = currentIndex.coerceIn(0, tracks.lastIndex),
+                isPlaying = true
+            )
+        }
+    }
+
+    /** Maps Exo [mediaId] (track effectiveId) back to the logical queue index. */
+    fun setCurrentIndexByMediaId(mediaId: String?) {
+        if (mediaId.isNullOrBlank()) return
+        _state.update { st ->
+            val idx = st.queue.indexOfFirst { it.effectiveId == mediaId || it.id == mediaId }
+            if (idx < 0) st else st.copy(currentIndex = idx, isPlaying = true)
+        }
+    }
+
+    fun updateTrackAt(index: Int, track: Track) {
+        _state.update { st ->
+            if (index !in st.queue.indices) return@update st
+            val updated = st.queue.toMutableList()
+            updated[index] = track
+            st.copy(queue = updated)
+        }
+    }
+
+    /** Updates logical index without replacing the queue list. */
+    fun setCurrentIndex(index: Int) {
+        _state.update { st ->
+            if (index !in st.queue.indices) return@update st
+            st.copy(currentIndex = index, isPlaying = true)
+        }
+    }
+
+    /** Replaces queue entries with resolved tracks (same order / size). */
+    fun updateQueueTracks(tracks: List<Track>, currentIndex: Int) {
+        if (tracks.isEmpty()) return
+        _state.update { old ->
+            old.copy(
+                queue = tracks,
+                currentIndex = currentIndex.coerceIn(0, tracks.lastIndex),
+            )
         }
     }
 }
