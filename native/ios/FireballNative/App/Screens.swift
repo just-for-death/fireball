@@ -115,12 +115,25 @@ struct SearchScreen: View {
     @Binding var query: String
     let results: [Track]
     let isSearching: Bool
+    let error: String?
+    let onDismissError: () -> Void
     let onSearch: () async -> Void
     let onPlay: (Track, [Track]) -> Void
     let onFavorite: (Track) -> Void
 
     var body: some View {
         VStack(spacing: 12) {
+            if let error, !error.isEmpty {
+                HStack {
+                    Text(error)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                    Spacer()
+                    Button("Dismiss") { onDismissError() }
+                }
+                .padding(8)
+                .background(RoundedRectangle(cornerRadius: 8).fill(Color.red.opacity(0.12)))
+            }
             TextField("Search music", text: $query)
                 .textFieldStyle(.roundedBorder)
             Button(isSearching ? "Searching..." : "Search") {
@@ -218,7 +231,16 @@ struct SettingsScreen: View {
     let onLbdlCreateJob: () -> Void
     let onRemoteToggle: () -> Void
     let onRemotePair: (String) -> Void
+    let invidiousPlaylists: [(id: String, title: String)]
+    let onInvidiousLogin: (String, String) -> Void
+    let onInvidiousRefreshPlaylists: () -> Void
+    let onInvidiousSyncPlaylist: (String) -> Void
+    let onInvidiousPushPlaylist: (String, String?) -> Void
+
     @State private var pairCode = ""
+    @State private var invidiousPassword = ""
+    @State private var pushLocalPlaylistId = ""
+    @State private var pushRemotePlaylistId = ""
 
     var body: some View {
         Form {
@@ -316,14 +338,34 @@ struct SettingsScreen: View {
                     get: { settings.invidiousInstance },
                     set: { value in onUpdateSettings { $0.invidiousInstance = value } }
                 ))
-                TextField("Invidious SID Token (if login fails)", text: .init(
-                    get: { settings.invidiousSid ?? "" },
-                    set: { value in onUpdateSettings { $0.invidiousSid = value.isEmpty ? nil : value } }
-                ))
                 TextField("Invidious username", text: .init(
                     get: { settings.invidiousUsername ?? "" },
                     set: { value in onUpdateSettings { $0.invidiousUsername = value.isEmpty ? nil : value } }
                 ))
+                SecureField("Invidious password", text: $invidiousPassword)
+                Button("Log in to Invidious") {
+                    onInvidiousLogin(settings.invidiousUsername ?? "", invidiousPassword)
+                    invidiousPassword = ""
+                }
+                .disabled(settings.invidiousInstance.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                if settings.invidiousSid != nil, !(settings.invidiousSid ?? "").isEmpty {
+                    Label("Signed in (SID stored)", systemImage: "checkmark.circle.fill")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Button("Refresh my Invidious playlists") { onInvidiousRefreshPlaylists() }
+                }
+                if !invidiousPlaylists.isEmpty {
+                    ForEach(invidiousPlaylists, id: \.id) { pl in
+                        HStack {
+                            VStack(alignment: .leading) {
+                                Text(pl.title).lineLimit(1)
+                                Text(pl.id).font(.caption2).foregroundStyle(.tertiary).lineLimit(1)
+                            }
+                            Spacer()
+                            Button("Sync") { onInvidiousSyncPlaylist(pl.id) }
+                        }
+                    }
+                }
                 TextField("Invidious playlist privacy", text: .init(
                     get: { settings.invidiousPlaylistPrivacy },
                     set: { value in onUpdateSettings { $0.invidiousPlaylistPrivacy = value } }
@@ -343,6 +385,22 @@ struct SettingsScreen: View {
                         onUpdateSettings { $0.invidiousPlaylistMappings = dict }
                     }
                 ))
+                TextField("Local playlist id to push", text: $pushLocalPlaylistId)
+                TextField("Existing Invidious playlist id (optional)", text: $pushRemotePlaylistId)
+                Button("Push playlist to Invidious") {
+                    let remote = pushRemotePlaylistId.trimmingCharacters(in: .whitespacesAndNewlines)
+                    onInvidiousPushPlaylist(
+                        pushLocalPlaylistId.trimmingCharacters(in: .whitespacesAndNewlines),
+                        remote.isEmpty ? nil : remote
+                    )
+                }
+                .disabled(pushLocalPlaylistId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                DisclosureGroup("Advanced: Invidious SID") {
+                    TextField("Manual SID (optional)", text: .init(
+                        get: { settings.invidiousSid ?? "" },
+                        set: { value in onUpdateSettings { $0.invidiousSid = value.isEmpty ? nil : value } }
+                    ))
+                }
                 Toggle("Fallback to Piped API", isOn: .init(
                     get: { settings.fallbackToPiped },
                     set: { value in onUpdateSettings { $0.fallbackToPiped = value } }

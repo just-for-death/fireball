@@ -25,10 +25,25 @@ final class SponsorBlockClient {
         let categoriesJSON = "[\"\(categories.joined(separator: "\",\""))\"]"
         components.queryItems = [
             URLQueryItem(name: "videoID", value: videoId),
-            URLQueryItem(name: "categories", value: categoriesJSON)
+            URLQueryItem(name: "categories", value: categoriesJSON),
         ]
-        guard let data = try? await session.data(from: components.url!).0 else { return [] }
+        guard let url = components.url else { return [] }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue(FireballAPIClient.defaultUserAgent, forHTTPHeaderField: "User-Agent")
+        guard let data = try? await session.data(for: request).0 else { return [] }
         return (try? JSONDecoder().decode([SponsorSegment].self, from: data)) ?? []
+    }
+
+    func markViewed(uuid: String) async {
+        guard !uuid.isEmpty else { return }
+        var components = URLComponents(string: "https://sponsor.ajay.app/api/viewedVideoSponsorTime")!
+        components.queryItems = [URLQueryItem(name: "UUID", value: uuid)]
+        guard let url = components.url else { return }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue(FireballAPIClient.defaultUserAgent, forHTTPHeaderField: "User-Agent")
+        _ = try? await session.data(for: request)
     }
 }
 

@@ -12,6 +12,9 @@ final class NativeAudioEngine {
     var onStateUpdate: ((Int, Bool, Double, Double) -> Void)?
     var onTrackEnded: (() -> Void)?
     var onInterrupted: ((Bool) -> Void)?
+    /// When set, lock screen / headset next routes here (e.g. view model resolves lazy URLs).
+    var onRemoteNext: (() -> Void)?
+    var onRemotePrevious: (() -> Void)?
 
     init() {
         configureAudioSession()
@@ -27,11 +30,36 @@ final class NativeAudioEngine {
 
     private func loadCurrentTrackAndPlay() {
         guard queue.indices.contains(currentIndex) else { return }
-        guard let urlString = queue[currentIndex].url, let url = URL(string: urlString) else { return }
+        guard let urlString = queue[currentIndex].url?.trimmingCharacters(in: .whitespacesAndNewlines), !urlString.isEmpty else { return }
+        guard let url = playbackURL(from: urlString) else { return }
         player.replaceCurrentItem(with: AVPlayerItem(url: url))
         player.play()
         installTimeObserverIfNeeded()
         refreshNowPlaying()
+    }
+
+    /// Supports `http(s):` streams and `file:` URLs from the library resolver.
+    private func playbackURL(from string: String) -> URL? {
+        let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        if let absolute = URL(string: trimmed), absolute.scheme != nil {
+            return absolute
+        }
+        if trimmed.hasPrefix("file:") {
+            if let u = URL(string: trimmed) { return u }
+            let withoutScheme = trimmed.replacingOccurrences(of: "file://", with: "")
+            let path = withoutScheme.removingPercentEncoding ?? withoutScheme
+            return URL(fileURLWithPath: path.isEmpty ? withoutScheme : path)
+        }
+        return URL(string: trimmed)
+    }
+
+    func seek(to seconds: Double) {
+        let t = max(0, seconds)
+        let time = CMTime(seconds: t, preferredTimescale: 600)
+        player.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] _ in
+            self?.refreshNowPlaying()
+        }
     }
 
     func togglePlayPause() {
@@ -113,11 +141,28 @@ final class NativeAudioEngine {
             return .success
         }
         center.nextTrackCommand.addTarget { [weak self] _ in
-            self?.next()
+            guard let self else { return .commandFailed }
+            if let onRemoteNext = self.onRemoteNext {
+                onRemoteNext()
+                return .success
+            }
+            self.next()
             return .success
         }
         center.previousTrackCommand.addTarget { [weak self] _ in
-            self?.previous()
+            guard let self else { return .commandFailed }
+            if let onRemotePrevious = self.onRemotePrevious {
+                onRemotePrevious()
+                return .success
+            }
+            self.previous()
+            return .success
+        }
+        center.changePlaybackPositionCommand.isEnabled = true
+        center.changePlaybackPositionCommand.addTarget { [weak self] event in
+            guard let self else { return .commandFailed }
+            guard let e = event as? MPChangePlaybackPositionCommandEvent else { return .commandFailed }
+            self.seek(to: e.positionTime)
             return .success
         }
     }

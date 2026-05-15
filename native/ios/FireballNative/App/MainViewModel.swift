@@ -20,6 +20,12 @@ final class MainViewModel: ObservableObject {
         static let remotePairFail = "remote pair: failed"
         static let gdriveOk = "gdrive backup: success"
         static let gdriveFail = "gdrive backup: failed"
+        static let invidiousLoginOk = "invidious login: success"
+        static let invidiousLoginFail = "invidious login: failed"
+        static let invidiousSyncOk = "invidious playlist sync: success"
+        static let invidiousSyncFail = "invidious playlist sync: failed"
+        static let invidiousPushOk = "invidious playlist push: success"
+        static let invidiousPushFail = "invidious playlist push: failed"
     }
 
     @Published var library = LibrarySnapshot()
@@ -37,6 +43,8 @@ final class MainViewModel: ObservableObject {
     @Published var durationSeconds: Double = 0
     @Published var currentLyrics: String? = nil
     @Published var integrationStatus: String? = nil
+    @Published var error: String? = nil
+    @Published var invidiousPlaylists: [(id: String, title: String)] = []
 
     private let repository: FireballRepository
     private let listenBrainz = ListenBrainzClient()
@@ -45,10 +53,14 @@ final class MainViewModel: ObservableObject {
     private let lbdl = LbdlClient()
     private let remoteLan = RemoteLanClient()
     private let gDrive = GoogleDriveBackupClient()
+    private let sponsorBlock = SponsorBlockClient()
     private let audioEngine = NativeAudioEngine()
     private let lyricsAi: LyricsAndAIService
     private var scrobbledTrackIds = Set<String>()
     private var aiQueueExpandedForTrackIds = Set<String>()
+    private var sponsorSegmentsForVideo: [SponsorSegment] = []
+    private var sponsorSegmentsVideoId: String?
+    private var sponsorSkippedUUIDs = Set<String>()
 
     init(repository: FireballRepository) {
         self.repository = repository
@@ -60,6 +72,7 @@ final class MainViewModel: ObservableObject {
             self.isPlaying = isPlaying
             self.positionSeconds = position
             self.durationSeconds = duration
+            self.maybeAutoSkipSponsor(positionSeconds: position)
         }
         audioEngine.onTrackEnded = { [weak self] in
             guard let self else { return }
@@ -74,13 +87,19 @@ final class MainViewModel: ObservableObject {
                 }
                 return
             }
-            self.next()
+            Task { await self.advanceAfterTrackFinished() }
         }
         audioEngine.onInterrupted = { [weak self] interrupted in
             guard let self else { return }
             if interrupted {
                 self.isPlaying = false
             }
+        }
+        audioEngine.onRemoteNext = { [weak self] in
+            Task { @MainActor in await self?.userPressedNext() }
+        }
+        audioEngine.onRemotePrevious = { [weak self] in
+            Task { @MainActor in await self?.userPressedPrevious() }
         }
         Task { await sleepTimerLoop() }
     }
@@ -93,6 +112,7 @@ final class MainViewModel: ObservableObject {
 
     func search() async {
         guard !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        error = nil
         isSearching = true
         let settings = library.settings
         if settings.offlineModeEnabled {
@@ -112,14 +132,13 @@ final class MainViewModel: ObservableObject {
     func play(track: Track, source: [Track]) {
         let settings = library.settings
         Task {
-            let resolvedQueue = await repository.resolvePlayableTracks(source: source, settings: settings)
-            let idx = max(0, resolvedQueue.firstIndex(where: { $0.effectiveId == track.effectiveId }) ?? 0)
-            let resolvedTrack = resolvedQueue.indices.contains(idx) ? resolvedQueue[idx] : track
+            error = nil
+            let resolvedTrack = await repository.resolvePlayableTrack(track, settings: settings)
+            let queue = source.map { $0.effectiveId == track.effectiveId ? resolvedTrack : $0 }
+            let idx = max(0, queue.firstIndex(where: { $0.effectiveId == track.effectiveId }) ?? 0)
 
-            queue = resolvedQueue
+            self.queue = queue
             currentIndex = idx
-            isPlaying = true
-            audioEngine.playQueue(resolvedQueue, startIndex: idx)
 
             let offline = settings.offlineModeEnabled
             let privacy = settings.privacyModeEnabled
@@ -127,6 +146,21 @@ final class MainViewModel: ObservableObject {
             if !privacy {
                 addHistory(resolvedTrack)
             }
+
+            guard let url = resolvedTrack.url, !url.isEmpty else {
+                error = "Could not get a stream for this track. Set an Invidious instance, sign in if required, or enable Piped fallback."
+                isPlaying = false
+                if !offline {
+                    currentLyrics = await lyricsAi.fetchLyrics(track: resolvedTrack, settings: settings)
+                } else {
+                    currentLyrics = nil
+                }
+                return
+            }
+
+            isPlaying = true
+            audioEngine.playQueue(queue, startIndex: idx)
+            await loadSponsorSegmentsAfterPlay(for: resolvedTrack)
 
             if !offline {
                 currentLyrics = await lyricsAi.fetchLyrics(track: resolvedTrack, settings: settings)
@@ -145,12 +179,16 @@ final class MainViewModel: ObservableObject {
     }
 
     func toggleFavorite(_ track: Track) {
-        if library.favorites.contains(where: { $0.effectiveId == track.effectiveId }) {
+        let wasFavorite = library.favorites.contains(where: { $0.effectiveId == track.effectiveId })
+        if wasFavorite {
             library.favorites.removeAll { $0.effectiveId == track.effectiveId }
         } else {
             library.favorites.append(track)
         }
         persist()
+        if !wasFavorite {
+            autoPushFavoriteTrack(track)
+        }
     }
 
     func togglePlayPause() {
@@ -158,29 +196,16 @@ final class MainViewModel: ObservableObject {
         audioEngine.togglePlayPause()
     }
 
+    func seekTo(seconds: Double) {
+        audioEngine.seek(to: seconds)
+    }
+
     func next() {
-        guard let currentIndex else { return }
-        if repeatMode == .one {
-            isPlaying = true
-            audioEngine.playQueue(queue, startIndex: self.currentIndex ?? 0)
-            return
-        }
-        if shuffled, !queue.isEmpty {
-            self.currentIndex = Int.random(in: 0..<queue.count)
-        } else if currentIndex + 1 < queue.count {
-            self.currentIndex = currentIndex + 1
-        } else if repeatMode == .all {
-            self.currentIndex = 0
-        }
-        isPlaying = true
-        audioEngine.next()
+        Task { await userPressedNext() }
     }
 
     func previous() {
-        guard let currentIndex else { return }
-        self.currentIndex = max(currentIndex - 1, 0)
-        isPlaying = true
-        audioEngine.previous()
+        Task { await userPressedPrevious() }
     }
 
     func updateSettings(_ mutation: (inout FireballSettings) -> Void) {
@@ -393,6 +418,190 @@ final class MainViewModel: ObservableObject {
         integrationStatus = ok ? Status.gdriveOk : Status.gdriveFail
         return ok
     }
+
+    // MARK: - Playback navigation & SponsorBlock
+
+    private func resetSponsorState() {
+        sponsorSegmentsForVideo = []
+        sponsorSegmentsVideoId = nil
+        sponsorSkippedUUIDs.removeAll()
+    }
+
+    private func loadSponsorSegmentsAfterPlay(for track: Track) async {
+        resetSponsorState()
+        let settings = library.settings
+        guard settings.sponsorBlock, !settings.sponsorBlockCategories.isEmpty, let vid = track.videoId, !vid.isEmpty else { return }
+        sponsorSegmentsVideoId = vid
+        sponsorSegmentsForVideo = await sponsorBlock.segments(videoId: vid, categories: settings.sponsorBlockCategories)
+    }
+
+    private func maybeAutoSkipSponsor(positionSeconds position: Double) {
+        let settings = library.settings
+        guard settings.sponsorBlock, !settings.sponsorBlockCategories.isEmpty else { return }
+        guard let vid = currentTrack?.videoId, vid == sponsorSegmentsVideoId else { return }
+        guard !sponsorSegmentsForVideo.isEmpty else { return }
+        for seg in sponsorSegmentsForVideo {
+            let start = seg.start
+            let end = seg.end
+            guard end > start else { continue }
+            if position < start + 0.04 || position >= end - 0.04 { continue }
+            if sponsorSkippedUUIDs.contains(seg.uuid) { continue }
+            sponsorSkippedUUIDs.insert(seg.uuid)
+            let uuid = seg.uuid
+            Task { await sponsorBlock.markViewed(uuid: uuid) }
+            seekTo(seconds: end)
+            break
+        }
+    }
+
+    private func openQueueIndex(_ index: Int) async {
+        guard queue.indices.contains(index) else { return }
+        var q = queue
+        var track = q[index]
+        if track.url == nil || (track.url ?? "").isEmpty {
+            track = await repository.resolvePlayableTrack(track, settings: library.settings)
+            q[index] = track
+            queue = q
+        }
+        guard let u = track.url, !u.isEmpty else {
+            error = "No stream URL for this track in the queue."
+            isPlaying = false
+            return
+        }
+        error = nil
+        currentIndex = index
+        isPlaying = true
+        audioEngine.playQueue(q, startIndex: index)
+        await loadSponsorSegmentsAfterPlay(for: track)
+    }
+
+    private func advanceAfterTrackFinished() async {
+        guard let idx = currentIndex else { return }
+        if idx + 1 < queue.count {
+            await openQueueIndex(idx + 1)
+        } else if repeatMode == .all {
+            await openQueueIndex(0)
+        } else {
+            isPlaying = false
+        }
+    }
+
+    private func userPressedNext() async {
+        guard let idx = currentIndex else { return }
+        if repeatMode == .one {
+            isPlaying = true
+            audioEngine.playQueue(queue, startIndex: idx)
+            return
+        }
+        if shuffled, queue.count > 1 {
+            let r = Int.random(in: 0..<queue.count)
+            await openQueueIndex(r)
+            return
+        }
+        if idx + 1 < queue.count {
+            await openQueueIndex(idx + 1)
+        } else if repeatMode == .all {
+            await openQueueIndex(0)
+        }
+    }
+
+    private func userPressedPrevious() async {
+        guard let idx = currentIndex else { return }
+        await openQueueIndex(max(0, idx - 1))
+    }
+
+    func clearError() {
+        error = nil
+    }
+
+    func invidiousLogin(username: String, password: String) {
+        let settings = library.settings
+        guard !settings.invidiousInstance.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              !username.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              !password.isEmpty
+        else {
+            integrationStatus = "\(Status.invidiousLoginFail) (missing instance, user, or password)"
+            return
+        }
+        Task {
+            do {
+                let result = try await repository.invidiousLogin(settings: settings, username: username.trimmingCharacters(in: .whitespacesAndNewlines), password: password)
+                var s = library.settings
+                s.invidiousSid = result.sid
+                s.invidiousUsername = result.username
+                library.settings = s
+                persist()
+                integrationStatus = Status.invidiousLoginOk
+                await refreshInvidiousPlaylists()
+            } catch {
+                integrationStatus = "\(Status.invidiousLoginFail) (\(error.localizedDescription))"
+            }
+        }
+    }
+
+    func refreshInvidiousPlaylists() async {
+        let settings = library.settings
+        guard let sid = settings.invidiousSid, !sid.isEmpty, !settings.invidiousInstance.isEmpty else {
+            invidiousPlaylists = []
+            return
+        }
+        let list = await repository.invidiousAuthPlaylists(settings: settings)
+        invidiousPlaylists = list
+    }
+
+    func invidiousSyncPlaylist(playlistId: String) {
+        let trimmed = playlistId.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        Task {
+            let settings = library.settings
+            guard let synced = await repository.invidiousSyncPlaylist(settings: settings, playlistId: trimmed) else {
+                integrationStatus = Status.invidiousSyncFail
+                return
+            }
+            var pls = library.playlists.filter { $0.id != synced.id }
+            pls.append(synced)
+            library.playlists = pls
+            persist()
+            integrationStatus = Status.invidiousSyncOk
+        }
+    }
+
+    func invidiousPushPlaylist(localPlaylistId: String, existingInvidiousId: String?) {
+        let lid = localPlaylistId.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !lid.isEmpty else { return }
+        Task {
+            let settings = library.settings
+            guard let local = library.playlists.first(where: { $0.id == lid }) else {
+                integrationStatus = Status.invidiousPushFail
+                return
+            }
+            let remote = existingInvidiousId.flatMap { $0.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty }
+            guard let remoteId = await repository.invidiousPushPlaylist(settings: settings, local: local, existingInvidiousId: remote) else {
+                integrationStatus = Status.invidiousPushFail
+                return
+            }
+            var s = library.settings
+            var map = s.invidiousPlaylistMappings
+            map[local.id] = remoteId
+            s.invidiousPlaylistMappings = map
+            library.settings = s
+            persist()
+            integrationStatus = Status.invidiousPushOk
+        }
+    }
+
+    private func autoPushFavoriteTrack(_ track: Track) {
+        let settings = library.settings
+        guard settings.invidiousAutoPush,
+              !settings.invidiousInstance.isEmpty,
+              let sid = settings.invidiousSid, !sid.isEmpty,
+              let remoteId = settings.invidiousPlaylistMappings["favorites"], !remoteId.isEmpty
+        else { return }
+        Task {
+            let local = Playlist(id: "favorites", title: "Favorites", videos: [track])
+            _ = await repository.invidiousPushPlaylist(settings: settings, local: local, existingInvidiousId: remoteId)
+        }
+    }
 }
 
 private extension Array {
@@ -404,4 +613,9 @@ private extension Array {
 
 private extension String {
     var nonEmpty: String? { isEmpty ? nil : self }
+
+    var nilIfEmpty: String? {
+        let t = trimmingCharacters(in: .whitespacesAndNewlines)
+        return t.isEmpty ? nil : t
+    }
 }
