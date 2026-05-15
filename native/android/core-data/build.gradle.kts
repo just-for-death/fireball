@@ -25,6 +25,9 @@ android {
 dependencies {
     implementation(project(":core-model"))
 
+    implementation("com.github.TeamNewPipe:NewPipeExtractor:v0.26.1")
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+
     implementation("io.ktor:ktor-client-core:2.3.12")
     implementation("io.ktor:ktor-client-okhttp:2.3.12")
     implementation("io.ktor:ktor-client-content-negotiation:2.3.12")
