@@ -64,6 +64,7 @@ final class MainViewModel: ObservableObject {
     private var sponsorSegmentsForVideo: [SponsorSegment] = []
     private var sponsorSegmentsVideoId: String?
     private var sponsorSkippedUUIDs = Set<String>()
+    private var activePlayTask: Task<Void, Never>?
 
     init(repository: FireballRepository) {
         self.repository = repository
@@ -116,9 +117,16 @@ final class MainViewModel: ObservableObject {
                 guard let self else { return false }
                 return !self.queue.isEmpty && self.currentTrack != nil && !self.isPlaying
             },
-            onResume: { [weak self] in self?.togglePlayPause() }
+            onResume: { [weak self] in self?.audioEngine.resumeIfPaused() }
         )
+        bootstrapEngineFromRestoredSession()
         Task { await sleepTimerLoop() }
+    }
+
+    private func bootstrapEngineFromRestoredSession() {
+        guard let idx = currentIndex, !queue.isEmpty, queue.indices.contains(idx) else { return }
+        audioEngine.prepareQueue(queue, startIndex: idx)
+        isPlaying = false
     }
 
     func isFavorite(_ track: Track) -> Bool {
@@ -179,8 +187,10 @@ final class MainViewModel: ObservableObject {
 
     func play(track: Track, source: [Track]) {
         let settings = library.settings
-        Task {
+        activePlayTask?.cancel()
+        activePlayTask = Task {
             error = nil
+            scrobbledTrackIds.removeAll()
             let resolvedTrack = await repository.resolvePlayableTrack(track, settings: settings)
             let queue = source.map { $0.effectiveId == track.effectiveId ? resolvedTrack : $0 }
             let idx = max(0, queue.firstIndex(where: { $0.effectiveId == track.effectiveId }) ?? 0)
@@ -207,7 +217,7 @@ final class MainViewModel: ObservableObject {
                 return
             }
 
-            isPlaying = true
+            guard !Task.isCancelled else { return }
             audioEngine.playQueue(queue, startIndex: idx)
             await loadSponsorSegmentsAfterPlay(for: resolvedTrack)
 
@@ -229,7 +239,9 @@ final class MainViewModel: ObservableObject {
             }
             speechAnnouncer.announceIfNeeded(track: resolvedTrack, enabled: settings.speakSongDetailsEnabled)
             syncLiveActivity()
-            FireballAnalytics.log("track_started", settings: settings, properties: ["id": resolvedTrack.effectiveId])
+            if !privacy {
+                FireballAnalytics.log("track_started", settings: settings, properties: ["id": resolvedTrack.effectiveId])
+            }
         }
     }
 
@@ -264,10 +276,14 @@ final class MainViewModel: ObservableObject {
     }
 
     func updateSettings(_ mutation: (inout FireballSettings) -> Void) {
+        let previous = library.settings
         var settings = library.settings
         mutation(&settings)
         library.settings = settings
         persist()
+        if previous.dynamicIslandEnabled && !settings.dynamicIslandEnabled {
+            NowPlayingLiveActivityManager.end()
+        }
     }
 
     func toggleShuffle() {
@@ -400,6 +416,7 @@ final class MainViewModel: ObservableObject {
             !settings.lastFmApiSecret.isEmpty &&
             !settings.lastFmSessionKey.isEmpty
         guard lbReady || lastFmReady else { return }
+        guard isPlaying else { return }
         guard durationSeconds > 0 else { return }
 
         let thresholdByPercent = durationSeconds * Double(settings.listenBrainzScrobblePercent) / 100.0
@@ -435,6 +452,8 @@ final class MainViewModel: ObservableObject {
         guard let track = currentTrack, let idx = currentIndex else { return }
         let atTail = idx >= queue.count - 2
         guard atTail else { return }
+        let mode = library.settings.queueMode.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard mode == "ai" else { return }
         guard library.settings.ollamaEnabled else { return }
         if library.settings.offlineModeEnabled || library.settings.privacyModeEnabled { return }
         guard aiQueueExpandedForTrackIds.insert(track.effectiveId).inserted else { return }
@@ -458,6 +477,9 @@ final class MainViewModel: ObservableObject {
         queue.append(contentsOf: generated)
         savePlaybackSession()
         persistAIQueue(generated)
+        if isPlaying, let idx = currentIndex {
+            audioEngine.playQueue(queue, startIndex: idx)
+        }
     }
 
     private func persistAIQueue(_ generated: [Track]) {
@@ -704,9 +726,12 @@ final class MainViewModel: ObservableObject {
 
     private func advanceAfterTrackFinished() async {
         guard let idx = currentIndex else { return }
+        let mode = library.settings.queueMode.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         if idx + 1 < queue.count {
             await openQueueIndex(idx + 1)
         } else if repeatMode == .all {
+            await openQueueIndex(0)
+        } else if mode == "repeat" {
             await openQueueIndex(0)
         } else {
             isPlaying = false

@@ -14,6 +14,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.session.DefaultMediaNotificationProvider
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
+import androidx.media3.session.SessionResult
 import com.fireball.nativeapp.MainActivity
 import android.net.Uri
 import com.fireball.nativeapp.core.data.PlaybackPreferences
@@ -80,6 +81,29 @@ class NativePlaybackService : MediaSessionService() {
         }
         mediaSession = MediaSession.Builder(this, player!!)
             .setSessionActivity(sessionActivityIntent())
+            .setCallback(
+                object : MediaSession.Callback {
+                    override fun onPlayerCommandRequest(
+                        session: MediaSession,
+                        controller: MediaSession.ControllerInfo,
+                        playerCommand: Int,
+                    ): Int {
+                        when (playerCommand) {
+                            Player.COMMAND_SEEK_TO_NEXT,
+                            Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM -> {
+                                PlaybackCommandBridge.onSkipToNext?.invoke()
+                                return SessionResult.RESULT_SUCCESS
+                            }
+                            Player.COMMAND_SEEK_TO_PREVIOUS,
+                            Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM -> {
+                                PlaybackCommandBridge.onSkipToPrevious?.invoke()
+                                return SessionResult.RESULT_SUCCESS
+                            }
+                        }
+                        return super.onPlayerCommandRequest(session, controller, playerCommand)
+                    }
+                }
+            )
             .build()
         // Required so MediaController can bind to this session; without it playback commands may not reach ExoPlayer.
         addSession(mediaSession!!)

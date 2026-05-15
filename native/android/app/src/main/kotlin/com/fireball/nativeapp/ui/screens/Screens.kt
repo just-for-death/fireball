@@ -1035,14 +1035,25 @@ private fun SettingsPlayback(
                         onCheckedChange = { onSettingsChange(settings.copy(cacheEnabled = it)) },
                     )
                     ThinDivider()
-                    OutlinedTextField(
-                        value = settings.queueMode,
-                        onValueChange = { onSettingsChange(settings.copy(queueMode = it)) },
-                        label = { Text("Queue mode") },
+                    Text(
+                        text = "Queue mode at end",
+                        style = MaterialTheme.typography.labelLarge,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                    )
+                    Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 8.dp)
-                    )
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        listOf("off" to "Off", "repeat" to "Repeat", "ai" to "AI").forEach { (key, label) ->
+                            FilterChip(
+                                selected = settings.queueMode.equals(key, ignoreCase = true),
+                                onClick = { onSettingsChange(settings.copy(queueMode = key)) },
+                                label = { Text(label) },
+                            )
+                        }
+                    }
                     ThinDivider()
                     OutlinedTextField(
                         value = settings.localMusicCacheLimit.toString(),
@@ -1414,7 +1425,9 @@ private fun SettingsIntegrations(
     onInvidiousPushPlaylist: (String, String?) -> Unit,
     invidiousPlaylists: List<Pair<String, String>>
 ) {
-    var invidiousUser by remember { mutableStateOf(settings.invidiousUsername.orEmpty()) }
+    var invidiousUser by remember(settings.invidiousUsername) {
+        mutableStateOf(settings.invidiousUsername.orEmpty())
+    }
     var invidiousPass by remember { mutableStateOf("") }
     var syncPlaylistId by remember { mutableStateOf("") }
     var localPlaylistId by remember { mutableStateOf("") }
@@ -1430,7 +1443,16 @@ private fun SettingsIntegrations(
                         title = "Enable SponsorBlock",
                         subtitle = "Skip non-music segments",
                         checked = settings.sponsorBlock,
-                        onCheckedChange = { onSettingsChange(settings.copy(sponsorBlock = it)) },
+                        onCheckedChange = { enabled ->
+                            val categories = if (enabled && settings.sponsorBlockCategories.isEmpty()) {
+                                listOf("sponsor", "music_offtopic")
+                            } else {
+                                settings.sponsorBlockCategories
+                            }
+                            onSettingsChange(
+                                settings.copy(sponsorBlock = enabled, sponsorBlockCategories = categories)
+                            )
+                        },
                     )
                     ThinDivider()
                     OutlinedTextField(
@@ -1479,6 +1501,32 @@ private fun SettingsIntegrations(
                         value = settings.listenBrainzUsername,
                         onValueChange = { onSettingsChange(settings.copy(listenBrainzUsername = it)) },
                         label = { Text("ListenBrainz username") },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp)
+                    )
+                    ThinDivider()
+                    OutlinedTextField(
+                        value = settings.listenBrainzScrobblePercent.toString(),
+                        onValueChange = { value ->
+                            value.toIntOrNull()?.coerceIn(1, 100)?.let {
+                                onSettingsChange(settings.copy(listenBrainzScrobblePercent = it))
+                            }
+                        },
+                        label = { Text("Scrobble at % of track") },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp)
+                    )
+                    ThinDivider()
+                    OutlinedTextField(
+                        value = settings.listenBrainzScrobbleMaxSeconds.toString(),
+                        onValueChange = { value ->
+                            value.toIntOrNull()?.coerceIn(1, 600)?.let {
+                                onSettingsChange(settings.copy(listenBrainzScrobbleMaxSeconds = it))
+                            }
+                        },
+                        label = { Text("Scrobble max seconds") },
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(horizontal = 16.dp, vertical = 8.dp)
@@ -1936,6 +1984,33 @@ private fun SettingsLbdl(
             item {
                 SettingsSectionTitle("Download helper")
                 SettingsCard(modifier = Modifier.padding(horizontal = 16.dp)) {
+                    OutlinedTextField(
+                        value = settings.lbdlUrl,
+                        onValueChange = { onSettingsChange(settings.copy(lbdlUrl = it)) },
+                        label = { Text("LBDL URL") },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp)
+                    )
+                    ThinDivider()
+                    OutlinedTextField(
+                        value = settings.lbdlUsername,
+                        onValueChange = { onSettingsChange(settings.copy(lbdlUsername = it)) },
+                        label = { Text("LBDL username") },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp)
+                    )
+                    ThinDivider()
+                    OutlinedTextField(
+                        value = settings.lbdlPassword,
+                        onValueChange = { onSettingsChange(settings.copy(lbdlPassword = it)) },
+                        label = { Text("LBDL password") },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp)
+                    )
+                    ThinDivider()
                     ListItem(
                         headlineContent = { Text("Status", fontWeight = FontWeight.Medium) },
                         supportingContent = { Text("Check LBDL auth") },

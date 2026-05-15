@@ -205,6 +205,7 @@ class MainActivity : ComponentActivity() {
                 }
 
                 val track = ps.currentTrack ?: return@collectLatest
+                if (!ps.isPlaying) return@collectLatest
                 if (track.effectiveId == lastSpokenId) return@collectLatest
                 lastSpokenId = track.effectiveId
 

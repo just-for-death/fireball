@@ -386,12 +386,13 @@ struct SettingsScreen: View {
                     get: { settings.cacheEnabled },
                     set: { value in onUpdateSettings { $0.cacheEnabled = value } }
                 ))
-                Picker("Queue mode", selection: .init(
+                Picker("Queue mode at end", selection: .init(
                     get: { settings.queueMode },
                     set: { value in onUpdateSettings { $0.queueMode = value } }
                 )) {
                     Text("Off").tag("off")
-                    Text("Continuous").tag("continuous")
+                    Text("Repeat queue").tag("repeat")
+                    Text("AI append").tag("ai")
                 }
                 TextField("Local cache limit (GB)", text: .init(
                     get: { "\(settings.localMusicCacheLimit)" },
