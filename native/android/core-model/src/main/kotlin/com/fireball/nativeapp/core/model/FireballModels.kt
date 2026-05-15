@@ -69,8 +69,6 @@ data class FireballSettings(
     val invidiousPlaylistPrivacy: String = "private",
     val invidiousAutoPush: Boolean = false,
     val invidiousPlaylistMappings: Map<String, String> = emptyMap(),
-    val fallbackToPiped: Boolean = true,
-    val pipedInstance: String = "https://pipedapi.kavin.rocks",
     val webDavUrl: String = "",
     val webDavUsername: String = "",
     val webDavPassword: String = "",

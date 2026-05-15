@@ -24,7 +24,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 
 class FireballApiClient(
-    private val httpClient: HttpClient,
+    val httpClient: HttpClient,
 ) {
     suspend fun healthyInvidiousInstances(): List<String> =
         InvidiousInstanceProvider.fetchHealthyInstances(httpClient)
@@ -74,20 +74,6 @@ class FireballApiClient(
         httpClient.get("$base/api/v1/stats").bodyAsText()
         true
     }.getOrDefault(false)
-
-    suspend fun pipedSearch(instanceUrl: String, query: String): JsonArray {
-        val base = instanceUrl.trimEnd('/')
-        val response = httpClient.get("$base/search") {
-            parameter("q", query)
-            parameter("filter", "music_songs")
-        }.body<JsonObject>()
-        return response["items"]?.jsonArray ?: JsonArray(emptyList())
-    }
-
-    suspend fun pipedStream(instanceUrl: String, videoId: String): JsonObject {
-        val base = instanceUrl.trimEnd('/')
-        return httpClient.get("$base/streams/$videoId").body()
-    }
 
     suspend fun invidiousLogin(instanceUrl: String, username: String, password: String): Pair<String, String> = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
         val base = instanceUrl.trimEnd('/')

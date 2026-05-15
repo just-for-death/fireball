@@ -1474,22 +1474,11 @@ private fun SettingsIntegrations(
                         checked = settings.invidiousAutoPush,
                         onCheckedChange = { onSettingsChange(settings.copy(invidiousAutoPush = it)) },
                     )
-                    ThinDivider()
-                    SettingsSwitchRow(
-                        icon = Icons.Default.AutoAwesome,
-                        title = "Fallback to Piped API",
-                        subtitle = "Use Piped when Invidious is slow or blocked",
-                        checked = settings.fallbackToPiped,
-                        onCheckedChange = { onSettingsChange(settings.copy(fallbackToPiped = it)) },
-                    )
-                    ThinDivider()
-                    OutlinedTextField(
-                        value = settings.pipedInstance,
-                        onValueChange = { onSettingsChange(settings.copy(pipedInstance = it)) },
-                        label = { Text("Piped instance URL") },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 8.dp)
+                    Text(
+                        text = "Stream resolution uses your Invidious instance (optional), public mirrors, then on-device YouTube extract. No separate proxy is required.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                     )
                 }
                 Spacer(modifier = Modifier.height(16.dp))

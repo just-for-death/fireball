@@ -61,8 +61,6 @@ struct FireballSettings: Codable, Hashable {
     var invidiousPlaylistPrivacy = "private"
     var invidiousAutoPush = false
     var invidiousPlaylistMappings: [String: String] = [:]
-    var fallbackToPiped = true
-    var pipedInstance = "https://pipedapi.kavin.rocks"
     var webDavUrl = ""
     var webDavUsername = ""
     var webDavPassword = ""

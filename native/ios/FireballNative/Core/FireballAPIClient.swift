@@ -72,6 +72,7 @@ final class FireballAPIClient {
     }
 
     /// `local=true` proxies streams through the instance (recommended for playback).
+    /// `local=true` asks Invidious to proxy stream URLs (recommended for playback).
     func invidiousVideo(
         instanceURL: String,
         videoId: String,
@@ -200,30 +201,6 @@ final class FireballAPIClient {
         request.setValue("SID=\(sid)", forHTTPHeaderField: "Cookie")
         request.httpBody = try JSONSerialization.data(withJSONObject: ["videoId": videoId])
         _ = try await session.data(for: request)
-    }
-
-    func pipedSearch(instanceURL: String, query: String) async throws -> Data {
-        let base = trimTrailingSlashes(instanceURL)
-        var c = URLComponents(string: "\(base)/search")!
-        c.queryItems = [
-            URLQueryItem(name: "q", value: query),
-            URLQueryItem(name: "filter", value: "music_songs"),
-        ]
-        guard let url = c.url else { throw URLError(.badURL) }
-        var request = URLRequest(url: url)
-        applyDefaultHeaders(&request)
-        let (data, _) = try await session.data(for: request)
-        return data
-    }
-
-    func pipedStream(instanceURL: String, videoId: String) async throws -> Data {
-        let base = trimTrailingSlashes(instanceURL)
-        let enc = videoId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? videoId
-        guard let url = URL(string: "\(base)/streams/\(enc)") else { throw URLError(.badURL) }
-        var request = URLRequest(url: url)
-        applyDefaultHeaders(&request)
-        let (data, _) = try await session.data(for: request)
-        return data
     }
 
     func lrclibSearch(track: String, artist: String) async throws -> Data {

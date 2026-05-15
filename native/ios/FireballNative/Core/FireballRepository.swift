@@ -2,12 +2,7 @@ import Foundation
 
 @MainActor
 final class FireballRepository {
-    private static let searchCachePrefix = "v3:"
-
-    private static let publicPipedInstances = [
-        "https://pipedapi.kavin.rocks",
-        "https://pipedapi.in.projectsegfau.lt",
-    ]
+    private static let searchCachePrefix = "v5:"
 
     private let api: FireballAPIClient
     private let store: LibraryStore
@@ -50,14 +45,6 @@ final class FireballRepository {
             }
         }
 
-        if settings.fallbackToPiped {
-            for piped in pipedInstances(settings: settings) {
-                if let results = await searchPiped(query: query, instance: piped), !results.isEmpty {
-                    cache(query: cacheKey, tracks: results)
-                    return results
-                }
-            }
-        }
         return []
     }
 
@@ -95,15 +82,6 @@ final class FireballRepository {
             if let resolved = await resolveViaInvidious(track: track, instance: instance, settings: settings),
                let url = resolved.url, !url.isEmpty {
                 return resolved
-            }
-        }
-
-        if settings.fallbackToPiped {
-            for piped in pipedInstances(settings: settings) {
-                if let resolved = await resolveViaPiped(track: track, instance: piped),
-                   let url = resolved.url, !url.isEmpty {
-                    return resolved
-                }
             }
         }
 
@@ -195,48 +173,30 @@ final class FireballRepository {
         return InvidiousInstances.ordered(userInstance: settings.invidiousInstance, publicInstances: publicList)
     }
 
-    private func pipedInstances(settings: FireballSettings) -> [String] {
-        var out: [String] = []
-        let user = settings.pipedInstance.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !user.isEmpty { out.append(user) }
-        for mirror in Self.publicPipedInstances where !out.contains(mirror) {
-            out.append(mirror)
-        }
-        return out
-    }
-
     private func resolveViaInvidious(track: Track, instance: String, settings: FireballSettings) async -> Track? {
         if let videoId = track.videoId,
            let stream = await resolveInvidiousAudioStream(instance: instance, videoId: videoId, settings: settings) {
             return trackWithUrl(track, url: normalizePlaybackUrl(stream, instance: instance), videoId: track.videoId)
         }
 
-        if let searchResult = await searchInvidious(
-            query: "\(track.artist) \(track.title) official audio",
-            instance: instance,
-            sid: settings.invidiousSid
-        ),
-            let first = searchResult.first,
-            let firstVideoId = first.videoId,
-            let stream = await resolveInvidiousAudioStream(instance: instance, videoId: firstVideoId, settings: settings) {
-            return trackWithUrl(track, url: normalizePlaybackUrl(stream, instance: instance), videoId: firstVideoId)
+        for query in invidiousSearchQueries(track: track) {
+            if let searchResult = await searchInvidious(query: query, instance: instance, sid: settings.invidiousSid),
+               let first = searchResult.first,
+               let firstVideoId = first.videoId,
+               let stream = await resolveInvidiousAudioStream(instance: instance, videoId: firstVideoId, settings: settings) {
+                return trackWithUrl(track, url: normalizePlaybackUrl(stream, instance: instance), videoId: firstVideoId)
+            }
         }
         return nil
     }
 
-    private func resolveViaPiped(track: Track, instance: String) async -> Track? {
-        if let videoId = track.videoId,
-           let stream = await resolvePipedAudioStream(instance: instance, videoId: videoId) {
-            return trackWithUrl(track, url: stream, videoId: track.videoId)
-        }
-
-        if let searchResult = await searchPiped(query: "\(track.title) \(track.artist)", instance: instance),
-           let first = searchResult.first,
-           let firstVideoId = first.videoId,
-           let stream = await resolvePipedAudioStream(instance: instance, videoId: firstVideoId) {
-            return trackWithUrl(track, url: stream, videoId: firstVideoId)
-        }
-        return nil
+    private func invidiousSearchQueries(track: Track) -> [String] {
+        [
+            "\(track.artist) \(track.title) official audio",
+            "\(track.artist) \(track.title) topic",
+            "\(track.artist) - \(track.title)",
+            "\(track.title) \(track.artist)",
+        ]
     }
 
     private func trackWithUrl(_ track: Track, url: String, videoId: String?) -> Track {
@@ -315,6 +275,8 @@ final class FireballRepository {
         let formats = root["formatStreams"] as? [[String: Any]]
         if let url = pickUrlFromFormatStreams(formats, highQuality: settings.highQuality) { return url }
 
+        if let hls = root["hlsUrl"] as? String, !hls.isEmpty { return hls }
+
         return nil
     }
 
@@ -346,41 +308,6 @@ final class FireballRepository {
         if let s = format["bitrate"] as? String { return Int64(s) ?? 0 }
         if let i = format["bitrate"] as? Int { return Int64(i) }
         return 0
-    }
-
-    private func searchPiped(query: String, instance: String) async -> [Track]? {
-        guard let data = try? await api.pipedSearch(instanceURL: instance, query: query),
-              let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let items = root["items"] as? [[String: Any]]
-        else { return nil }
-
-        return items.compactMap { item in
-            guard let url = item["url"] as? String,
-                  url.contains("/watch?v="),
-                  let id = url.components(separatedBy: "/watch?v=").last else { return nil }
-            return Track(
-                id: id,
-                videoId: id,
-                title: item["title"] as? String ?? "Unknown",
-                artist: item["uploaderName"] as? String ?? "Unknown",
-                artwork: item["thumbnail"] as? String,
-                url: nil,
-                duration: nil,
-                album: nil,
-                year: nil
-            )
-        }
-    }
-
-    private func resolvePipedAudioStream(instance: String, videoId: String) async -> String? {
-        guard let data = try? await api.pipedStream(instanceURL: instance, videoId: videoId),
-              let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let streams = root["audioStreams"] as? [[String: Any]],
-              !streams.isEmpty
-        else { return nil }
-
-        let best = streams.max { bitrate($0) < bitrate($1) }
-        return (best?["url"] as? String).flatMap { $0.isEmpty ? nil : $0 }
     }
 
     private func isItunesPreviewUrl(_ url: String) -> Bool {

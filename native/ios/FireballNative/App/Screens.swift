@@ -401,14 +401,9 @@ struct SettingsScreen: View {
                         set: { value in onUpdateSettings { $0.invidiousSid = value.isEmpty ? nil : value } }
                     ))
                 }
-                Toggle("Fallback to Piped API", isOn: .init(
-                    get: { settings.fallbackToPiped },
-                    set: { value in onUpdateSettings { $0.fallbackToPiped = value } }
-                ))
-                TextField("Piped instance URL", text: .init(
-                    get: { settings.pipedInstance },
-                    set: { value in onUpdateSettings { $0.pipedInstance = value } }
-                ))
+                Text("Playback resolves via your Invidious instance (optional), then public mirrors automatically. No separate proxy is required.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
                 Toggle("ListenBrainz enabled", isOn: .init(
                     get: { settings.listenBrainzEnabled },
                     set: { value in onUpdateSettings { $0.listenBrainzEnabled = value } }

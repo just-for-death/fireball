@@ -237,11 +237,8 @@ class MainViewModel(
                 val playableUrl = resolvedTrack.url
                 if (playableUrl.isNullOrBlank()) {
                     clearSponsorState()
-                    val hint = if (settings.fallbackToPiped) {
-                        "Could not resolve a stream. Public Invidious mirrors were tried automatically; check network or enable a custom instance in Settings."
-                    } else {
-                        "Could not resolve a stream via Invidious. Enable Piped fallback in Settings or set your own Invidious instance."
-                    }
+                    val hint =
+                        "Could not resolve audio. Tried Invidious mirrors and on-device YouTube extract. Check network or set a custom Invidious instance in Settings."
                     _uiState.update { it.copy(error = hint) }
                     return@launch
                 }
@@ -618,7 +615,7 @@ class MainViewModel(
         if (playable.isEmpty()) {
             _uiState.update {
                 it.copy(
-                    error = "Could not get streams for tracks in the queue. Check Invidious / Piped settings."
+                    error = "Could not get streams for tracks in the queue. Check Invidious settings or network."
                 )
             }
             return

@@ -148,7 +148,7 @@ final class MainViewModel: ObservableObject {
             }
 
             guard let url = resolvedTrack.url, !url.isEmpty else {
-                error = "Could not get a stream for this track. Set an Invidious instance, sign in if required, or enable Piped fallback."
+                error = "Could not get a stream for this track. Public Invidious mirrors were tried; set a custom instance or sign in if required."
                 isPlaying = false
                 if !offline {
                     currentLyrics = await lyricsAi.fetchLyrics(track: resolvedTrack, settings: settings)

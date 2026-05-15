@@ -3,6 +3,7 @@ package com.fireball.nativeapp.data
 import com.fireball.nativeapp.core.data.FireballApiClient
 import com.fireball.nativeapp.core.data.InvidiousInstanceProvider
 import com.fireball.nativeapp.core.data.LibraryStore
+import com.fireball.nativeapp.core.data.YoutubeDirectStreamResolver
 import com.fireball.nativeapp.core.model.FireballSettings
 import com.fireball.nativeapp.core.model.LibrarySnapshot
 import com.fireball.nativeapp.core.model.Track
@@ -19,13 +20,7 @@ class FireballRepository(
     private val store: LibraryStore
 ) {
     private companion object {
-        private const val SEARCH_CACHE_PREFIX = "v3:"
-
-        /** Optional last resort when Invidious mirrors are all down. */
-        private val PUBLIC_PIPED_INSTANCES = listOf(
-            "https://pipedapi.kavin.rocks",
-            "https://pipedapi.in.projectsegfau.lt",
-        )
+        private const val SEARCH_CACHE_PREFIX = "v5:"
     }
 
     private val searchCache = linkedMapOf<String, List<Track>>()
@@ -84,22 +79,13 @@ class FireballRepository(
             }
         }
 
-        if (settings.fallbackToPiped) {
-            for (pipedInstance in pipedInstances(settings)) {
-                val pipedResult = pipedSearchOnInstance(pipedInstance, query)
-                if (pipedResult.isNotEmpty()) {
-                    cacheSearch(cacheKey, pipedResult)
-                    return pipedResult
-                }
-            }
-        }
-
         return emptyList()
     }
 
     /**
      * Resolve a playable stream URL.
-     * Order: local file → direct URL → Invidious (user + auto public mirrors, `local=true`) → Piped (optional).
+     * Order: local → direct URL → Invidious (`local=true`, all mirrors, multi-query)
+     * → direct YouTube (NewPipe, on-device).
      */
     suspend fun resolvePlayableTrack(track: Track, settings: FireballSettings): Track {
         resolveDownloadedPath(track, settings)?.let { return track.copy(url = it) }
@@ -113,14 +99,20 @@ class FireballRepository(
             if (!resolved.url.isNullOrBlank()) return resolved
         }
 
-        if (settings.fallbackToPiped) {
-            for (pipedInstance in pipedInstances(settings)) {
-                val resolved = resolveViaPiped(track, pipedInstance)
-                if (!resolved.url.isNullOrBlank()) return resolved
-            }
-        }
+        resolveViaYoutubeDirect(track)?.let { if (!it.url.isNullOrBlank()) return it }
 
         return track
+    }
+
+    private suspend fun resolveViaYoutubeDirect(track: Track): Track? {
+        val videoId = track.videoId
+        if (videoId != null) {
+            val url = YoutubeDirectStreamResolver.resolveAudioUrl(videoId) ?: return null
+            return track.copy(url = url)
+        }
+        val found = YoutubeDirectStreamResolver.searchAndResolveAudio(track.artist, track.title)
+            ?: return null
+        return track.copy(videoId = found.first, url = found.second)
     }
 
     private suspend fun invidiousInstances(settings: FireballSettings): List<String> =
@@ -128,11 +120,6 @@ class FireballRepository(
             settings.invidiousInstance,
             api.healthyInvidiousInstances(),
         )
-
-    private fun pipedInstances(settings: FireballSettings): List<String> = buildList {
-        settings.pipedInstance.trim().takeIf { it.isNotBlank() }?.let { add(it) }
-        addAll(PUBLIC_PIPED_INSTANCES)
-    }.distinct()
 
     private suspend fun invidiousSearchOnInstance(
         instance: String,
@@ -158,22 +145,6 @@ class FireballRepository(
         }
     }.getOrDefault(emptyList())
 
-    private suspend fun pipedSearchOnInstance(instance: String, query: String): List<Track> =
-        runCatching {
-            api.pipedSearch(instance, query).mapNotNull { entry ->
-                val e = entry.jsonObject
-                val url = e["url"]?.jsonPrimitive?.content ?: return@mapNotNull null
-                val id = url.substringAfter("/watch?v=").takeIf { it != url } ?: return@mapNotNull null
-                Track(
-                    id = id,
-                    videoId = id,
-                    title = e["title"]?.jsonPrimitive?.content ?: "Unknown",
-                    artist = e["uploaderName"]?.jsonPrimitive?.content ?: "Unknown",
-                    artwork = e["thumbnail"]?.jsonPrimitive?.content
-                )
-            }
-        }.getOrDefault(emptyList())
-
     private suspend fun resolveViaInvidious(
         track: Track,
         instance: String,
@@ -187,18 +158,7 @@ class FireballRepository(
             }
         }
 
-        val searchVideoId = runCatching {
-            api.invidiousSearch(
-                instance,
-                "${track.artist} ${track.title} official audio",
-                settings.invidiousSid
-            )
-                .firstOrNull()
-                ?.jsonObject
-                ?.get("videoId")
-                ?.jsonPrimitive
-                ?.content
-        }.getOrNull()
+        val searchVideoId = findInvidiousVideoId(track, instance, settings)
 
         if (!searchVideoId.isNullOrBlank()) {
             val stream = resolveInvidiousAudioStream(instance, searchVideoId, settings)
@@ -207,32 +167,6 @@ class FireballRepository(
                     videoId = searchVideoId,
                     url = normalizePlaybackUrl(stream, instance)
                 )
-            }
-        }
-        return track
-    }
-
-    private suspend fun resolveViaPiped(track: Track, pipedInstance: String): Track {
-        val pipedVideoId = track.videoId
-        if (pipedVideoId != null) {
-            val stream = resolvePipedAudioStream(pipedInstance, pipedVideoId)
-            if (!stream.isNullOrBlank()) return track.copy(url = stream)
-        }
-
-        val searchVideoId = runCatching {
-            api.pipedSearch(pipedInstance, "${track.title} ${track.artist}")
-                .firstOrNull()
-                ?.jsonObject
-                ?.get("url")
-                ?.jsonPrimitive
-                ?.content
-                ?.substringAfter("/watch?v=")
-        }.getOrNull()
-
-        if (!searchVideoId.isNullOrBlank()) {
-            val stream = resolvePipedAudioStream(pipedInstance, searchVideoId)
-            if (!stream.isNullOrBlank()) {
-                return track.copy(videoId = searchVideoId, url = stream)
             }
         }
         return track
@@ -280,21 +214,36 @@ class FireballRepository(
 
             pickUrlFromAdaptive(root["adaptiveFormats"]?.jsonArray)
                 ?: pickUrlFromFormatStreams(root["formatStreams"]?.jsonArray)
+                ?: root["hlsUrl"]?.jsonPrimitive?.content?.takeIf { it.isNotBlank() }
         }.getOrNull()
     }
 
-    private suspend fun resolvePipedAudioStream(instance: String, videoId: String): String? {
-        return runCatching {
-            val root = api.pipedStream(instance, videoId)
-            val streams = root["audioStreams"]?.jsonArray ?: return@runCatching null
-            val best = streams.maxByOrNull { stream ->
-                stream.jsonObject["bitrate"]?.jsonPrimitive?.content?.toLongOrNull() ?: 0L
-            }
-            best?.jsonObject?.get("url")?.jsonPrimitive?.content
-        }.getOrNull()
+    private suspend fun findInvidiousVideoId(
+        track: Track,
+        instance: String,
+        settings: FireballSettings,
+    ): String? {
+        for (query in invidiousSearchQueries(track)) {
+            val id = runCatching {
+                api.invidiousSearch(instance, query, settings.invidiousSid)
+                    .firstOrNull()
+                    ?.jsonObject
+                    ?.get("videoId")
+                    ?.jsonPrimitive
+                    ?.content
+            }.getOrNull()
+            if (!id.isNullOrBlank()) return id
+        }
+        return null
     }
 
-    /** Prefer Invidious-proxied URLs from `local=true`; only re-proxy raw googlevideo links. */
+    private fun invidiousSearchQueries(track: Track): List<String> = listOf(
+        "${track.artist} ${track.title} official audio",
+        "${track.artist} ${track.title} topic",
+        "${track.artist} - ${track.title}",
+        "${track.title} ${track.artist}",
+    )
+
     private fun normalizePlaybackUrl(url: String, instance: String): String {
         val base = instance.trimEnd('/')
         if (url.startsWith(base)) return url
