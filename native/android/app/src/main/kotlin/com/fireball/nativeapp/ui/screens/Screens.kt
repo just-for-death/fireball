@@ -32,6 +32,7 @@ import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.FastForward
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.LibraryMusic
 import androidx.compose.material.icons.filled.HeadsetMic
@@ -450,6 +451,7 @@ fun SearchScreen(
     results: List<Track>,
     isSearching: Boolean,
     isPlaybackLoading: Boolean,
+    isFavorite: (Track) -> Boolean,
     onQueryChange: (String) -> Unit,
     onSearch: () -> Unit,
     onPlay: (Track, List<Track>) -> Unit,
@@ -497,6 +499,20 @@ fun SearchScreen(
                 } else {
                     Text("Search")
                 }
+            }
+        }
+
+        if (results.isEmpty() && !isSearching && query.isNotBlank()) {
+            Box(
+                modifier = Modifier.weight(1f).fillMaxWidth(),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    "No results. Try another query or check Invidious / network.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(24.dp),
+                )
             }
         }
 
@@ -573,12 +589,12 @@ fun SearchScreen(
                             }
                         }
 
-                        // Favorite button
+                        val fav = isFavorite(track)
                         androidx.compose.material3.IconButton(onClick = { onToggleFavorite(track) }) {
                             Icon(
-                                imageVector = Icons.Default.FavoriteBorder,
-                                contentDescription = "Add to favorites",
-                                tint = MaterialTheme.colorScheme.primary
+                                imageVector = if (fav) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                                contentDescription = if (fav) "Remove from favorites" else "Add to favorites",
+                                tint = if (fav) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
                             )
                         }
                     }
@@ -599,6 +615,27 @@ fun LibraryScreen(
             modifier = Modifier.fillMaxSize().padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
+            if (library.playlists.isNotEmpty()) {
+                Text("Playlists", style = MaterialTheme.typography.headlineSmall)
+                library.playlists.forEach { pl ->
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable(enabled = pl.videos.isNotEmpty()) {
+                                val first = pl.videos.firstOrNull() ?: return@clickable
+                                onPlay(first, pl.videos)
+                            },
+                    ) {
+                        Row(
+                            Modifier.padding(12.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                        ) {
+                            Text(pl.title, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                            Text("${pl.videos.size}", style = MaterialTheme.typography.labelMedium)
+                        }
+                    }
+                }
+            }
             Text("Favorites", style = MaterialTheme.typography.headlineSmall)
             LazyVerticalGrid(
                 columns = GridCells.Fixed(2),
@@ -618,12 +655,46 @@ fun LibraryScreen(
             modifier = Modifier.fillMaxSize().padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
+            if (library.playlists.isNotEmpty()) {
+                item { Text("Playlists", style = MaterialTheme.typography.headlineSmall) }
+                items(library.playlists, key = { it.id }) { pl ->
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable(enabled = pl.videos.isNotEmpty()) {
+                                val first = pl.videos.firstOrNull() ?: return@clickable
+                                onPlay(first, pl.videos)
+                            },
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                        ) {
+                            Text(pl.title, style = MaterialTheme.typography.titleMedium)
+                            Text("${pl.videos.size}", style = MaterialTheme.typography.labelMedium)
+                        }
+                    }
+                }
+            }
             item { Text("Favorites", style = MaterialTheme.typography.headlineSmall) }
+            if (library.favorites.isEmpty()) {
+                item {
+                    Text(
+                        "No favorites yet — tap the heart in Search.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
             items(library.favorites) { track ->
                 TrackRow(track = track, onClick = { onPlay(track, library.favorites) })
             }
-            item { Text("Playlists: ${library.playlists.size}") }
-            item { Text("Artists followed: ${library.artists.size}") }
+            if (library.history.isNotEmpty()) {
+                item { Text("History", style = MaterialTheme.typography.headlineSmall) }
+                items(library.history.take(30)) { track ->
+                    TrackRow(track = track, onClick = { onPlay(track, library.history) })
+                }
+            }
         }
     }
 }
@@ -648,7 +719,8 @@ fun SettingsScreen(
     onInvidiousLogin: (String, String) -> Unit,
     onInvidiousSyncPlaylist: (String) -> Unit,
     onInvidiousPushPlaylist: (String, String?) -> Unit,
-    invidiousPlaylists: List<Pair<String, String>>
+    invidiousPlaylists: List<Pair<String, String>>,
+    onGoogleDriveBackup: (String) -> Unit,
 ) {
     var page by remember { mutableStateOf(SettingsPage.Root) }
 
@@ -708,6 +780,7 @@ fun SettingsScreen(
             onSettingsChange = onSettingsChange,
             onWebDavPull = onWebDavPull,
             onWebDavPush = onWebDavPush,
+            onGoogleDriveBackup = onGoogleDriveBackup,
         )
 
         SettingsPage.Advanced -> SettingsAdvanced(
@@ -1595,7 +1668,9 @@ private fun SettingsSync(
     onSettingsChange: (FireballSettings) -> Unit,
     onWebDavPull: () -> Unit,
     onWebDavPush: () -> Unit,
+    onGoogleDriveBackup: (String) -> Unit,
 ) {
+    var gDriveToken by remember { mutableStateOf("") }
     SettingsScaffold(title = "Sync & Backup", onBack = onBack) {
         LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 96.dp)) {
             item {
@@ -1671,6 +1746,28 @@ private fun SettingsSync(
                             .fillMaxWidth()
                             .padding(horizontal = 16.dp, vertical = 8.dp)
                     )
+                    ThinDivider()
+                    OutlinedTextField(
+                        value = gDriveToken,
+                        onValueChange = { gDriveToken = it },
+                        label = { Text("Google Drive access token") },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp)
+                    )
+                    ThinDivider()
+                    Button(
+                        onClick = {
+                            onGoogleDriveBackup(gDriveToken.trim())
+                            gDriveToken = ""
+                        },
+                        enabled = settings.gDriveEnabled && gDriveToken.isNotBlank(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                    ) {
+                        Text("Backup library to Google Drive")
+                    }
                 }
                 Spacer(modifier = Modifier.height(24.dp))
             }

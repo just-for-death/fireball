@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 
 /// Official trusted Invidious instances (May 2026 — https://docs.invidious.io/instances/).
 enum InvidiousInstances {

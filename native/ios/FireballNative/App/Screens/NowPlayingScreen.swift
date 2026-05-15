@@ -6,6 +6,8 @@ public struct NowPlayingScreen: View {
     let positionSeconds: Double
     let durationSeconds: Double
     let currentLyrics: String?
+    let lyricsAutoScroll: Bool
+    let lyricsReducedMotion: Bool
     let onPlayPause: () -> Void
     let onPrevious: () -> Void
     let onNext: () -> Void
@@ -39,7 +41,18 @@ public struct NowPlayingScreen: View {
                         .font(.headline)
                         .foregroundColor(dominantColors.onBackground.opacity(0.8))
                     Spacer()
-                    Button(action: {}) {
+                    Menu {
+                        if #available(iOS 16.0, *) {
+                            if let lyrics = currentLyrics, !lyrics.isEmpty {
+                                ShareLink(item: lyrics) {
+                                    Label("Share lyrics", systemImage: "square.and.arrow.up")
+                                }
+                            }
+                            ShareLink(item: "\(track.title) — \(track.artist)") {
+                                Label("Share track", systemImage: "music.note")
+                            }
+                        }
+                    } label: {
                         Image(systemName: "ellipsis")
                             .font(.title2)
                             .foregroundColor(dominantColors.onBackground)
@@ -104,14 +117,23 @@ public struct NowPlayingScreen: View {
                 .padding(.horizontal, 32)
 
                 if let lyrics = currentLyrics, !lyrics.isEmpty {
-                    ScrollView {
-                        Text(lyrics)
-                            .font(.footnote)
-                            .foregroundColor(dominantColors.onBackground.opacity(0.85))
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                    ScrollViewReader { proxy in
+                        ScrollView {
+                            Text(lyrics)
+                                .font(.footnote)
+                                .foregroundColor(dominantColors.onBackground.opacity(0.85))
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .id("lyricsTop")
+                        }
+                        .frame(maxHeight: lyricsReducedMotion ? 80 : 120)
+                        .padding(.horizontal, 24)
+                        .onAppear {
+                            guard lyricsAutoScroll, !lyricsReducedMotion else { return }
+                            withAnimation(.linear(duration: 0.3)) {
+                                proxy.scrollTo("lyricsTop", anchor: .top)
+                            }
+                        }
                     }
-                    .frame(maxHeight: 120)
-                    .padding(.horizontal, 24)
                 }
 
                 // Playback Controls

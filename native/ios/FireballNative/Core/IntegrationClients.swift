@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 
 private extension URLSession {
     func dataWithRetry(for request: URLRequest, retries: Int = 1) async throws -> (Data, URLResponse) {

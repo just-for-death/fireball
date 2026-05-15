@@ -50,7 +50,7 @@ final class LyricsAndAIService {
     private func choosePreferredLyrics(candidates: [String], preferEnglishHindi: Bool) -> String? {
         guard !candidates.isEmpty else { return nil }
         guard preferEnglishHindi else { return candidates.first }
-        let devanagariRange = "\u{0900}"..."\u{097F}"
+        let devanagariRange = Character("\u{0900}") ... Character("\u{097F}")
         return candidates.max(by: { score($0, devanagariRange: devanagariRange) < score($1, devanagariRange: devanagariRange) })
     }
 

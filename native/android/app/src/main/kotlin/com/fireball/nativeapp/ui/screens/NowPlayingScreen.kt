@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
@@ -51,6 +52,7 @@ import com.fireball.nativeapp.ui.theme.rememberDominantColors
 @Composable
 fun NowPlayingScreen(
     playbackState: PlaybackState,
+    currentLyrics: String?,
     onPlayPause: () -> Unit,
     onNext: () -> Unit,
     onPrevious: () -> Unit,
@@ -174,6 +176,24 @@ fun NowPlayingScreen(
                         style = MaterialTheme.typography.labelMedium,
                         color = dominant.onBackground.copy(alpha = 0.7f),
                     )
+                }
+            }
+
+            if (!currentLyrics.isNullOrBlank()) {
+                Spacer(Modifier.height(12.dp))
+                androidx.compose.foundation.lazy.LazyColumn(
+                    modifier = Modifier
+                        .widthIn(max = 480.dp)
+                        .fillMaxWidth()
+                        .heightIn(max = 120.dp),
+                ) {
+                    item {
+                        Text(
+                            text = currentLyrics,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = dominant.onBackground.copy(alpha = 0.85f),
+                        )
+                    }
                 }
             }
 

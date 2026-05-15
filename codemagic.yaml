@@ -32,3 +32,20 @@ workflows:
 
     artifacts:
       - build/ios/ipa_unsigned/fireball_unsigned.ipa
+
+  # SwiftUI native app (native/ios) — InnerTube + YouTubeKit fallback; no local Mac needed.
+  fireball-native-ios:
+    name: Fireball Native iOS (Swift)
+    max_build_duration: 60
+    instance_type: mac_mini_m2
+    environment:
+      xcode: latest
+    scripts:
+      - name: Build native Fireball iOS app
+        script: |
+          set -e
+          cd native/ios
+          chmod +x scripts/build-ios-codemagic.sh
+          ./scripts/build-ios-codemagic.sh "generic/platform=iOS Simulator"
+    artifacts:
+      - native/ios/build/DerivedData/**/*.app

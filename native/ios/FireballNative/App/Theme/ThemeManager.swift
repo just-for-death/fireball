@@ -31,25 +31,37 @@ public extension EnvironmentValues {
 public struct DynamicThemeViewModifier: ViewModifier {
     @StateObject private var themeManager = ThemeManager.shared
     let artworkUrl: String?
+    let useDynamicFromArtwork: Bool
     @Environment(\.colorScheme) var colorScheme
 
     public func body(content: Content) -> some View {
         content
             .environment(\.dominantColors, themeManager.colors)
             .onChange(of: artworkUrl) { newUrl in
-                themeManager.updateColors(from: newUrl, isDark: colorScheme == .dark)
+                applyTheme(artworkUrl: newUrl)
             }
-            .onChange(of: colorScheme) { newScheme in
-                themeManager.updateColors(from: artworkUrl, isDark: newScheme == .dark)
+            .onChange(of: colorScheme) { _ in
+                applyTheme(artworkUrl: artworkUrl)
+            }
+            .onChange(of: useDynamicFromArtwork) { _ in
+                applyTheme(artworkUrl: artworkUrl)
             }
             .onAppear {
-                themeManager.updateColors(from: artworkUrl, isDark: colorScheme == .dark)
+                applyTheme(artworkUrl: artworkUrl)
             }
+    }
+
+    private func applyTheme(artworkUrl: String?) {
+        if useDynamicFromArtwork {
+            themeManager.updateColors(from: artworkUrl, isDark: colorScheme == .dark)
+        } else {
+            themeManager.colors = .defaultColors
+        }
     }
 }
 
 public extension View {
-    func dynamicTheme(artworkUrl: String?) -> some View {
-        modifier(DynamicThemeViewModifier(artworkUrl: artworkUrl))
+    func dynamicTheme(artworkUrl: String?, useDynamicFromArtwork: Bool = true) -> some View {
+        modifier(DynamicThemeViewModifier(artworkUrl: artworkUrl, useDynamicFromArtwork: useDynamicFromArtwork))
     }
 }

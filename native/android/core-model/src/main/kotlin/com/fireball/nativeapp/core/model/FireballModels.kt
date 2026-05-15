@@ -104,6 +104,14 @@ data class FireballSettings(
 )
 
 @Serializable
+data class PlaybackSession(
+    val queue: List<Track> = emptyList(),
+    val currentIndex: Int = 0,
+    val shuffled: Boolean = false,
+    val repeatMode: String = "off",
+)
+
+@Serializable
 data class LibrarySnapshot(
     val version: Int = 2,
     val settings: FireballSettings = FireballSettings(),
@@ -111,5 +119,6 @@ data class LibrarySnapshot(
     val favorites: List<Track> = emptyList(),
     val playlists: List<Playlist> = emptyList(),
     val artists: List<Artist> = emptyList(),
-    val albums: List<Album> = emptyList()
+    val albums: List<Album> = emptyList(),
+    val playbackSession: PlaybackSession = PlaybackSession(),
 )

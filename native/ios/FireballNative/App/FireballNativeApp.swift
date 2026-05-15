@@ -82,7 +82,10 @@ private struct RootShellView: View {
                 }
             }
         }
-        .dynamicTheme(artworkUrl: viewModel.currentTrack?.artwork)
+        .dynamicTheme(
+            artworkUrl: viewModel.currentTrack?.artwork,
+            useDynamicFromArtwork: viewModel.library.settings.useDynamicColorWhenAvailable
+        )
         .fullScreenCover(isPresented: $isPlayerOpen) {
             if let track = viewModel.currentTrack {
                 NowPlayingScreen(
@@ -91,6 +94,8 @@ private struct RootShellView: View {
                     positionSeconds: viewModel.positionSeconds,
                     durationSeconds: viewModel.durationSeconds,
                     currentLyrics: viewModel.currentLyrics,
+                    lyricsAutoScroll: viewModel.library.settings.lyricsAutoScroll,
+                    lyricsReducedMotion: viewModel.library.settings.lyricsReducedMotion,
                     onPlayPause: viewModel.togglePlayPause,
                     onPrevious: viewModel.previous,
                     onNext: viewModel.next,
@@ -131,6 +136,7 @@ private struct RootShellView: View {
                 results: viewModel.searchResults,
                 isSearching: viewModel.isSearching,
                 error: viewModel.error,
+                isFavorite: viewModel.isFavorite,
                 onDismissError: { viewModel.clearError() },
                 onSearch: viewModel.search,
                 onPlay: viewModel.play,
@@ -140,7 +146,9 @@ private struct RootShellView: View {
             LibraryScreen(
                 library: viewModel.library,
                 useGrid: viewModel.library.settings.libraryUseGrid,
-                onPlay: viewModel.play
+                isFavorite: viewModel.isFavorite,
+                onPlay: viewModel.play,
+                onFavorite: viewModel.toggleFavorite
             )
         case .settings:
             SettingsScreen(
@@ -165,7 +173,10 @@ private struct RootShellView: View {
                 onInvidiousLogin: { u, p in viewModel.invidiousLogin(username: u, password: p) },
                 onInvidiousRefreshPlaylists: { Task { await viewModel.refreshInvidiousPlaylists() } },
                 onInvidiousSyncPlaylist: viewModel.invidiousSyncPlaylist,
-                onInvidiousPushPlaylist: viewModel.invidiousPushPlaylist
+                onInvidiousPushPlaylist: viewModel.invidiousPushPlaylist,
+                onGoogleDriveBackup: { token in
+                    Task { _ = await viewModel.backupToGoogleDrive(accessToken: token) }
+                }
             )
             .task {
                 await viewModel.refreshInvidiousPlaylists()

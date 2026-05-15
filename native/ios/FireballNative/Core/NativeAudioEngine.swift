@@ -1,6 +1,10 @@
 import AVFoundation
 import CoreMedia
 import MediaPlayer
+import UIKit
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 
 @MainActor
 final class NativeAudioEngine {
@@ -15,6 +19,8 @@ final class NativeAudioEngine {
     /// When set, lock screen / headset next routes here (e.g. view model resolves lazy URLs).
     var onRemoteNext: (() -> Void)?
     var onRemotePrevious: (() -> Void)?
+    /// Called when the current queue item has no playable URL or load fails.
+    var onPlaybackFailed: ((String) -> Void)?
 
     init() {
         configureAudioSession()
@@ -30,8 +36,15 @@ final class NativeAudioEngine {
 
     private func loadCurrentTrackAndPlay() {
         guard queue.indices.contains(currentIndex) else { return }
-        guard let urlString = queue[currentIndex].url?.trimmingCharacters(in: .whitespacesAndNewlines), !urlString.isEmpty else { return }
-        guard let url = playbackURL(from: urlString) else { return }
+        let track = queue[currentIndex]
+        guard let urlString = track.url?.trimmingCharacters(in: .whitespacesAndNewlines), !urlString.isEmpty else {
+            onPlaybackFailed?("No stream URL for \"\(track.title)\".")
+            return
+        }
+        guard let url = playbackURL(from: urlString) else {
+            onPlaybackFailed?("Invalid playback URL for \"\(track.title)\".")
+            return
+        }
         player.replaceCurrentItem(with: AVPlayerItem(url: url))
         player.play()
         installTimeObserverIfNeeded()
@@ -185,6 +198,25 @@ final class NativeAudioEngine {
         }
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
         onStateUpdate?(currentIndex, player.timeControlStatus == .playing, currentSeconds, totalSeconds)
+
+        if let artUrl = track.artwork, let url = URL(string: artUrl) {
+            let title = track.title
+            let artist = track.artist
+            Task { [weak self] in
+                guard let self else { return }
+                guard let (data, _) = try? await URLSession.shared.data(from: url),
+                      let image = UIImage(data: data) else { return }
+                await MainActor.run {
+                    guard self.queue.indices.contains(self.currentIndex),
+                          self.queue[self.currentIndex].effectiveId == track.effectiveId else { return }
+                    var withArt = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? [:]
+                    withArt[MPMediaItemPropertyTitle] = title
+                    withArt[MPMediaItemPropertyArtist] = artist
+                    withArt[MPMediaItemPropertyArtwork] = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
+                    MPNowPlayingInfoCenter.default().nowPlayingInfo = withArt
+                }
+            }
+        }
     }
 
     private func installTimeObserverIfNeeded() {
