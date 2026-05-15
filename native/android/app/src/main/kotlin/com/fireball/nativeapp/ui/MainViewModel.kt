@@ -13,6 +13,8 @@ import com.fireball.nativeapp.data.LyricsAndAiOrchestrator
 import com.fireball.nativeapp.player.PlayerManager
 import com.fireball.nativeapp.player.PlaybackState
 import com.fireball.nativeapp.player.NativePlaybackService
+import android.content.Intent
+import com.fireball.nativeapp.player.PlaybackCommandBridge
 import com.fireball.nativeapp.player.PlaybackController
 import com.fireball.nativeapp.player.RepeatMode
 import com.fireball.nativeapp.core.data.FireballAnalytics
@@ -133,6 +135,15 @@ class MainViewModel(
             }
         }
         playbackController.connect()
+        PlaybackCommandBridge.onSkipToNext = {
+            viewModelScope.launch { userPressedNext() }
+        }
+        PlaybackCommandBridge.onSkipToPrevious = {
+            viewModelScope.launch {
+                val idx = playbackState.value.currentIndex.coerceAtLeast(0)
+                openQueueIndex((idx - 1).coerceAtLeast(0))
+            }
+        }
         viewModelScope.launch {
             var lastIndex = -1
             playbackController.state.collectLatest { engine ->
@@ -190,8 +201,31 @@ class MainViewModel(
                     shuffled = session.shuffled,
                     repeatMode = repeat,
                 )
+                bootstrapRestoredPlayback()
             }
             fetchInvidiousPlaylists()
+        }
+    }
+
+    private fun bootstrapRestoredPlayback() {
+        viewModelScope.launch {
+            val idx = playbackState.value.currentIndex
+            if (idx < 0) return@launch
+            val settings = _uiState.value.library.settings
+            var track = playbackState.value.queue.getOrNull(idx) ?: return@launch
+            if (track.url.isNullOrBlank()) {
+                track = runCatching {
+                    repository.resolvePlayableTrack(track, settings)
+                }.getOrNull() ?: return@launch
+                playerManager.updateTrackAt(idx, track)
+            }
+            if (track.url.isNullOrBlank()) return@launch
+            val item = toMediaItem(track)
+            exoMediaItems = listOf(item)
+            engineHandoffMutex.withLock {
+                playbackController.prepareQueue(listOf(item), 0)
+            }
+            playerManager.syncFromEngine(isPlaying = false)
         }
     }
 
@@ -264,6 +298,7 @@ class MainViewModel(
                     if (it.effectiveId == track.effectiveId) resolvedTrack else it
                 }
                 lastStartedMediaId = null
+                scrobbledTrackIds.clear()
 
                 val playableUrl = resolvedTrack.url
                 if (playableUrl.isNullOrBlank()) {
@@ -344,11 +379,13 @@ class MainViewModel(
                 integrations.submitLastFmPlayingNow(settings, nowPlaying)
             }
         }
-        FireballAnalytics.log(
-            "track_started",
-            settings,
-            mapOf("id" to nowPlaying.effectiveId, "title" to nowPlaying.title),
-        )
+        if (!privacy) {
+            FireballAnalytics.log(
+                "track_started",
+                settings,
+                mapOf("id" to nowPlaying.effectiveId, "title" to nowPlaying.title),
+            )
+        }
     }
 
     /** Resolves the rest of the queue and extends the Exo timeline without restarting playback. */
@@ -392,6 +429,7 @@ class MainViewModel(
         var queue = playbackState.value.queue
         if (queue.isEmpty() || index !in queue.indices) return
 
+        scrobbledTrackIds.clear()
         _uiState.update { it.copy(isPlaybackLoading = true, error = null) }
         try {
             var track = queue[index]
@@ -445,6 +483,7 @@ class MainViewModel(
             }
             idx + 1 < st.queue.size -> openQueueIndex(idx + 1)
             st.repeatMode == RepeatMode.ALL -> openQueueIndex(0)
+            _uiState.value.library.settings.queueMode.trim().lowercase() == "repeat" -> openQueueIndex(0)
             else -> playerManager.syncFromEngine(isPlaying = false)
         }
     }
@@ -480,9 +519,17 @@ class MainViewModel(
     }
 
     fun updateSettings(transform: (FireballSettings) -> FireballSettings) {
-        val updated = transform(_uiState.value.library.settings)
+        val previous = _uiState.value.library.settings
+        val updated = transform(previous)
         PlaybackPreferences.save(appContext, updated)
         persist(_uiState.value.library.copy(settings = updated))
+        if (previous.cacheEnabled != updated.cacheEnabled ||
+            previous.localMusicCacheLimit != updated.localMusicCacheLimit
+        ) {
+            playbackController.release()
+            appContext.stopService(Intent(appContext, NativePlaybackService::class.java))
+            playbackController.connect()
+        }
     }
 
     fun validateLastFmKey(onResult: (Boolean) -> Unit) {
@@ -605,6 +652,7 @@ class MainViewModel(
             settings.lastFmApiSecret.isNotBlank() &&
             settings.lastFmSessionKey.isNotBlank()
         if (!lbEnabled && !lastFmEnabled) return
+        if (!state.isPlaying) return
         if (state.durationMs <= 0) return
 
         val thresholdByPercent = (state.durationMs * settings.listenBrainzScrobblePercent / 100.0).toLong()
@@ -633,6 +681,7 @@ class MainViewModel(
         if (!atTail) return
         val settings = _uiState.value.library.settings
         if (settings.offlineModeEnabled || settings.privacyModeEnabled) return
+        if (settings.queueMode.trim().lowercase() != "ai") return
         if (!settings.ollamaEnabled) return
         if (!aiQueueExpandedForTrackIds.add(current.effectiveId)) return
 

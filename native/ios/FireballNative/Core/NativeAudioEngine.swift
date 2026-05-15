@@ -12,6 +12,7 @@ final class NativeAudioEngine {
     private var queue: [Track] = []
     private var currentIndex: Int = 0
     private var timeObserverToken: Any?
+    private var endObserver: NSObjectProtocol?
 
     var onStateUpdate: ((Int, Bool, Double, Double) -> Void)?
     var onTrackEnded: (() -> Void)?
@@ -34,6 +35,36 @@ final class NativeAudioEngine {
         loadCurrentTrackAndPlay()
     }
 
+    /// Loads the queue and prepares the current item without starting playback (session restore).
+    func prepareQueue(_ tracks: [Track], startIndex: Int) {
+        queue = tracks
+        currentIndex = max(0, min(startIndex, max(0, tracks.count - 1)))
+        loadCurrentTrackAndPlay()
+        player.pause()
+        refreshNowPlaying()
+    }
+
+    func resumeIfPaused() {
+        guard queue.indices.contains(currentIndex) else { return }
+        if player.currentItem == nil {
+            loadCurrentTrackAndPlay()
+            return
+        }
+        if !isPlaying {
+            player.play()
+            refreshNowPlaying()
+        }
+    }
+
+    private var isPlaying: Bool {
+        switch player.timeControlStatus {
+        case .playing, .waitingToPlayAtSpecifiedRate:
+            return true
+        default:
+            return false
+        }
+    }
+
     private func loadCurrentTrackAndPlay() {
         guard queue.indices.contains(currentIndex) else { return }
         let track = queue[currentIndex]
@@ -46,9 +77,27 @@ final class NativeAudioEngine {
             return
         }
         player.replaceCurrentItem(with: AVPlayerItem(url: url))
+        observeEndOfCurrentItem()
         player.play()
         installTimeObserverIfNeeded()
         refreshNowPlaying()
+    }
+
+    private func observeEndOfCurrentItem() {
+        if let endObserver {
+            NotificationCenter.default.removeObserver(endObserver)
+            self.endObserver = nil
+        }
+        guard let item = player.currentItem else { return }
+        endObserver = NotificationCenter.default.addObserver(
+            forName: .AVPlayerItemDidPlayToEndTime,
+            object: item,
+            queue: .main
+        ) { [weak self] note in
+            guard let self else { return }
+            guard note.object as? AVPlayerItem === self.player.currentItem else { return }
+            self.onTrackEnded?()
+        }
     }
 
     /// Supports `http(s):` streams and `file:` URLs from the library resolver.
@@ -76,7 +125,7 @@ final class NativeAudioEngine {
     }
 
     func togglePlayPause() {
-        if player.timeControlStatus == .playing {
+        if isPlaying {
             player.pause()
         } else {
             player.play()
@@ -105,14 +154,6 @@ final class NativeAudioEngine {
     }
 
     private func setupObservers() {
-        NotificationCenter.default.addObserver(
-            forName: .AVPlayerItemDidPlayToEndTime,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            self?.onTrackEnded?()
-        }
-
         NotificationCenter.default.addObserver(
             forName: AVAudioSession.interruptionNotification,
             object: AVAudioSession.sharedInstance(),
@@ -188,7 +229,7 @@ final class NativeAudioEngine {
         var info: [String: Any] = [
             MPMediaItemPropertyTitle: track.title,
             MPMediaItemPropertyArtist: track.artist,
-            MPNowPlayingInfoPropertyPlaybackRate: player.timeControlStatus == .playing ? 1.0 : 0.0,
+            MPNowPlayingInfoPropertyPlaybackRate: isPlaying ? 1.0 : 0.0,
             MPNowPlayingInfoPropertyElapsedPlaybackTime: currentSeconds
         ]
         if let duration = track.duration {
@@ -197,7 +238,7 @@ final class NativeAudioEngine {
             info[MPMediaItemPropertyPlaybackDuration] = totalSeconds
         }
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
-        onStateUpdate?(currentIndex, player.timeControlStatus == .playing, currentSeconds, totalSeconds)
+        onStateUpdate?(currentIndex, isPlaying, currentSeconds, totalSeconds)
 
         if let artUrl = track.artwork, let url = URL(string: artUrl) {
             let title = track.title
@@ -232,6 +273,9 @@ final class NativeAudioEngine {
     deinit {
         if let token = timeObserverToken {
             player.removeTimeObserver(token)
+        }
+        if let endObserver {
+            NotificationCenter.default.removeObserver(endObserver)
         }
         NotificationCenter.default.removeObserver(self)
     }

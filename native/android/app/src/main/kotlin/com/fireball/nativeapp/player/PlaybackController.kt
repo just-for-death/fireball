@@ -103,7 +103,12 @@ class PlaybackController(private val context: Context) {
     }
 
     fun playQueue(items: List<MediaItem>, startIndex: Int) {
-        applyPlayQueue(items, startIndex, startPositionMs = 0L)
+        applyPlayQueue(items, startIndex, startPositionMs = 0L, autoPlay = true)
+    }
+
+    /** Loads media into Exo without starting playback (session restore). */
+    fun prepareQueue(items: List<MediaItem>, startIndex: Int) {
+        applyPlayQueue(items, startIndex, startPositionMs = 0L, autoPlay = false)
     }
 
     /**
@@ -130,7 +135,7 @@ class PlaybackController(private val context: Context) {
         }
     }
 
-    private fun applyPlayQueue(items: List<MediaItem>, startIndex: Int, startPositionMs: Long) {
+    private fun applyPlayQueue(items: List<MediaItem>, startIndex: Int, startPositionMs: Long, autoPlay: Boolean) {
         val c = controller ?: run {
             pendingPlay.set(PendingPlay(items, startIndex.coerceIn(0, items.lastIndex)))
             return
@@ -138,9 +143,13 @@ class PlaybackController(private val context: Context) {
         val safeIndex = startIndex.coerceIn(0, items.lastIndex)
         c.setMediaItems(items, safeIndex, startPositionMs)
         c.prepare()
-        c.play()
+        if (autoPlay) c.play() else c.pause()
         pushControllerState(c)
         onActiveMediaIdChanged?.invoke(c.currentMediaItem?.mediaId)
+    }
+
+    private fun applyPlayQueue(items: List<MediaItem>, startIndex: Int, startPositionMs: Long) {
+        applyPlayQueue(items, startIndex, startPositionMs, autoPlay = true)
     }
 
     private fun pushControllerState(c: MediaController) {
