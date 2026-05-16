@@ -5,7 +5,7 @@ private struct ExpandedAlbumDraft: Identifiable {
     var id: String { album.id }
 }
 
-/// iTunes-backed artist browse (catalog + filtered local playlists), mirroring Android `ArtistDetailRoute`.
+/// iTunes-backed artist browse (songs + albums), mirroring Android `ArtistDetailRoute`.
 struct ArtistCatalogScreen: View {
     @EnvironmentObject private var viewModel: MainViewModel
     let appleArtistId: Int?
@@ -16,7 +16,6 @@ struct ArtistCatalogScreen: View {
     enum Tab: Hashable {
         case songs
         case albums
-        case playlists
     }
 
     @State private var selectedTab: Tab = .songs
@@ -58,8 +57,6 @@ struct ArtistCatalogScreen: View {
                                 trackList(browse.songs)
                             case .albums:
                                 albumsBody(browse)
-                            case .playlists:
-                                playlistBody(browse)
                             }
                         }
                         .padding(.bottom, 32)
@@ -204,7 +201,6 @@ struct ArtistCatalogScreen: View {
         Picker("Section", selection: $selectedTab) {
             Text("Songs").tag(Tab.songs)
             Text("Albums").tag(Tab.albums)
-            Text("Playlists").tag(Tab.playlists)
         }
         .pickerStyle(.segmented)
         .padding(.horizontal)
@@ -248,33 +244,6 @@ struct ArtistCatalogScreen: View {
                     .padding(.horizontal)
                 }
                 .buttonStyle(.plain)
-            }
-        }
-    }
-
-    private func playlistBody(_ browse: ArtistBrowseResult) -> some View {
-        Group {
-            if browse.playlistsContainingArtist.isEmpty {
-                Text("No local playlists containing this artist.")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal)
-            }
-            ForEach(browse.playlistsContainingArtist, id: \.id) { pl in
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(pl.title).font(.headline)
-                    Text("\(pl.videos.count) tracks").font(.caption).foregroundStyle(.secondary)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(12)
-                .background(Color.secondary.opacity(0.12), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                .padding(.horizontal)
-                .contentShape(Rectangle())
-                .onTapGesture {
-                    guard let first = pl.videos.first else { return }
-                    viewModel.playFromPlaylist(track: first, source: pl.videos)
-                }
             }
         }
     }

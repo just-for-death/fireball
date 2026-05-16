@@ -245,7 +245,30 @@ fun PillMiniPlayer(
                         Box(modifier = artMenuModifier) {
                             ArtRing()
                         }
-                        Spacer(modifier = Modifier.height(8.dp))
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = song.title,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = dominantColors.onBackground,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                            modifier =
+                                Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 4.dp)
+                                    .then(titleMenuModifier),
+                        )
+                        ArtistTapLabel(
+                            text = song.artist,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = dominantColors.onBackground.copy(alpha = 0.72f),
+                            enabled = song.artist.isNotBlank(),
+                            onClick = onArtistClick,
+                            modifier = Modifier.fillMaxWidth(),
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
                         Row(
                             horizontalArrangement = Arrangement.spacedBy(6.dp),
                             verticalAlignment = Alignment.CenterVertically,
@@ -336,7 +359,14 @@ fun PillMiniPlayer(
                                 color = dominantColors.onBackground.copy(alpha = 0.7f),
                                 enabled = song.artist.isNotBlank(),
                                 onClick = onArtistClick,
-                                modifier = Modifier.fillMaxWidth(),
+                                modifier =
+                                    if (layout == PillMiniPlayerLayout.Phone) {
+                                        Modifier
+                                            .fillMaxWidth()
+                                            .basicMarquee()
+                                    } else {
+                                        Modifier.fillMaxWidth()
+                                    },
                                 textAlign = androidx.compose.ui.text.style.TextAlign.Start,
                             )
                         }

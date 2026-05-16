@@ -54,6 +54,7 @@ public struct NowPlayingScreen: View {
     @State private var containerWidth: CGFloat = 0
     @State private var artistPickerNames: [String]?
     @State private var artistPickerArtwork: String?
+    @State private var showLyricsInArtSlot = false
     /// Two-column layout on iPad regular width when the column is actually wide enough (Stage Manager friendly).
     private var splitLayoutEnabled: Bool {
         let w = containerWidth > 1 ? containerWidth : (horizontalSizeClass == .regular ? 900 : 390)
@@ -108,6 +109,9 @@ public struct NowPlayingScreen: View {
             )
         }
         .onPreferenceChange(PlayerContainerWidthKey.self) { containerWidth = $0 }
+        .onChange(of: track.effectiveId) { _, _ in
+            showLyricsInArtSlot = false
+        }
         .dynamicTheme(artworkUrl: track.artwork, settings: settings)
         .safeAreaInset(edge: .bottom) { Color.clear.frame(height: 8) }
         .confirmationDialog(
@@ -183,35 +187,14 @@ public struct NowPlayingScreen: View {
                 .font(splitLayoutEnabled ? .title3.weight(.semibold) : .headline)
                 .foregroundStyle(dominantColors.onBackground.opacity(0.82))
             Spacer()
-            Menu {
-                Button("Play next", action: onPlayNext)
-                Button("Add to queue", action: onAddToQueue)
-                Button(isFavorite ? "Remove from favorites" : "Add to favorites", action: onToggleFavorite)
-                Button("View artist catalog", action: onSeeArtist)
-                Button(isArtistFollowed ? "Unfollow artist" : "Follow artist") {
-                    if isArtistFollowed {
-                        onUnfollowArtistFromMenu()
-                    } else {
-                        onFollowArtistFromMenu()
-                    }
-                }
-                Button("More options…", action: onOpenTrackMenu)
-                if #available(iOS 16.0, *) {
-                    if let lyrics = currentLyrics, !lyrics.isEmpty {
-                        ShareLink(item: lyrics) {
-                            Label("Share lyrics", systemImage: "square.and.arrow.up")
-                        }
-                    }
-                    ShareLink(item: "\(track.title) — \(track.artist)") {
-                        Label("Share track", systemImage: "music.note")
-                    }
-                }
-            } label: {
+            Button(action: onOpenTrackMenu) {
                 Image(systemName: "ellipsis")
                     .font(.title2)
                     .foregroundStyle(dominantColors.onBackground)
                     .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
             }
+            .accessibilityLabel("Track options")
         }
         .padding(.horizontal, splitLayoutEnabled ? 24 : 20)
     }
@@ -228,11 +211,23 @@ public struct NowPlayingScreen: View {
         return !s.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
+    private var artSlotShowsLyrics: Bool {
+        showLyricsInArtSlot && hasLyricsToShow
+    }
+
+    private func toggleArtLyricsSlot() {
+        guard hasLyricsToShow else { return }
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        withAnimation(.easeInOut(duration: 0.28)) {
+            showLyricsInArtSlot.toggle()
+        }
+    }
+
     private func artworkOrLyricsView(maxSquare: CGFloat) -> some View {
         let corner: CGFloat = splitLayoutEnabled ? 28 : 22
         let lyricsCap = splitLayoutEnabled ? 360 : maxSquare - 24
         return Group {
-            if hasLyricsToShow, let lyrics = currentLyrics {
+            if artSlotShowsLyrics, let lyrics = currentLyrics {
                 ZStack {
                     RoundedRectangle(cornerRadius: corner, style: .continuous)
                         .fill(dominantColors.secondary.opacity(0.55))
@@ -247,8 +242,9 @@ public struct NowPlayingScreen: View {
                     )
                     .padding(.horizontal, 16)
                     .padding(.vertical, 12)
-                    TapOrLongPressHostingView(onTap: onPlayPause, onLongPress: onOpenTrackMenu)
+                    TapOrLongPressHostingView(onTap: onPlayPause, onLongPress: toggleArtLyricsSlot)
                 }
+                .transition(.opacity.combined(with: .scale(scale: 0.97)))
             } else {
                 ZStack {
                     AsyncImage(url: URL(string: track.artwork ?? "")) { phase in
@@ -258,10 +254,12 @@ public struct NowPlayingScreen: View {
                             Rectangle().fill(dominantColors.secondary)
                         }
                     }
-                    TapOrLongPressHostingView(onTap: onPlayPause, onLongPress: onOpenTrackMenu)
+                    TapOrLongPressHostingView(onTap: onPlayPause, onLongPress: toggleArtLyricsSlot)
                 }
+                .transition(.opacity.combined(with: .scale(scale: 0.97)))
             }
         }
+        .animation(.easeInOut(duration: 0.28), value: artSlotShowsLyrics)
         .frame(width: maxSquare, height: maxSquare)
         .clipShape(RoundedRectangle(cornerRadius: corner, style: .continuous))
         .shadow(color: Color.black.opacity(0.33), radius: splitLayoutEnabled ? 28 : 18, x: 0, y: 14)
@@ -279,9 +277,6 @@ public struct NowPlayingScreen: View {
                 .multilineTextAlignment(.center)
                 .lineLimit(2)
                 .minimumScaleFactor(0.76)
-                .overlay {
-                    TapOrLongPressHostingView(onTap: {}, onLongPress: onOpenTrackMenu)
-                }
 
             Button {
                 openArtistFromDisplayLine(track.artist, artwork: track.artwork)
@@ -373,7 +368,7 @@ public struct NowPlayingScreen: View {
 
                     seekBlock
 
-                    if pinnedLyricsPanel, hasLyricsToShow, let lyrics = currentLyrics {
+                    if pinnedLyricsPanel, artSlotShowsLyrics, let lyrics = currentLyrics {
                         Text("Lyrics (expanded)")
                             .font(.subheadline.weight(.semibold))
                             .foregroundStyle(dominantColors.onBackground.opacity(0.54))

@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Track actions from long-press on the mini player / now playing metadata.
+/// Track actions from long-press on the mini player / now playing overflow button.
 struct PlayerTrackOverflowSheet: View {
     @EnvironmentObject private var viewModel: MainViewModel
     @Environment(\.dismiss) private var dismiss
@@ -28,18 +28,19 @@ struct PlayerTrackOverflowSheet: View {
 
     var body: some View {
         NavigationStack {
-            List {
-                Section {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 12) {
                     HStack(spacing: 14) {
                         AsyncImage(url: URL(string: track.artwork ?? "")) { phase in
                             if let image = phase.image {
                                 image.resizable().aspectRatio(contentMode: .fill)
                             } else {
-                                Rectangle().fill(Color.secondary.opacity(0.25))
+                                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                    .fill(Color.secondary.opacity(0.25))
                             }
                         }
                         .frame(width: 56, height: 56)
-                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
 
                         VStack(alignment: .leading, spacing: 4) {
                             Text(track.title)
@@ -48,74 +49,112 @@ struct PlayerTrackOverflowSheet: View {
                             Text(track.artist)
                                 .font(.subheadline)
                                 .foregroundStyle(.secondary)
-                                .lineLimit(1)
+                                .lineLimit(2)
                         }
                     }
-                    .listRowInsets(EdgeInsets(top: 12, leading: 16, bottom: 8, trailing: 16))
-                }
+                    .padding(.bottom, 4)
 
-                Section {
-                    Button { onPlayNext() } label: {
-                        Label("Play next", systemImage: "forward.end.fill")
+                    SuvFadeSlideIn(delayMs: 0) {
+                        actionButton("Play next", systemImage: "forward.end.fill", action: onPlayNext)
                     }
-                    Button { onAddToQueue() } label: {
-                        Label("Add to queue", systemImage: "text.line.last.and.arrowtriangle.forward")
+                    SuvFadeSlideIn(delayMs: 40) {
+                        actionButton("Add to queue", systemImage: "text.line.last.and.arrowtriangle.forward", action: onAddToQueue)
                     }
-                    Button { onToggleFavorite() } label: {
-                        Label(favoriteLabel, systemImage: viewModel.isFavorite(track) ? "heart.fill" : "heart")
+                    SuvFadeSlideIn(delayMs: 80) {
+                        actionButton(
+                            favoriteLabel,
+                            systemImage: viewModel.isFavorite(track) ? "heart.fill" : "heart",
+                            action: onToggleFavorite
+                        )
                     }
-                }
 
-                Section {
-                    Button { onSeeArtist() } label: {
-                        Label("View artist catalog", systemImage: "person.crop.circle")
+                    Divider().padding(.vertical, 4)
+
+                    SuvFadeSlideIn(delayMs: 120) {
+                        actionButton("View artist catalog", systemImage: "person.crop.circle", action: onSeeArtist)
                     }
-                    Button {
-                        if viewModel.isArtistFollowed(artistName: track.artist) {
-                            onUnfollowArtist()
-                        } else {
-                            onFollowArtist()
+                    SuvFadeSlideIn(delayMs: 160) {
+                        actionButton(followLabel, systemImage: "person.badge.plus") {
+                            if viewModel.isArtistFollowed(artistName: track.artist) {
+                                onUnfollowArtist()
+                            } else {
+                                onFollowArtist()
+                            }
                         }
-                    } label: {
-                        Label(followLabel, systemImage: "person.badge.plus")
                     }
-                }
 
-                if !playlists.isEmpty {
-                    Section {
-                        ForEach(playlists, id: \.id) { pl in
+                    if !playlists.isEmpty {
+                        Text("ADD TO PLAYLIST")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .padding(.top, 8)
+
+                        ForEach(Array(playlists.enumerated()), id: \.element.id) { index, pl in
                             let alreadyListed = pl.videos.contains(where: { $0.effectiveId == track.effectiveId })
-                            Button {
-                                if !alreadyListed { onAddToPlaylist(pl.id) }
-                            } label: {
-                                HStack {
-                                    Label(pl.title, systemImage: "music.note.list")
-                                    Spacer()
-                                    if alreadyListed {
-                                        Image(systemName: "checkmark.circle.fill")
-                                            .foregroundStyle(.secondary)
-                                    }
+                            SuvFadeSlideIn(delayMs: 200 + index * 40) {
+                                actionButton(
+                                    pl.title,
+                                    systemImage: "music.note.list",
+                                    subtitle: alreadyListed ? "Already in playlist" : nil,
+                                    disabled: alreadyListed
+                                ) {
+                                    if !alreadyListed { onAddToPlaylist(pl.id) }
                                 }
                             }
-                            .disabled(alreadyListed)
                         }
-                    } header: {
-                        Text("Add to playlist")
-                    } footer: {
-                        Text("Tap several playlists if you like, then Done.")
-                            .font(.footnote)
+                    }
+
+                    SuvFadeSlideIn(delayMs: 80) {
+                        actionButton("Done", systemImage: "xmark.circle.fill", role: .cancel) {
+                            dismiss()
+                        }
                     }
                 }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 12)
             }
             .navigationTitle("Track options")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { dismiss() }
-                }
-            }
         }
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
+    }
+
+    @ViewBuilder
+    private func actionButton(
+        _ title: String,
+        systemImage: String,
+        subtitle: String? = nil,
+        role: ButtonRole? = nil,
+        disabled: Bool = false,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(role: role, action: action) {
+            HStack(spacing: 14) {
+                Image(systemName: systemImage)
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(.tint)
+                    .frame(width: 24)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.body)
+                        .foregroundStyle(.primary)
+                        .multilineTextAlignment(.leading)
+                    if let subtitle {
+                        Text(subtitle)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.secondary.opacity(0.14), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .disabled(disabled)
+        .opacity(disabled ? 0.55 : 1)
     }
 }

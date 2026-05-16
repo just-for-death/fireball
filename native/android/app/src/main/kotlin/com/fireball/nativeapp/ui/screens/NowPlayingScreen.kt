@@ -2,14 +2,15 @@
 
 package com.fireball.nativeapp.ui.screens
 
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.platform.LocalView
-import androidx.compose.ui.semantics.onLongClick
-import androidx.compose.ui.semantics.semantics
 import android.view.HapticFeedbackConstants
 import java.util.Locale
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -28,14 +29,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Repeat
@@ -52,10 +50,12 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import com.fireball.nativeapp.ui.theme.MotionTokens
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -111,9 +111,14 @@ fun NowPlayingScreen(
     appearanceChrome: String = "music",
 ) {
     var queueExpanded by remember { mutableStateOf(false) }
-    var trackMenuExpanded by remember { mutableStateOf(false) }
+    var showLyricsInArtSlot by remember { mutableStateOf(false) }
     val currentSong = playbackState.currentTrack
-    val showLyricsInArtSlot = !currentLyrics.isNullOrBlank()
+    val trackKey = currentSong?.effectiveId
+    val hasLyrics = !currentLyrics.isNullOrBlank()
+    val artSlotShowsLyrics = showLyricsInArtSlot && hasLyrics
+    LaunchedEffect(trackKey) {
+        showLyricsInArtSlot = false
+    }
     val isPlaying = playbackState.isPlaying
     val positionMs = playbackState.positionMs
     val durationMs = playbackState.durationMs
@@ -170,75 +175,12 @@ fun NowPlayingScreen(
                             .padding(start = 8.dp)
                             .weight(1f),
                     )
-                    Box {
-                        IconButton(onClick = { trackMenuExpanded = true }) {
-                            Icon(
-                                Icons.Default.MoreVert,
-                                contentDescription = "Track options",
-                                tint = dominant.onBackground,
-                            )
-                        }
-                        DropdownMenu(
-                            expanded = trackMenuExpanded,
-                            onDismissRequest = { trackMenuExpanded = false },
-                        ) {
-                            DropdownMenuItem(
-                                text = { Text("Play next") },
-                                onClick = {
-                                    trackMenuExpanded = false
-                                    onPlayNextFromMenu()
-                                },
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Add to queue") },
-                                onClick = {
-                                    trackMenuExpanded = false
-                                    onAddToQueueFromMenu()
-                                },
-                            )
-                            DropdownMenuItem(
-                                text = {
-                                    Text(
-                                        if (isCurrentTrackFavorite) {
-                                            "Remove from favorites"
-                                        } else {
-                                            "Add to favorites"
-                                        },
-                                    )
-                                },
-                                onClick = {
-                                    trackMenuExpanded = false
-                                    onToggleFavoriteFromMenu()
-                                },
-                            )
-                            DropdownMenuItem(
-                                text = { Text("View artist catalog") },
-                                onClick = {
-                                    trackMenuExpanded = false
-                                    onSeeArtistFromMenu()
-                                },
-                            )
-                            DropdownMenuItem(
-                                text = {
-                                    Text(if (isArtistFollowed) "Unfollow artist" else "Follow artist")
-                                },
-                                onClick = {
-                                    trackMenuExpanded = false
-                                    if (isArtistFollowed) {
-                                        onUnfollowArtistFromMenu()
-                                    } else {
-                                        onFollowArtistFromMenu()
-                                    }
-                                },
-                            )
-                            DropdownMenuItem(
-                                text = { Text("More options…") },
-                                onClick = {
-                                    trackMenuExpanded = false
-                                    onOpenTrackMenu()
-                                },
-                            )
-                        }
+                    IconButton(onClick = onOpenTrackMenu) {
+                        Icon(
+                            Icons.Default.MoreVert,
+                            contentDescription = "Track options",
+                            tint = dominant.onBackground,
+                        )
                     }
                 }
 
@@ -263,7 +205,9 @@ fun NowPlayingScreen(
                             ArtworkOrLyricsSlot(
                                 thumbnailUrl = currentSong?.artwork,
                                 title = currentSong?.title,
-                                lyrics = if (showLyricsInArtSlot) currentLyrics else null,
+                                showLyricsInSlot = artSlotShowsLyrics,
+                                lyrics = currentLyrics,
+                                hasLyrics = hasLyrics,
                                 positionMs = positionMs,
                                 lyricsAutoScroll = lyricsAutoScroll,
                                 lyricsReducedMotion = lyricsReducedMotion,
@@ -271,7 +215,9 @@ fun NowPlayingScreen(
                                 cornerRadius = 20.dp,
                                 lyricsMaxHeight = if (lyricsReducedMotion) 320.dp else 420.dp,
                                 onPlayPause = onPlayPause,
-                                onOpenTrackMenu = onOpenTrackMenu,
+                                onToggleArtLyrics = {
+                                    if (hasLyrics) showLyricsInArtSlot = !showLyricsInArtSlot
+                                },
                                 modifier =
                                     Modifier
                                         .widthIn(max = 420.dp)
@@ -283,7 +229,6 @@ fun NowPlayingScreen(
                                 dominant = dominant,
                                 titleStyle = MaterialTheme.typography.headlineMedium,
                                 artistStyle = MaterialTheme.typography.titleMedium,
-                                onOpenTrackMenu = onOpenTrackMenu,
                                 onArtistClick = {
                                     currentSong?.artist?.takeIf { it.isNotBlank() }?.let { a ->
                                         onOpenArtistSearch(a, currentSong.artwork)
@@ -369,7 +314,9 @@ fun NowPlayingScreen(
                         ArtworkOrLyricsSlot(
                             thumbnailUrl = currentSong?.artwork,
                             title = currentSong?.title,
-                            lyrics = if (showLyricsInArtSlot) currentLyrics else null,
+                            showLyricsInSlot = artSlotShowsLyrics,
+                            lyrics = currentLyrics,
+                            hasLyrics = hasLyrics,
                             positionMs = positionMs,
                             lyricsAutoScroll = lyricsAutoScroll,
                             lyricsReducedMotion = lyricsReducedMotion,
@@ -377,7 +324,9 @@ fun NowPlayingScreen(
                             cornerRadius = 16.dp,
                             lyricsMaxHeight = if (lyricsReducedMotion) 300.dp else 380.dp,
                             onPlayPause = onPlayPause,
-                            onOpenTrackMenu = onOpenTrackMenu,
+                            onToggleArtLyrics = {
+                                if (hasLyrics) showLyricsInArtSlot = !showLyricsInArtSlot
+                            },
                             modifier =
                                 Modifier
                                     .widthIn(max = 380.dp)
@@ -391,7 +340,6 @@ fun NowPlayingScreen(
                             dominant = dominant,
                             titleStyle = MaterialTheme.typography.headlineSmall,
                             artistStyle = MaterialTheme.typography.bodyLarge,
-                            onOpenTrackMenu = onOpenTrackMenu,
                             onArtistClick = {
                                 currentSong?.artist?.takeIf { it.isNotBlank() }?.let { a ->
                                     onOpenArtistSearch(a, currentSong.artwork)
@@ -411,7 +359,7 @@ fun NowPlayingScreen(
                             fillMax = true,
                         )
 
-                        if (pinnedLyricsPanel && showLyricsInArtSlot) {
+                        if (pinnedLyricsPanel && artSlotShowsLyrics) {
                             Spacer(Modifier.height(12.dp))
                             Text(
                                 text = "Lyrics (expanded)",
@@ -469,7 +417,9 @@ fun NowPlayingScreen(
 private fun ArtworkOrLyricsSlot(
     thumbnailUrl: String?,
     title: String?,
+    showLyricsInSlot: Boolean,
     lyrics: String?,
+    hasLyrics: Boolean,
     positionMs: Long,
     lyricsAutoScroll: Boolean,
     lyricsReducedMotion: Boolean,
@@ -477,45 +427,62 @@ private fun ArtworkOrLyricsSlot(
     cornerRadius: Dp,
     lyricsMaxHeight: Dp,
     onPlayPause: () -> Unit,
-    onOpenTrackMenu: () -> Unit,
+    onToggleArtLyrics: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val shape = RoundedCornerShape(cornerRadius)
-    if (!lyrics.isNullOrBlank()) {
-        Box(
-            modifier =
-                modifier
-                    .aspectRatio(1f)
-                    .clip(shape)
-                    .background(dominant.secondary.copy(alpha = 0.55f))
-                    .combinedClickable(
-                        onClick = onPlayPause,
-                        onLongClick = onOpenTrackMenu,
-                    )
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
-        ) {
-            SyncedLyricsView(
-                lyrics = lyrics,
-                positionMs = positionMs,
-                autoScroll = lyricsAutoScroll,
-                reducedMotion = lyricsReducedMotion,
-                textColor = dominant.onBackground,
-                accentColor = dominant.accent,
-                modifier = Modifier.fillMaxSize(),
-                maxContentHeight = lyricsMaxHeight,
+    val view = LocalView.current
+    val toggleLyrics: () -> Unit = {
+        if (hasLyrics) {
+            view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+            onToggleArtLyrics()
+        }
+    }
+    AnimatedContent(
+        targetState = showLyricsInSlot && !lyrics.isNullOrBlank(),
+        modifier = modifier.aspectRatio(1f),
+        transitionSpec = {
+            fadeIn(MotionTokens.tweenEmphasized(MotionTokens.DurationMedium2)) togetherWith
+                fadeOut(MotionTokens.tweenStandard(MotionTokens.DurationShort4))
+        },
+        label = "artLyricsCrossfade",
+    ) { showingLyrics ->
+        if (showingLyrics && lyrics != null) {
+            Box(
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        .clip(shape)
+                        .background(dominant.secondary.copy(alpha = 0.55f))
+                        .combinedClickable(
+                            onClick = onPlayPause,
+                            onLongClick = toggleLyrics,
+                        )
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+            ) {
+                SyncedLyricsView(
+                    lyrics = lyrics,
+                    positionMs = positionMs,
+                    autoScroll = lyricsAutoScroll,
+                    reducedMotion = lyricsReducedMotion,
+                    textColor = dominant.onBackground,
+                    accentColor = dominant.accent,
+                    modifier = Modifier.fillMaxSize(),
+                    maxContentHeight = lyricsMaxHeight,
+                )
+            }
+        } else {
+            AlbumArt(
+                thumbnailUrl = thumbnailUrl,
+                contentDescription = title,
+                onClick = onPlayPause,
+                onLongClick = toggleLyrics,
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        .clip(shape),
             )
         }
-    } else {
-        AlbumArt(
-            thumbnailUrl = thumbnailUrl,
-            contentDescription = title,
-            onClick = onPlayPause,
-            onLongClick = onOpenTrackMenu,
-            modifier =
-                modifier
-                    .aspectRatio(1f)
-                    .clip(shape),
-        )
     }
 }
 
@@ -525,48 +492,22 @@ private fun TrackMetadata(
     dominant: DominantColors,
     titleStyle: TextStyle,
     artistStyle: TextStyle,
-    onOpenTrackMenu: () -> Unit = {},
     onArtistClick: () -> Unit = {},
 ) {
-    val view = LocalView.current
-    val titleLongPressModifier = if (currentSong != null) {
-        Modifier
-            .semantics {
-                onLongClick("Track options") {
-                    onOpenTrackMenu()
-                    true
-                }
-            }
-            .pointerInput(onOpenTrackMenu, view) {
-                detectTapGestures(
-                    onLongPress = {
-                        view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
-                        onOpenTrackMenu()
-                    },
-                )
-            }
-    } else {
-        Modifier
-    }
     Column(
         modifier = Modifier.widthIn(max = 520.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Column(
-            modifier = Modifier.then(titleLongPressModifier),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            Text(
-                text = currentSong?.title ?: "Nothing playing",
-                style = titleStyle,
-                fontWeight = FontWeight.Bold,
-                textAlign = TextAlign.Center,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                color = dominant.onBackground,
-                modifier = Modifier.fillMaxWidth(),
-            )
-        }
+        Text(
+            text = currentSong?.title ?: "Nothing playing",
+            style = titleStyle,
+            fontWeight = FontWeight.Bold,
+            textAlign = TextAlign.Center,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            color = dominant.onBackground,
+            modifier = Modifier.fillMaxWidth(),
+        )
         Spacer(Modifier.height(4.dp))
         ArtistTapLabel(
             text = currentSong?.artist.orEmpty(),
