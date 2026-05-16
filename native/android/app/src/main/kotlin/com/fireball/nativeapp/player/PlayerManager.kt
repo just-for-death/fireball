@@ -33,9 +33,15 @@ class PlayerManager {
         repeatMode: RepeatMode,
     ) {
         if (queue.isEmpty()) return
+        val safeIndex =
+            if (currentIndex < 0) {
+                -1
+            } else {
+                currentIndex.coerceIn(0, queue.lastIndex)
+            }
         _state.value = PlaybackState(
             queue = queue,
-            currentIndex = currentIndex.coerceIn(0, queue.lastIndex),
+            currentIndex = safeIndex,
             shuffled = shuffled,
             repeatMode = repeatMode,
             isPlaying = false,

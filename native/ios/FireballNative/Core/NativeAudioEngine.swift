@@ -46,6 +46,12 @@ final class NativeAudioEngine {
 
     var isPlaybackActive: Bool { isPlaying }
 
+    /// Latest duration from AVPlayer item metadata (used when UI duration is still zero).
+    var lastReportedDurationSeconds: Double {
+        let d = player.currentItem?.duration.seconds ?? 0
+        return d.isFinite && d > 0 ? d : 0
+    }
+
     /// Loads the queue and prepares the current item without starting playback (session restore).
     func prepareQueue(_ tracks: [Track], startIndex: Int) {
         queue = tracks
@@ -171,16 +177,32 @@ final class NativeAudioEngine {
     private func playbackURL(from string: String) -> URL? {
         let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
+        let resolved: URL?
         if let absolute = URL(string: trimmed), absolute.scheme != nil {
-            return absolute
+            resolved = absolute
+        } else if trimmed.hasPrefix("file:") {
+            if let u = URL(string: trimmed) {
+                resolved = u
+            } else {
+                let withoutScheme = trimmed.replacingOccurrences(of: "file://", with: "")
+                let path = withoutScheme.removingPercentEncoding ?? withoutScheme
+                resolved = URL(fileURLWithPath: path.isEmpty ? withoutScheme : path)
+            }
+        } else {
+            resolved = URL(string: trimmed)
         }
-        if trimmed.hasPrefix("file:") {
-            if let u = URL(string: trimmed) { return u }
-            let withoutScheme = trimmed.replacingOccurrences(of: "file://", with: "")
-            let path = withoutScheme.removingPercentEncoding ?? withoutScheme
-            return URL(fileURLWithPath: path.isEmpty ? withoutScheme : path)
+        guard let resolved else { return nil }
+        if resolved.isFileURL {
+            return resolved
         }
-        return URL(string: trimmed)
+        let settings = settingsProvider?() ?? FireballSettings()
+        if let cached = StreamPlaybackCache.localPlaybackURL(remoteURL: resolved, settings: settings) {
+            return cached
+        }
+        if settings.streamCacheEnabled {
+            Task { await StreamPlaybackCache.prefetch(remoteURL: resolved, settings: settings) }
+        }
+        return resolved
     }
 
     func seek(to seconds: Double) {

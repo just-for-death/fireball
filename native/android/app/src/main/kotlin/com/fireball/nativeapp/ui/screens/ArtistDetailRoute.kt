@@ -213,11 +213,11 @@ fun ArtistDetailRoute(
                             ) {
                                 Column(Modifier.weight(1f)) {
                                     Text(
-                                        text = "Notify on new releases",
+                                        text = "Device release alerts (all artists)",
                                         style = MaterialTheme.typography.titleSmall,
                                     )
                                     Text(
-                                        text = "Device alerts when this artist ships a new album. Gotify uses Settings.",
+                                        text = "Applies to every artist you follow. Gotify is configured in Settings.",
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     )

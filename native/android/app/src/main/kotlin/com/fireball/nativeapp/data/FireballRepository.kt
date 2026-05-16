@@ -7,6 +7,7 @@ import com.fireball.nativeapp.core.data.LibraryStore
 import com.fireball.nativeapp.core.data.YoutubeDirectStreamResolver
 import com.fireball.nativeapp.core.model.Album
 import com.fireball.nativeapp.core.model.Artist
+import com.fireball.nativeapp.core.model.ArtistReleaseProbe
 import com.fireball.nativeapp.core.model.FireballSettings
 import com.fireball.nativeapp.core.model.LibrarySnapshot
 import com.fireball.nativeapp.core.model.Playlist
@@ -107,25 +108,51 @@ class FireballRepository(
 
         var artistsChanged = false
         val updated = snapshot.artists.map { artist ->
-            val artistIdNum = artist.artistId.toIntOrNull() ?: return@map artist
-            val albums = runCatching { api.itunesArtistAlbums(artistIdNum, limit = 1) }.getOrDefault(emptyList())
-            val latest = albums.firstOrNull() ?: return@map artist
-            val releaseId = latest["collectionId"]?.jsonPrimitive?.content ?: return@map artist
-            val releaseName = latest["collectionName"]?.jsonPrimitive?.content ?: "New Release"
-            if (releaseId == artist.latestReleaseId) return@map artist
+            var lookupId: Int? = null
+            if (artist.artistId.toIntOrNull() == null) {
+                lookupId =
+                    runCatching { api.itunesFindArtist(artist.name) }.getOrNull()
+                        ?.get("artistId")?.jsonPrimitive?.content?.toIntOrNull()
+            }
+            val artistIdNum =
+                ArtistReleaseProbe.resolveNumericItunesArtistId(
+                    storedArtistId = artist.artistId,
+                    artistName = artist.name,
+                ) { lookupId } ?: return@map artist
 
-            if (artist.latestReleaseId != null) {
-                val title = "New Release from ${artist.name}"
-                val message = "$releaseName is out now!"
-                if (wantGotify) {
-                    runCatching { onGotifyNotify!!(title, message) }
+            val albums = runCatching { api.itunesArtistAlbums(artistIdNum, limit = 1) }.getOrDefault(emptyList())
+            val latest = albums.firstOrNull()
+            val hit =
+                latest?.let { row ->
+                    val id = row["collectionId"]?.jsonPrimitive?.content ?: return@let null
+                    val name = row["collectionName"]?.jsonPrimitive?.content ?: "New Release"
+                    ArtistReleaseProbe.AlbumHit(id, name)
                 }
-                if (wantDevice) {
-                    runCatching { onDeviceNotify!!(title, message) }
+            val eval =
+                ArtistReleaseProbe.evaluateNewRelease(
+                    artist = artist,
+                    resolvedArtistId = artistIdNum.toString(),
+                    latestAlbum = hit,
+                )
+            when (eval.outcome) {
+                ArtistReleaseProbe.ReleaseOutcome.Unchanged -> eval.artist
+                ArtistReleaseProbe.ReleaseOutcome.BaselineStored -> {
+                    artistsChanged = true
+                    eval.artist
+                }
+                ArtistReleaseProbe.ReleaseOutcome.NotifyNewRelease -> {
+                    val albumName = hit?.collectionName ?: "New Release"
+                    val (title, message) = ArtistReleaseProbe.notificationCopy(eval.artist.name, albumName)
+                    if (wantGotify) {
+                        runCatching { onGotifyNotify!!(title, message) }
+                    }
+                    if (wantDevice) {
+                        runCatching { onDeviceNotify!!(title, message) }
+                    }
+                    artistsChanged = true
+                    eval.artist
                 }
             }
-            artistsChanged = true
-            artist.copy(latestReleaseId = releaseId)
         }
 
         if (!artistsChanged) null else snapshot.copy(artists = updated)

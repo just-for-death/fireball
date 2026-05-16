@@ -5,6 +5,9 @@ import androidx.lifecycle.viewModelScope
 import com.fireball.nativeapp.data.IntegrationOrchestrator
 import com.fireball.nativeapp.core.model.FireballSettings
 import com.fireball.nativeapp.core.model.LibrarySnapshot
+import com.fireball.nativeapp.core.model.PlaybackAdvanceDecision
+import com.fireball.nativeapp.core.model.PlaybackAdvanceRules
+import com.fireball.nativeapp.core.model.PlaybackRepeatMode
 import com.fireball.nativeapp.core.model.Album
 import com.fireball.nativeapp.core.model.PlaybackSession
 import com.fireball.nativeapp.core.model.Playlist
@@ -155,22 +158,16 @@ class MainViewModel(
             _uiState.update { it.copy(error = msg) }
         }
         playbackController.onPlaybackEnded = {
-            val st = playbackState.value
-            if (!(st.shuffled && exoMediaItems.size > 1)) {
-                scheduleAdvanceAfterTrackFinished()
-            }
+            scheduleAdvanceAfterTrackFinished()
         }
         playbackController.onActiveMediaIdChanged = { mediaId ->
             val st = playbackState.value
             val expectedId = st.currentTrack?.effectiveId
-            val shuffleLinearSkip = st.shuffled && exoMediaItems.size > 1 &&
-                !expectedId.isNullOrBlank() && !mediaId.isNullOrBlank() && mediaId != expectedId
-            if (shuffleLinearSkip) {
-                viewModelScope.launch {
-                    val exoIdx = exoMediaItems.indexOfFirst { it.mediaId == expectedId }
-                    if (exoIdx >= 0) playbackController.seekToMediaIndex(exoIdx)
-                    scheduleAdvanceAfterTrackFinished()
-                }
+            val exoAdvancedUnderShuffle =
+                st.shuffled && exoMediaItems.size > 1 &&
+                    !expectedId.isNullOrBlank() && !mediaId.isNullOrBlank() && mediaId != expectedId
+            if (exoAdvancedUnderShuffle) {
+                viewModelScope.launch { scheduleAdvanceAfterTrackFinished() }
             } else {
                 playerManager.setCurrentIndexByMediaId(mediaId)
                 persistPlaybackSessionDebounced()
@@ -422,11 +419,19 @@ class MainViewModel(
     fun requestArtistDetail(artistDisplayName: String) {
         val trimmed = artistDisplayName.trim()
         if (trimmed.isEmpty()) return
-        val appleId =
+        val followed =
             _uiState.value.library.artists.firstOrNull { it.name.equals(trimmed, ignoreCase = true) }
-                ?.artistId
-                ?.toIntOrNull()
-        navigateArtistDetailInternal(appleId, trimmed)
+        val appleId = followed?.artistId?.toIntOrNull()
+        if (appleId != null) {
+            navigateArtistDetailInternal(appleId, trimmed)
+            return
+        }
+        artistDetailLookupJob?.cancel()
+        artistDetailLookupJob =
+            viewModelScope.launch {
+                val browse = browseArtistPage(artistAppleId = null, fallbackName = trimmed)
+                navigateArtistDetailInternal(browse?.artistAppleId, browse?.displayName ?: trimmed)
+            }
     }
 
     fun requestArtistDetail(appleArtistId: Int?, fallbackDisplayName: String) {
@@ -862,7 +867,6 @@ class MainViewModel(
     ) {
         if (generation != playGeneration) return
         if (logicalQueue.size <= 1) return
-        if (playbackState.value.shuffled) return
 
         val fullyResolved = resolveQueueTracksParallel(logicalQueue, settings)
         if (generation != playGeneration) return
@@ -959,36 +963,56 @@ class MainViewModel(
         val st = playbackState.value
         val idx = st.currentIndex
         if (idx < 0) return
-        when {
-            st.repeatMode == RepeatMode.ONE -> playbackController.seekTo(0L)
-            st.shuffled && st.queue.size > 1 -> {
-                val choices = st.queue.indices.filter { it != idx }
-                if (choices.isNotEmpty()) openQueueIndex(choices[Random.nextInt(choices.size)])
-            }
-            idx + 1 < st.queue.size -> openQueueIndex(idx + 1)
-            st.repeatMode == RepeatMode.ALL -> openQueueIndex(0)
-            _uiState.value.library.settings.queueMode.trim().lowercase() == "repeat" -> openQueueIndex(0)
-            else -> playerManager.syncFromEngine(isPlaying = false)
-        }
+        applyPlaybackAdvance(
+            PlaybackAdvanceRules.afterTrackFinished(
+                currentIndex = idx,
+                queueSize = st.queue.size,
+                repeatMode = st.repeatMode.toPlaybackRepeatMode(),
+                shuffled = st.shuffled,
+                queueModeRepeat = st.queueModeIsRepeat(),
+                pickShuffleIndex = { choices ->
+                    if (choices.isEmpty()) null else choices[Random.nextInt(choices.size)]
+                },
+            ),
+        )
     }
 
     private suspend fun userPressedNext() {
         val st = playbackState.value
         val idx = st.currentIndex
         if (idx < 0) return
-        if (st.shuffled && st.queue.size > 1) {
-            val choices = st.queue.indices.filter { it != idx }
-            if (choices.isNotEmpty()) openQueueIndex(choices[Random.nextInt(choices.size)])
-            return
-        }
-        if (idx + 1 < st.queue.size) {
-            openQueueIndex(idx + 1)
-        } else if (st.repeatMode == RepeatMode.ALL) {
-            openQueueIndex(0)
-        } else if (_uiState.value.library.settings.queueMode.trim().lowercase() == "repeat") {
-            openQueueIndex(0)
+        applyPlaybackAdvance(
+            PlaybackAdvanceRules.userPressedNext(
+                currentIndex = idx,
+                queueSize = st.queue.size,
+                repeatMode = st.repeatMode.toPlaybackRepeatMode(),
+                shuffled = st.shuffled,
+                queueModeRepeat = st.queueModeIsRepeat(),
+                pickShuffleIndex = { choices ->
+                    if (choices.isEmpty()) null else choices[Random.nextInt(choices.size)]
+                },
+            ),
+        )
+    }
+
+    private suspend fun applyPlaybackAdvance(decision: PlaybackAdvanceDecision) {
+        when (decision) {
+            PlaybackAdvanceDecision.RestartCurrent -> playbackController.seekTo(0L)
+            is PlaybackAdvanceDecision.JumpToIndex -> openQueueIndex(decision.index)
+            PlaybackAdvanceDecision.StopPlayback -> playerManager.syncFromEngine(isPlaying = false)
+            PlaybackAdvanceDecision.NoOp -> Unit
         }
     }
+
+    private fun PlaybackState.queueModeIsRepeat(): Boolean =
+        _uiState.value.library.settings.queueMode.trim().lowercase() == "repeat"
+
+    private fun RepeatMode.toPlaybackRepeatMode(): PlaybackRepeatMode =
+        when (this) {
+            RepeatMode.OFF -> PlaybackRepeatMode.OFF
+            RepeatMode.ALL -> PlaybackRepeatMode.ALL
+            RepeatMode.ONE -> PlaybackRepeatMode.ONE
+        }
 
     private fun pausePlaybackForSleep() {
         if (playbackController.isConnected) {
@@ -1104,18 +1128,18 @@ class MainViewModel(
         val st = playbackState.value
         val idx = st.currentIndex
         if (idx < 0) return
-        if (st.positionMs > 3_000L) {
-            playbackController.seekTo(0L)
-            return
-        }
-        if (st.shuffled && st.queue.size > 1) {
-            val choices = st.queue.indices.filter { it != idx }
-            if (choices.isNotEmpty()) {
-                openQueueIndex(choices[Random.nextInt(choices.size)])
-                return
-            }
-        }
-        openQueueIndex((idx - 1).coerceAtLeast(0))
+        applyPlaybackAdvance(
+            PlaybackAdvanceRules.userPressedPrevious(
+                currentIndex = idx,
+                positionSeconds = st.positionMs / 1000.0,
+                repeatMode = st.repeatMode.toPlaybackRepeatMode(),
+                shuffled = st.shuffled,
+                queueSize = st.queue.size,
+                pickShuffleIndex = { choices ->
+                    if (choices.isEmpty()) null else choices[Random.nextInt(choices.size)]
+                },
+            ),
+        )
     }
 
     fun seekTo(positionMs: Long) {
@@ -1134,13 +1158,16 @@ class MainViewModel(
     fun setSleepTimer(minutes: Int?) = playerManager.setSleepTimer(minutes)
     fun sleepAfterCurrent(enabled: Boolean) = playerManager.setSleepAfterCurrent(enabled)
 
-    private var lastPlaybackPersistAtMs: Long = 0L
+    private var playbackPersistJob: Job? = null
+    private var artistDetailLookupJob: Job? = null
 
     private fun persistPlaybackSessionDebounced() {
-        val now = System.currentTimeMillis()
-        if (now - lastPlaybackPersistAtMs < 2_000L) return
-        lastPlaybackPersistAtMs = now
-        persist(_uiState.value.library)
+        playbackPersistJob?.cancel()
+        playbackPersistJob =
+            viewModelScope.launch {
+                delay(2_000)
+                persist(_uiState.value.library)
+            }
     }
 
     private fun persist(library: LibrarySnapshot) {
@@ -1148,7 +1175,7 @@ class MainViewModel(
         val sessionIndex =
             when {
                 ps.queue.isEmpty() -> -1
-                ps.currentIndex < 0 -> 0
+                ps.currentIndex < 0 -> -1
                 else -> ps.currentIndex.coerceIn(0, ps.queue.lastIndex)
             }
         val withPlayback = library.copy(
@@ -1378,8 +1405,15 @@ class MainViewModel(
     override fun onCleared() {
         activePlayJob?.cancel()
         expandQueueJob?.cancel()
+        suggestionJob?.cancel()
+        advanceAfterTrackJob?.cancel()
+        artistDetailLookupJob?.cancel()
+        playbackPersistJob?.cancel()
         PlaybackCommandBridge.onSkipToNext = null
         PlaybackCommandBridge.onSkipToPrevious = null
+        com.fireball.nativeapp.player.NativePlaybackService.reconfigureListener = null
+        com.fireball.nativeapp.player.PlaybackEngineBridge.onIsPlayingChanged = null
+        runCatching { persist(_uiState.value.library) }
         playbackController.release()
         super.onCleared()
     }

@@ -21,6 +21,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
+import androidx.activity.viewModels
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.collectLatest
@@ -42,6 +43,7 @@ import com.fireball.nativeapp.data.LyricsAndAiOrchestrator
 import com.fireball.nativeapp.player.PlayerManager
 import com.fireball.nativeapp.player.PlaybackController
 import com.fireball.nativeapp.ui.MainViewModel
+import com.fireball.nativeapp.ui.MainViewModelFactory
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
@@ -49,7 +51,8 @@ import io.ktor.serialization.kotlinx.json.json
 import kotlinx.serialization.json.Json
 
 class MainActivity : ComponentActivity() {
-    private lateinit var viewModel: MainViewModel
+    private lateinit var viewModelFactory: MainViewModelFactory
+    private val viewModel: MainViewModel by viewModels { viewModelFactory }
     private var bluetoothReceiver: BroadcastReceiver? = null
     private var textToSpeech: TextToSpeech? = null
     private var ttsCollectorJob: Job? = null
@@ -119,14 +122,15 @@ class MainActivity : ComponentActivity() {
             googleDriveBackupClient = GoogleDriveBackupClient(httpClient)
         )
         val lyricsAndAi = LyricsAndAiOrchestrator(apiClient)
-        viewModel = MainViewModel(
-            applicationContext,
-            repository,
-            playerManager,
-            integrations,
-            playbackController,
-            lyricsAndAi,
-        )
+        viewModelFactory =
+            MainViewModelFactory(
+                applicationContext,
+                repository,
+                playerManager,
+                integrations,
+                playbackController,
+                lyricsAndAi,
+            )
         viewModel.configurePostNotificationsRequest {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
                 ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
@@ -149,14 +153,11 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        if (::viewModel.isInitialized) {
-            viewModel.refreshFollowedArtistReleasesOnForeground()
-        }
+        viewModel.refreshFollowedArtistReleasesOnForeground()
     }
 
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
-        if (!::viewModel.isInitialized) return
         if (!PlaybackPreferences.pictureInPictureEnabled) return
         if (!viewModel.playbackState.value.isPlaying) return
         if (viewModel.playbackState.value.currentTrack == null) return
