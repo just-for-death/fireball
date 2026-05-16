@@ -117,6 +117,7 @@ fun FireballNativeApp(viewModel: MainViewModel) {
     }
     var isPlayerOpen by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
     var overflowTrack by remember { mutableStateOf<Track?>(null) }
+    var artistPickerNames by remember { mutableStateOf<List<String>?>(null) }
 
     LaunchedEffect(uiState.artistOpenRequest) {
         val req = uiState.artistOpenRequest ?: return@LaunchedEffect
@@ -144,9 +145,13 @@ fun FireballNativeApp(viewModel: MainViewModel) {
         viewModel.stopPlaybackAndDismissMiniPlayer()
     }
 
-    fun openArtistSearchFromName(name: String) {
-        val n = name.trim()
-        if (n.isNotEmpty()) viewModel.requestArtistDetail(n)
+    fun openArtistFromDisplayLine(line: String) {
+        val names = com.fireball.nativeapp.core.model.ArtistNameParser.splitArtists(line)
+        when {
+            names.isEmpty() -> return
+            names.size == 1 -> viewModel.requestArtistDetail(names.first())
+            else -> artistPickerNames = names
+        }
     }
 
     val darkTheme = themeModeToDark(settings.themeMode, systemDark)
@@ -243,7 +248,7 @@ fun FireballNativeApp(viewModel: MainViewModel) {
                                 onTap = { isPlayerOpen = true },
                                 onArtistClick = {
                                     currentTrack.artist.takeIf { it.isNotBlank() }
-                                        ?.let { openArtistSearchFromName(it) }
+                                        ?.let { openArtistFromDisplayLine(it) }
                                 },
                                 onLongPressMenu = { overflowTrack = currentTrack },
                                 layout = miniPlayerLayout,
@@ -289,7 +294,7 @@ fun FireballNativeApp(viewModel: MainViewModel) {
                                         onTap = { isPlayerOpen = true },
                                         onArtistClick = {
                                             track.artist.takeIf { it.isNotBlank() }
-                                                ?.let { openArtistSearchFromName(it) }
+                                                ?.let { openArtistFromDisplayLine(it) }
                                         },
                                         onLongPressMenu = { overflowTrack = track },
                                         layout = PillMiniPlayerLayout.Phone,
@@ -539,7 +544,7 @@ fun FireballNativeApp(viewModel: MainViewModel) {
                     onToggleRepeatMode = viewModel::toggleRepeatMode,
                     onPlayQueueIndex = viewModel::playQueueIndex,
                     onFollowArtist = viewModel::followArtist,
-                    onOpenArtistSearch = { name, _ -> openArtistSearchFromName(name) },
+                    onOpenArtistSearch = { name, _ -> openArtistFromDisplayLine(name) },
                     onOverflowQueueTrackMenu = { overflowTrack = it },
                     onCollapse = { isPlayerOpen = false },
                     onOpenTrackMenu = { playback.currentTrack?.let { overflowTrack = it } },
@@ -569,6 +574,14 @@ fun FireballNativeApp(viewModel: MainViewModel) {
                             viewModel.unfollowArtistByName(t.artist)
                         }
                     },
+                )
+            }
+
+            artistPickerNames?.let { names ->
+                com.fireball.nativeapp.ui.components.ArtistPickerSheet(
+                    artists = names,
+                    onDismiss = { artistPickerNames = null },
+                    onSelect = { viewModel.requestArtistDetail(it) },
                 )
             }
 

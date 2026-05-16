@@ -40,6 +40,7 @@ private struct RootShellView: View {
     @State private var isPlayerOpen = false
     @State private var overflowDraft: OverflowTrackDraft?
     @State private var splitVisibility: NavigationSplitViewVisibility = .automatic
+    @State private var artistPickerNames: [String]?
 
     var body: some View {
         PremiumBackground {
@@ -61,7 +62,7 @@ private struct RootShellView: View {
                                     onPrevious: { viewModel.previous() },
                                     onTap: { isPlayerOpen = true },
                                     onLongPressMenu: { overflowDraft = OverflowTrackDraft(track: track) },
-                                    onArtistTap: { viewModel.requestArtistDetail(artistDisplayName: track.artist) },
+                                    onArtistTap: { handleOpenArtist(track.artist) },
                                     onClose: {
                                         isPlayerOpen = false
                                         viewModel.stopPlaybackAndDismissMiniPlayer()
@@ -108,7 +109,7 @@ private struct RootShellView: View {
                                 onPrevious: {},
                                 onTap: { isPlayerOpen = true },
                                 onLongPressMenu: { overflowDraft = OverflowTrackDraft(track: track) },
-                                onArtistTap: { viewModel.requestArtistDetail(artistDisplayName: track.artist) },
+                                onArtistTap: { handleOpenArtist(track.artist) },
                                 onClose: {
                                     isPlayerOpen = false
                                     viewModel.stopPlaybackAndDismissMiniPlayer()
@@ -164,7 +165,7 @@ private struct RootShellView: View {
                         viewModel.addTrackToPlaylist(track: draft.track, playlistId: pid)
                     },
                     onSeeArtist: {
-                        viewModel.requestArtistDetail(artistDisplayName: draft.track.artist)
+                        handleOpenArtist(draft.track.artist)
                         overflowDraft = nil
                     },
                     onFollowArtist: {
@@ -207,6 +208,38 @@ private struct RootShellView: View {
                 ArtistCatalogScreen(appleArtistId: req.appleId, fallbackDisplayName: req.fallbackDisplayName)
                     .environmentObject(viewModel)
             }
+            .confirmationDialog(
+                "Choose artist",
+                isPresented: Binding(
+                    get: { artistPickerNames != nil },
+                    set: { if !$0 { artistPickerNames = nil } }
+                ),
+                titleVisibility: .visible
+            ) {
+                if let names = artistPickerNames {
+                    ForEach(names, id: \.self) { name in
+                        Button(name) {
+                            viewModel.requestArtistDetail(artistDisplayName: name)
+                            artistPickerNames = nil
+                        }
+                    }
+                }
+                Button("Cancel", role: .cancel) { artistPickerNames = nil }
+            } message: {
+                Text("This track lists multiple artists.")
+            }
+        }
+    }
+
+    private func handleOpenArtist(_ raw: String) {
+        let names = ArtistNameParser.splitArtists(raw)
+        switch names.count {
+        case 0:
+            return
+        case 1:
+            viewModel.requestArtistDetail(artistDisplayName: names[0])
+        default:
+            artistPickerNames = names
         }
     }
 
@@ -237,7 +270,7 @@ private struct RootShellView: View {
             onPlayQueueIndex: viewModel.playQueueIndex,
             onFollowArtist: viewModel.followArtist,
             onOpenArtist: { name, _ in
-                viewModel.requestArtistDetail(artistDisplayName: name)
+                handleOpenArtist(name)
             },
             onClose: { isPlayerOpen = false },
             onOpenTrackMenu: {
@@ -250,7 +283,7 @@ private struct RootShellView: View {
             onAddToQueue: { viewModel.appendTrackToQueue(track) },
             onToggleFavorite: { viewModel.toggleFavorite(track) },
             onSeeArtist: {
-                viewModel.requestArtistDetail(artistDisplayName: track.artist)
+                handleOpenArtist(track.artist)
             },
             isArtistFollowed: viewModel.isArtistFollowed(artistName: track.artist),
             onFollowArtistFromMenu: {
@@ -292,7 +325,7 @@ private struct RootShellView: View {
                 isPlaying: viewModel.isPlaying,
                 onOverflowTrack: { overflowDraft = OverflowTrackDraft(track: $0) },
                 onOpenArtist: { name, _ in
-                    viewModel.requestArtistDetail(artistDisplayName: name)
+                    handleOpenArtist(name)
                 }
             )
         case .search:

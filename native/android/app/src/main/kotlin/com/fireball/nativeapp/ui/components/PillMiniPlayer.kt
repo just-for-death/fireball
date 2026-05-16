@@ -326,7 +326,7 @@ fun PillMiniPlayer(
                                     modifier = if (layout == PillMiniPlayerLayout.TabletRail) Modifier else Modifier.basicMarquee(),
                                 )
                             }
-                            Text(
+                            ArtistTapLabel(
                                 text = song.artist,
                                 style = if (layout == PillMiniPlayerLayout.TabletRail) {
                                     MaterialTheme.typography.bodyMedium
@@ -334,11 +334,10 @@ fun PillMiniPlayer(
                                     MaterialTheme.typography.bodySmall
                                 },
                                 color = dominantColors.onBackground.copy(alpha = 0.7f),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable { onArtistClick() },
+                                enabled = song.artist.isNotBlank(),
+                                onClick = onArtistClick,
+                                modifier = Modifier.fillMaxWidth(),
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Start,
                             )
                         }
 

@@ -71,6 +71,7 @@ import com.fireball.nativeapp.core.model.Track
 import com.fireball.nativeapp.player.PlaybackState
 import com.fireball.nativeapp.player.RepeatMode
 import com.fireball.nativeapp.ui.components.AlbumArt
+import com.fireball.nativeapp.ui.components.ArtistTapLabel
 import com.fireball.nativeapp.ui.components.SyncedLyricsView
 import com.fireball.nativeapp.ui.components.seekbar.Seekbar
 import com.fireball.nativeapp.ui.components.seekbar.SeekbarStyle
@@ -567,18 +568,13 @@ private fun TrackMetadata(
             )
         }
         Spacer(Modifier.height(4.dp))
-        Text(
+        ArtistTapLabel(
             text = currentSong?.artist.orEmpty(),
             style = artistStyle,
             color = dominant.onBackground.copy(alpha = 0.7f),
-            textAlign = TextAlign.Center,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable(enabled = !currentSong?.artist.isNullOrBlank()) {
-                    onArtistClick()
-                },
+            enabled = !currentSong?.artist.isNullOrBlank(),
+            onClick = onArtistClick,
+            modifier = Modifier.fillMaxWidth(),
         )
     }
 }
