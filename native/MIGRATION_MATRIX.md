@@ -118,7 +118,7 @@
 - [x] Mini-player **Close** clears playback session + queue
 - [x] Library toolbar: **New playlist** + **Follow artist**
 - [x] Track overflow: **Follow artist** + **View artist catalog** (not “Search”)
-- [x] **Long-press overflow** on Home rows, Search results/suggestions, Library lists, Now Playing queue (iOS + Android)
+- [x] **Long-press overflow** on Home rows (incl. saved albums), Search results/suggestions, Library history/favorites (grid + list), Now Playing queue (iOS + Android)
 - [x] Overflow sheet stays open for non-current queue tracks (no auto-dismiss on track change)
 - [x] **Appearance** `appearanceColorSource`: Android `material_you` \| `music` \| `scheme`; iOS `music` \| `scheme` (`material_you` → scheme)
 - [x] Now Playing **⋮ menu**: play next, queue, favorite, view artist, follow, full overflow sheet
