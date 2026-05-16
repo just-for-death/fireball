@@ -344,6 +344,10 @@ class MainViewModel(
         }
     }
 
+    fun refreshFollowedArtistReleasesOnForeground() {
+        checkFollowedArtistReleasesAsync()
+    }
+
     private fun checkFollowedArtistReleasesAsync() {
         viewModelScope.launch {
             val snapshot = _uiState.value.library
@@ -825,9 +829,12 @@ class MainViewModel(
         if (offline) {
             _uiState.update { it.copy(currentLyrics = null) }
         } else {
+            val trackId = nowPlaying.effectiveId
             viewModelScope.launch {
                 val lyrics = lyricsAndAi.fetchLyrics(nowPlaying, settings)
-                _uiState.update { it.copy(currentLyrics = lyrics) }
+                if (playbackState.value.currentTrack?.effectiveId == trackId) {
+                    _uiState.update { it.copy(currentLyrics = lyrics) }
+                }
             }
         }
 

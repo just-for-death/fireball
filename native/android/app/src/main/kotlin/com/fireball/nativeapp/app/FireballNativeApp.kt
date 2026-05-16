@@ -163,7 +163,14 @@ fun FireballNativeApp(viewModel: MainViewModel) {
         } else {
             null
         }
-    val dominantColors = albumArtColors ?: rememberDominantColors(currentTrack?.artwork, darkTheme)
+    val dominantColors =
+        when (appearanceChrome) {
+            "music" -> albumArtColors ?: rememberDominantColors(currentTrack?.artwork, darkTheme)
+            else ->
+                remember(darkTheme) {
+                    com.fireball.nativeapp.ui.theme.defaultDominantColors(darkTheme)
+                }
+        }
 
     val railCollapsed = isTablet && settings.ipadSidebarCollapsed
     val miniPlayerLayout = when {
@@ -516,6 +523,7 @@ fun FireballNativeApp(viewModel: MainViewModel) {
                     lyricsAutoScroll = settings.lyricsAutoScroll,
                     lyricsReducedMotion = settings.lyricsReducedMotion,
                     pinnedLyricsPanel = settings.alwaysShowLyricsPanel,
+                    appearanceChrome = appearanceChrome,
                     onPlayPause = viewModel::togglePlayPause,
                     onNext = viewModel::next,
                     onPrevious = viewModel::previous,

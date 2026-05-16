@@ -2,13 +2,17 @@ import SwiftUI
 
 public class ThemeManager: ObservableObject {
     @Published public var colors: DominantColors = .defaultColors
+    private var colorRequestId = 0
 
     public static let shared = ThemeManager()
 
     public func updateColors(from urlString: String?, isDark: Bool) {
+        colorRequestId += 1
+        let requestId = colorRequestId
         Task {
             let extracted = await DominantColorExtractor.shared.extract(from: urlString, isDark: isDark)
             await MainActor.run {
+                guard requestId == self.colorRequestId else { return }
                 withAnimation(.spring(response: 1.0, dampingFraction: 0.8)) {
                     self.colors = extracted
                 }
