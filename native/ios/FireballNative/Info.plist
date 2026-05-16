@@ -6,5 +6,13 @@
 	<string>Fireball</string>
 	<key>CFBundleName</key>
 	<string>FireballNative</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>fetch</string>
+	</array>
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>com.fireball.native.artist-releases</string>
+	</array>
 </dict>
 </plist>

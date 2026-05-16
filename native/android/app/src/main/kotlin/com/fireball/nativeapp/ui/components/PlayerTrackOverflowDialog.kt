@@ -87,7 +87,7 @@ fun PlayerTrackOverflowDialog(
                 }
                 HorizontalDivider(Modifier.padding(vertical = 8.dp))
                 OverflowRow("Follow artist", onFollowArtist)
-                OverflowRow("View artist in Search", onSeeArtist)
+                OverflowRow("View artist catalog", onSeeArtist)
             }
         },
         confirmButton = {

@@ -456,6 +456,9 @@ fun FireballNativeApp(viewModel: MainViewModel) {
                                     )
                                 },
                                 onOverflowTrack = { overflowTrack = it },
+                                onSettingsChange = { updated ->
+                                    viewModel.updateSettings { _ -> updated }
+                                },
                             )
                         }
                         composable("settings") {
@@ -530,6 +533,25 @@ fun FireballNativeApp(viewModel: MainViewModel) {
                     onOverflowQueueTrackMenu = { overflowTrack = it },
                     onCollapse = { isPlayerOpen = false },
                     onOpenTrackMenu = { playback.currentTrack?.let { overflowTrack = it } },
+                    isCurrentTrackFavorite =
+                        playback.currentTrack?.let { viewModel.isFavorite(it) } ?: false,
+                    onPlayNextFromMenu = {
+                        playback.currentTrack?.let { viewModel.playTrackUpNext(it) }
+                    },
+                    onAddToQueueFromMenu = {
+                        playback.currentTrack?.let { viewModel.appendTrackToQueue(it) }
+                    },
+                    onToggleFavoriteFromMenu = {
+                        playback.currentTrack?.let { viewModel.toggleFavorite(it) }
+                    },
+                    onSeeArtistFromMenu = {
+                        playback.currentTrack?.let { viewModel.requestArtistDetail(it.artist) }
+                    },
+                    onFollowArtistFromMenu = {
+                        playback.currentTrack?.let { t ->
+                            viewModel.followArtist(t.artist, t.artwork)
+                        }
+                    },
                 )
             }
 

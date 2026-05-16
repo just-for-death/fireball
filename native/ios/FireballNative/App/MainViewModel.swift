@@ -163,6 +163,7 @@ final class MainViewModel: ObservableObject {
         Task {
             await refreshHome()
             await checkFollowedArtistNewReleases()
+            ArtistReleaseBackgroundRefresh.scheduleIfNeeded(settings: library.settings)
         }
         setupSearchSuggestionDebounce()
     }
@@ -756,6 +757,7 @@ final class MainViewModel: ObservableObject {
                 await checkFollowedArtistNewReleases()
             }
         }
+        ArtistReleaseBackgroundRefresh.scheduleIfNeeded(settings: settings)
     }
 
     func toggleShuffle() {

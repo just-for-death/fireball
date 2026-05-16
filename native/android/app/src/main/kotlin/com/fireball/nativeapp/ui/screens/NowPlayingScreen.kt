@@ -33,6 +33,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Repeat
@@ -94,9 +97,16 @@ fun NowPlayingScreen(
     onOverflowQueueTrackMenu: (Track) -> Unit = {},
     onCollapse: () -> Unit,
     onOpenTrackMenu: () -> Unit = {},
+    isCurrentTrackFavorite: Boolean = false,
+    onPlayNextFromMenu: () -> Unit = {},
+    onAddToQueueFromMenu: () -> Unit = {},
+    onToggleFavoriteFromMenu: () -> Unit = {},
+    onSeeArtistFromMenu: () -> Unit = {},
+    onFollowArtistFromMenu: () -> Unit = {},
 ) {
     var queueExpanded by remember { mutableStateOf(false) }
     var lyricsOverlay by remember { mutableStateOf(false) }
+    var trackMenuExpanded by remember { mutableStateOf(false) }
     val currentSong = playbackState.currentTrack
     val isPlaying = playbackState.isPlaying
     val positionMs = playbackState.positionMs
@@ -169,8 +179,74 @@ fun NowPlayingScreen(
                         text = "Now Playing",
                         style = MaterialTheme.typography.titleMedium,
                         color = dominant.onBackground.copy(alpha = 0.8f),
-                        modifier = Modifier.padding(start = 8.dp),
+                        modifier = Modifier
+                            .padding(start = 8.dp)
+                            .weight(1f),
                     )
+                    Box {
+                        IconButton(onClick = { trackMenuExpanded = true }) {
+                            Icon(
+                                Icons.Default.MoreVert,
+                                contentDescription = "Track options",
+                                tint = dominant.onBackground,
+                            )
+                        }
+                        DropdownMenu(
+                            expanded = trackMenuExpanded,
+                            onDismissRequest = { trackMenuExpanded = false },
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("Play next") },
+                                onClick = {
+                                    trackMenuExpanded = false
+                                    onPlayNextFromMenu()
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Add to queue") },
+                                onClick = {
+                                    trackMenuExpanded = false
+                                    onAddToQueueFromMenu()
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        if (isCurrentTrackFavorite) {
+                                            "Remove from favorites"
+                                        } else {
+                                            "Add to favorites"
+                                        },
+                                    )
+                                },
+                                onClick = {
+                                    trackMenuExpanded = false
+                                    onToggleFavoriteFromMenu()
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("View artist catalog") },
+                                onClick = {
+                                    trackMenuExpanded = false
+                                    onSeeArtistFromMenu()
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Follow artist") },
+                                onClick = {
+                                    trackMenuExpanded = false
+                                    onFollowArtistFromMenu()
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("More options…") },
+                                onClick = {
+                                    trackMenuExpanded = false
+                                    onOpenTrackMenu()
+                                },
+                            )
+                        }
+                    }
                 }
 
                 if (useSplit) {

@@ -161,6 +161,31 @@ struct ArtistCatalogScreen: View {
             }
             .buttonStyle(.borderedProminent)
             .disabled(browse.songs.isEmpty)
+
+            if matchedFollowedArtist != nil {
+                Toggle(
+                    isOn: Binding(
+                        get: { viewModel.library.settings.notifyArtistReleasesOnDevice },
+                        set: { enabled in
+                            viewModel.updateSettings { $0.notifyArtistReleasesOnDevice = enabled }
+                            if enabled {
+                                Task {
+                                    _ = await ArtistReleaseNotifier.requestAuthorizationIfNeeded()
+                                }
+                            }
+                        }
+                    )
+                ) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Notify on new releases")
+                            .font(.subheadline.weight(.semibold))
+                        Text("Posts a device alert when a followed artist ships a new album. Gotify is configured in Settings.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .padding(.horizontal, 4)
+            }
         }
         .padding(.horizontal)
         .padding(.top, 8)
