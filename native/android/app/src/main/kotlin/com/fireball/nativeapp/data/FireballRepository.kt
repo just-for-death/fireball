@@ -48,6 +48,12 @@ class FireballRepository(
         store.save(snapshot)
     }
 
+    suspend fun resolveArtistThumbnail(artistName: String, fallbackArtwork: String? = null): String? =
+        withContext(Dispatchers.IO) {
+            val resolved = resolveArtistForFollow(artistName, fallbackArtwork)
+            resolved.artwork?.takeIf { it.isNotBlank() } ?: fallbackArtwork?.takeIf { it.isNotBlank() }
+        }
+
     suspend fun resolveArtistForFollow(artistName: String, fallbackArtwork: String? = null): Artist =
         withContext(Dispatchers.IO) {
             var artistId = artistName

@@ -31,6 +31,13 @@ final class FireballRepository {
         try? store.save(snapshot)
     }
 
+    func resolveArtistThumbnail(artistName: String, fallbackArtwork: String? = nil) async -> String? {
+        let artist = await resolveArtistForFollow(artistName: artistName, fallbackArtwork: fallbackArtwork)
+        if let a = artist.artwork, !a.isEmpty { return a }
+        if let f = fallbackArtwork, !f.isEmpty { return f }
+        return nil
+    }
+
     func resolveArtistForFollow(artistName: String, fallbackArtwork: String? = nil) async -> Artist {
         var artistId = artistName
         var name = artistName

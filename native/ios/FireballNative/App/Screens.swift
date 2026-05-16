@@ -837,6 +837,7 @@ struct LibraryScreen: View {
     let onFavorite: (Track) -> Void
     var onOverflowTrack: (Track) -> Void = { _ in }
     var onUnfollowArtist: (String) -> Void = { _ in }
+    var onOpenArtist: (String, String?) -> Void = { _, _ in }
 
     @EnvironmentObject private var viewModel: MainViewModel
     @State private var newPlaylistTitle = ""
@@ -963,7 +964,7 @@ struct LibraryScreen: View {
                                     onPlay: { onPlay(track, library.history) },
                                     onOverflow: { onOverflowTrack(track) },
                                     onArtistTap: {
-                                        viewModel.requestArtistDetail(artistDisplayName: track.artist)
+                                        onOpenArtist(track.artist, track.artwork)
                                     },
                                     useMaterialBackground: false
                                 )
@@ -1003,19 +1004,17 @@ struct LibraryScreen: View {
                 .accessibilityLabel("New playlist")
             }
         }
-        .alert("Follow artist", isPresented: $showFollowArtistPrompt) {
-            TextField("Artist name", text: $followArtistName)
-            Button("Follow") {
-                viewModel.followArtist(followArtistName.trimmingCharacters(in: .whitespacesAndNewlines), artwork: nil)
+        .sheet(isPresented: $showFollowArtistPrompt) {
+            FollowArtistSheet { name in
+                viewModel.followArtist(name, artwork: nil)
+                followArtistName = ""
             }
-            Button("Cancel", role: .cancel) {}
         }
-        .alert("New playlist", isPresented: $showCreatePlaylistPrompt) {
-            TextField("Title", text: $newPlaylistTitle)
-            Button("Create") {
-                viewModel.createPlaylist(title: newPlaylistTitle)
+        .sheet(isPresented: $showCreatePlaylistPrompt) {
+            CreatePlaylistSheet { title in
+                viewModel.createPlaylist(title: title)
+                newPlaylistTitle = ""
             }
-            Button("Cancel", role: .cancel) {}
         }
     }
 }

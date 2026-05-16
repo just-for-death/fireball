@@ -40,7 +40,7 @@ private struct RootShellView: View {
     @State private var isPlayerOpen = false
     @State private var overflowDraft: OverflowTrackDraft?
     @State private var splitVisibility: NavigationSplitViewVisibility = .automatic
-    @State private var artistPickerNames: [String]?
+    @State private var artistPickerContext: ArtistPickerContext?
 
     var body: some View {
         PremiumBackground {
@@ -62,7 +62,7 @@ private struct RootShellView: View {
                                     onPrevious: { viewModel.previous() },
                                     onTap: { isPlayerOpen = true },
                                     onLongPressMenu: { overflowDraft = OverflowTrackDraft(track: track) },
-                                    onArtistTap: { handleOpenArtist(track.artist) },
+                                    onArtistTap: { handleOpenArtist(track.artist, artwork: track.artwork) },
                                     onClose: {
                                         isPlayerOpen = false
                                         viewModel.stopPlaybackAndDismissMiniPlayer()
@@ -109,7 +109,7 @@ private struct RootShellView: View {
                                 onPrevious: {},
                                 onTap: { isPlayerOpen = true },
                                 onLongPressMenu: { overflowDraft = OverflowTrackDraft(track: track) },
-                                onArtistTap: { handleOpenArtist(track.artist) },
+                                onArtistTap: { handleOpenArtist(track.artist, artwork: track.artwork) },
                                 onClose: {
                                     isPlayerOpen = false
                                     viewModel.stopPlaybackAndDismissMiniPlayer()
@@ -165,7 +165,7 @@ private struct RootShellView: View {
                         viewModel.addTrackToPlaylist(track: draft.track, playlistId: pid)
                     },
                     onSeeArtist: {
-                        handleOpenArtist(draft.track.artist)
+                        handleOpenArtist(draft.track.artist, artwork: draft.track.artwork)
                         overflowDraft = nil
                     },
                     onFollowArtist: {
@@ -205,33 +205,23 @@ private struct RootShellView: View {
                 item: $viewModel.artistOpenRequest,
                 onDismiss: { viewModel.consumeArtistOpenRequest() }
             ) { req in
-                ArtistCatalogScreen(appleArtistId: req.appleId, fallbackDisplayName: req.fallbackDisplayName)
-                    .environmentObject(viewModel)
+                ArtistCatalogScreen(
+                    appleArtistId: req.appleId,
+                    fallbackDisplayName: req.fallbackDisplayName,
+                    onOverflowTrack: { overflowDraft = OverflowTrackDraft(track: $0) }
+                )
+                .environmentObject(viewModel)
             }
-            .confirmationDialog(
-                "Choose artist",
-                isPresented: Binding(
-                    get: { artistPickerNames != nil },
-                    set: { if !$0 { artistPickerNames = nil } }
-                ),
-                titleVisibility: .visible
-            ) {
-                if let names = artistPickerNames {
-                    ForEach(names, id: \.self) { name in
-                        Button(name) {
-                            viewModel.requestArtistDetail(artistDisplayName: name)
-                            artistPickerNames = nil
-                        }
-                    }
+            .sheet(item: $artistPickerContext) { ctx in
+                ArtistPickerSheet(context: ctx) { name in
+                    viewModel.requestArtistDetail(artistDisplayName: name)
+                    artistPickerContext = nil
                 }
-                Button("Cancel", role: .cancel) { artistPickerNames = nil }
-            } message: {
-                Text("This track lists multiple artists.")
             }
         }
     }
 
-    private func handleOpenArtist(_ raw: String) {
+    private func handleOpenArtist(_ raw: String, artwork: String? = nil) {
         let names = ArtistNameParser.splitArtists(raw)
         switch names.count {
         case 0:
@@ -239,7 +229,7 @@ private struct RootShellView: View {
         case 1:
             viewModel.requestArtistDetail(artistDisplayName: names[0])
         default:
-            artistPickerNames = names
+            artistPickerContext = ArtistPickerContext(names: names, fallbackArtwork: artwork)
         }
     }
 
@@ -268,8 +258,11 @@ private struct RootShellView: View {
             queue: viewModel.queue,
             currentIndex: viewModel.currentIndex,
             onPlayQueueIndex: viewModel.playQueueIndex,
-            onOpenArtist: { name, _ in
-                handleOpenArtist(name)
+            onOpenArtist: { name, artwork in
+                handleOpenArtist(name, artwork: artwork)
+            },
+            onSeekToLyricMs: { ms in
+                viewModel.seekTo(seconds: Double(ms) / 1000.0)
             },
             onClose: { isPlayerOpen = false },
             onOpenTrackMenu: {
@@ -309,8 +302,8 @@ private struct RootShellView: View {
                 onNext: viewModel.next,
                 isPlaying: viewModel.isPlaying,
                 onOverflowTrack: { overflowDraft = OverflowTrackDraft(track: $0) },
-                onOpenArtist: { name, _ in
-                    handleOpenArtist(name)
+                onOpenArtist: { name, artwork in
+                    handleOpenArtist(name, artwork: artwork)
                 }
             )
         case .search:
@@ -338,7 +331,10 @@ private struct RootShellView: View {
                 onPlay: viewModel.play,
                 onFavorite: viewModel.toggleFavorite,
                 onOverflowTrack: { overflowDraft = OverflowTrackDraft(track: $0) },
-                onUnfollowArtist: viewModel.unfollowArtist
+                onUnfollowArtist: viewModel.unfollowArtist,
+                onOpenArtist: { name, artwork in
+                    handleOpenArtist(name, artwork: artwork)
+                }
             )
         case .settings:
             SettingsScreen(

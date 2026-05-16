@@ -1,8 +1,9 @@
 package com.fireball.nativeapp.ui.screens
 
 import android.net.Uri
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -17,19 +18,19 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.Button
 import androidx.compose.material3.TextButton
+import com.fireball.nativeapp.core.model.Album
 import com.fireball.nativeapp.core.model.FireballSettings
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -37,7 +38,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -50,7 +50,6 @@ import com.fireball.nativeapp.data.ArtistBrowseResult
 import com.fireball.nativeapp.core.model.Track
 import com.fireball.nativeapp.ui.MainViewModel
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 @Composable
@@ -61,6 +60,7 @@ fun ArtistDetailRoute(
     viewModel: MainViewModel,
     onBack: () -> Unit,
     onOverflowTrack: (Track) -> Unit,
+    onOpenAlbum: (Album) -> Unit,
     onSettingsChange: (FireballSettings) -> Unit,
 ) {
     val fallbackDisplay = Uri.decode(encodedName).ifBlank { "Artist" }
@@ -70,11 +70,8 @@ fun ArtistDetailRoute(
 
     var browse by remember { mutableStateOf<ArtistBrowseResult?>(null) }
     var loading by remember { mutableStateOf(true) }
-    var albumLoadingId by remember { mutableStateOf<String?>(null) }
-    var albumTracksPick by remember { mutableStateOf<List<Track>?>(null) }
     var tab by remember { mutableIntStateOf(0) }
     val titles = listOf("Songs", "Albums")
-    val scope = rememberCoroutineScope()
 
     LaunchedEffect(parsedKey, encodedName, library.artists.size, library.playlists.size) {
         loading = true
@@ -87,39 +84,6 @@ fun ArtistDetailRoute(
                 null
             }
         loading = false
-    }
-
-    albumTracksPick?.let { picks ->
-        AlertDialog(
-            onDismissRequest = { albumTracksPick = null },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        if (picks.isNotEmpty()) viewModel.play(picks.first(), picks)
-                        albumTracksPick = null
-                    },
-                ) {
-                    Text("Play album")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { albumTracksPick = null }) {
-                    Text("Cancel")
-                }
-            },
-            title = { Text("Album tracks") },
-            text = {
-                Text(
-                    if (picks.isEmpty()) {
-                        "No tracks found."
-                    } else {
-                        picks.joinToString(separator = "\n") { "· ${it.title}" }.take(800).let {
-                            if (it.length >= 800) "$it…" else it
-                        }
-                    },
-                )
-            },
-        )
     }
 
     when {
@@ -275,6 +239,7 @@ fun ArtistDetailRoute(
                                 Row(
                                     Modifier
                                         .fillMaxWidth()
+                                        .combinedClickable(onClick = { onOpenAlbum(album) })
                                         .padding(vertical = 8.dp),
                                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                                     verticalAlignment = Alignment.CenterVertically,
@@ -298,26 +263,6 @@ fun ArtistDetailRoute(
                                             overflow = TextOverflow.Ellipsis,
                                         )
                                     }
-                                    TextButton(
-                                        onClick = {
-                                            val cid = album.id.toIntOrNull() ?: return@TextButton
-                                            albumLoadingId = album.id
-                                            scope.launch {
-                                                val loaded =
-                                                    try {
-                                                        withContext(Dispatchers.IO) {
-                                                            viewModel.albumTracksCatalog(cid)
-                                                        }
-                                                    } catch (_: Exception) {
-                                                        emptyList()
-                                                    }
-                                                albumLoadingId = null
-                                                albumTracksPick = loaded
-                                            }
-                                        },
-                                    ) {
-                                        Text(if (albumLoadingId == album.id) "…" else "Tracks")
-                                    }
                                 }
                                 HorizontalDivider()
                             }
@@ -329,6 +274,7 @@ fun ArtistDetailRoute(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun ArtistTrackRow(
     track: Track,
@@ -339,6 +285,10 @@ private fun ArtistTrackRow(
         modifier =
             Modifier
                 .fillMaxWidth()
+                .combinedClickable(
+                    onClick = onPlay,
+                    onLongClick = { onMenu(track) },
+                )
                 .padding(vertical = 10.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -352,12 +302,7 @@ private fun ArtistTrackRow(
                     .clip(RoundedCornerShape(10.dp)),
             contentScale = ContentScale.Crop,
         )
-        Column(
-            modifier =
-                Modifier
-                    .weight(1f)
-                    .clickable(onClick = onPlay),
-        ) {
+        Column(Modifier.weight(1f)) {
             Text(track.title, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(
                 track.album ?: track.artist,
@@ -365,12 +310,6 @@ private fun ArtistTrackRow(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-        }
-        TextButton(onClick = onPlay) {
-            Text("Play")
-        }
-        TextButton(onClick = { onMenu(track) }) {
-            Text("•••")
         }
     }
     HorizontalDivider()

@@ -452,6 +452,9 @@ class MainViewModel(
     suspend fun albumTracksCatalog(collectionId: Int): List<Track> =
         repository.catalogAlbumTracks(collectionId)
 
+    suspend fun resolveArtistThumbnail(artistName: String, fallbackArtwork: String? = null): String? =
+        repository.resolveArtistThumbnail(artistName, fallbackArtwork)
+
     fun playCatalogAlbum(album: com.fireball.nativeapp.core.model.Album) {
         viewModelScope.launch {
             val cid = album.id.toIntOrNull() ?: return@launch

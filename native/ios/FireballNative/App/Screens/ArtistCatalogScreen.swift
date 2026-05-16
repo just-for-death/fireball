@@ -1,15 +1,11 @@
 import SwiftUI
 
-private struct ExpandedAlbumDraft: Identifiable {
-    let album: Album
-    var id: String { album.id }
-}
-
 /// iTunes-backed artist browse (songs + albums), mirroring Android `ArtistDetailRoute`.
 struct ArtistCatalogScreen: View {
     @EnvironmentObject private var viewModel: MainViewModel
     let appleArtistId: Int?
     let fallbackDisplayName: String
+    var onOverflowTrack: (Track) -> Void = { _ in }
 
     @Environment(\.dismiss) private var dismiss
 
@@ -22,10 +18,6 @@ struct ArtistCatalogScreen: View {
     @State private var browseResult: ArtistBrowseResult?
     @State private var isLoading = true
     @State private var loadError: String?
-    @State private var expandedAlbum: ExpandedAlbumDraft?
-    @State private var albumTracks: [Track] = []
-    @State private var albumTracksLoading = false
-
     private var matchedFollowedArtist: Artist? {
         viewModel.library.artists.first(where: { $0.name.caseInsensitiveCompare(browseResult?.displayName ?? fallbackDisplayName) == .orderedSame })
     }
@@ -84,55 +76,6 @@ struct ArtistCatalogScreen: View {
         }
         .task {
             await load()
-        }
-        .sheet(item: $expandedAlbum) { wrapper in
-            let album = wrapper.album
-            NavigationStack {
-                Group {
-                    if albumTracksLoading {
-                        ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
-                    } else if albumTracks.isEmpty {
-                        Text("No tracks resolved for this album.")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                            .multilineTextAlignment(.center)
-                            .padding()
-                    } else {
-                        List(albumTracks, id: \.effectiveId) { t in
-                            Button {
-                                viewModel.playFromPlaylist(track: t, source: albumTracks)
-                            } label: {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(t.title)
-                                    Text(t.artist).font(.caption).foregroundStyle(.secondary)
-                                }
-                            }
-                        }
-                    }
-                }
-                .navigationTitle(album.title)
-                .toolbar {
-                    ToolbarItem(placement: .cancellationAction) {
-                        Button("Close") {
-                            expandedAlbum = nil
-                            albumTracks = []
-                        }
-                    }
-                    ToolbarItem(placement: .primaryAction) {
-                        Button("Play all") {
-                            viewModel.playCatalogAlbum(album)
-                            expandedAlbum = nil
-                        }
-                        .disabled(Int(album.id) == nil)
-                    }
-                }
-                .task {
-                    guard let cid = Int(album.id) else { return }
-                    albumTracksLoading = true
-                    albumTracks = await viewModel.albumTracksCatalog(collectionId: cid)
-                    albumTracksLoading = false
-                }
-            }
         }
     }
 
@@ -206,6 +149,33 @@ struct ArtistCatalogScreen: View {
         .padding(.horizontal)
     }
 
+    @ViewBuilder
+    private func albumRowLabel(_ album: Album) -> some View {
+        HStack {
+            AsyncImage(url: URL(string: album.artwork ?? "")) { p in
+                if let img = p.image {
+                    img.resizable().aspectRatio(contentMode: .fill)
+                } else {
+                    Color.secondary.opacity(0.35)
+                }
+            }
+            .frame(width: 56, height: 56)
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            VStack(alignment: .leading, spacing: 4) {
+                Text(album.title).font(.headline).foregroundStyle(.primary)
+                Text(album.artist).font(.caption).foregroundStyle(.secondary)
+            }
+            Spacer()
+            if Int(album.id) != nil {
+                Image(systemName: "chevron.right")
+                    .foregroundStyle(.tertiary)
+            }
+        }
+        .padding(12)
+        .background(Color.secondary.opacity(0.12), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .padding(.horizontal)
+    }
+
     private func albumsBody(_ browse: ArtistBrowseResult) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             if browse.albums.isEmpty {
@@ -216,34 +186,25 @@ struct ArtistCatalogScreen: View {
                     .padding()
             }
             ForEach(browse.albums, id: \.id) { album in
-                Button {
-                    albumTracks = []
-                    albumTracksLoading = true
-                    expandedAlbum = ExpandedAlbumDraft(album: album)
-                } label: {
-                    HStack {
-                        AsyncImage(url: URL(string: album.artwork ?? "")) { p in
-                            if let img = p.image {
-                                img.resizable().aspectRatio(contentMode: .fill)
-                            } else {
-                                Color.secondary.opacity(0.35)
-                            }
-                        }
-                        .frame(width: 56, height: 56)
-                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(album.title).font(.headline).foregroundStyle(.primary)
-                            Text(album.artist).font(.caption).foregroundStyle(.secondary)
-                        }
-                        Spacer()
-                        Image(systemName: "chevron.right")
-                            .foregroundStyle(.tertiary)
+                if let cid = Int(album.id) {
+                    NavigationLink {
+                        AlbumDetailScreen(
+                            route: AlbumDetailRoute(
+                                collectionId: cid,
+                                title: album.title,
+                                artist: album.artist,
+                                artworkUrl: album.artwork
+                            ),
+                            onOpenTrackMenu: onOverflowTrack
+                        )
+                    } label: {
+                        albumRowLabel(album)
                     }
-                    .padding(12)
-                    .background(Color.secondary.opacity(0.12), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                    .padding(.horizontal)
+                    .buttonStyle(.plain)
+                } else {
+                    albumRowLabel(album)
+                        .padding(.horizontal)
                 }
-                .buttonStyle(.plain)
             }
         }
     }
@@ -283,6 +244,11 @@ struct ArtistCatalogScreen: View {
                         .background(Color.secondary.opacity(0.12), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                     }
                     .buttonStyle(.plain)
+                    .simultaneousGesture(
+                        LongPressGesture(minimumDuration: 0.45).onEnded { _ in
+                            onOverflowTrack(t)
+                        }
+                    )
                     .padding(.horizontal)
                 }
             }

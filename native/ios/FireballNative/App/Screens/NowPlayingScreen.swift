@@ -37,14 +37,13 @@ public struct NowPlayingScreen: View {
     let onClose: () -> Void
     var onOpenTrackMenu: () -> Void = {}
     var onOverflowQueueTrack: (Track) -> Void = { _ in }
+    var onSeekToLyricMs: (Int64) -> Void = { _ in }
 
     @Environment(\.dominantColors) var dominantColors
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var dragOffset: CGSize = .zero
     @State private var queueExpanded = false
     @State private var containerWidth: CGFloat = 0
-    @State private var artistPickerNames: [String]?
-    @State private var artistPickerArtwork: String?
     @State private var showLyricsInArtSlot = false
     /// Two-column layout on iPad regular width when the column is actually wide enough (Stage Manager friendly).
     private var splitLayoutEnabled: Bool {
@@ -105,43 +104,10 @@ public struct NowPlayingScreen: View {
         }
         .dynamicTheme(artworkUrl: track.artwork, settings: settings)
         .safeAreaInset(edge: .bottom) { Color.clear.frame(height: 8) }
-        .confirmationDialog(
-            "Choose artist",
-            isPresented: Binding(
-                get: { artistPickerNames != nil },
-                set: { if !$0 { artistPickerNames = nil; artistPickerArtwork = nil } }
-            ),
-            titleVisibility: .visible
-        ) {
-            if let names = artistPickerNames {
-                ForEach(names, id: \.self) { name in
-                    Button(name) {
-                        onOpenArtist(name, artistPickerArtwork)
-                        artistPickerNames = nil
-                        artistPickerArtwork = nil
-                    }
-                }
-            }
-            Button("Cancel", role: .cancel) {
-                artistPickerNames = nil
-                artistPickerArtwork = nil
-            }
-        } message: {
-            Text("This track lists multiple artists.")
-        }
     }
 
     private func openArtistFromDisplayLine(_ raw: String, artwork: String?) {
-        let names = ArtistNameParser.splitArtists(raw)
-        switch names.count {
-        case 0:
-            return
-        case 1:
-            onOpenArtist(names[0], artwork)
-        default:
-            artistPickerNames = names
-            artistPickerArtwork = artwork
-        }
+        onOpenArtist(raw, artwork)
     }
 
     private var playerDragHandle: some View {
@@ -222,6 +188,9 @@ public struct NowPlayingScreen: View {
                 ZStack {
                     RoundedRectangle(cornerRadius: corner, style: .continuous)
                         .fill(dominantColors.secondary.opacity(0.55))
+                        .onLongPressGesture(minimumDuration: 0.48) {
+                            toggleArtLyricsSlot()
+                        }
                     SyncedLyricsPanel(
                         lyrics: lyrics,
                         positionMs: Int64(positionSeconds * 1000),
@@ -229,11 +198,11 @@ public struct NowPlayingScreen: View {
                         reducedMotion: lyricsReducedMotion,
                         textColor: dominantColors.onBackground,
                         accentColor: dominantColors.accent,
-                        panelMaxHeight: lyricsCap
+                        panelMaxHeight: lyricsCap,
+                        onSeekToMs: onSeekToLyricMs
                     )
                     .padding(.horizontal, 16)
                     .padding(.vertical, 12)
-                    TapOrLongPressHostingView(onTap: onPlayPause, onLongPress: toggleArtLyricsSlot)
                 }
                 .transition(.opacity.combined(with: .scale(scale: 0.97)))
             } else {
@@ -370,7 +339,8 @@ public struct NowPlayingScreen: View {
                             reducedMotion: lyricsReducedMotion,
                             textColor: dominantColors.onBackground,
                             accentColor: dominantColors.accent,
-                            panelMaxHeight: lyricsPanelCap
+                            panelMaxHeight: lyricsPanelCap,
+                            onSeekToMs: onSeekToLyricMs
                         )
                     }
 
@@ -423,7 +393,8 @@ public struct NowPlayingScreen: View {
                                 reducedMotion: lyricsReducedMotion,
                                 textColor: dominantColors.onBackground,
                                 accentColor: dominantColors.accent,
-                                panelMaxHeight: lyricsPanelCap
+                                panelMaxHeight: lyricsPanelCap,
+                                onSeekToMs: onSeekToLyricMs
                             )
                         }
 
@@ -519,6 +490,7 @@ private struct SyncedLyricsPanel: View {
     let textColor: Color
     let accentColor: Color
     var panelMaxHeight: CGFloat = 140
+    var onSeekToMs: (Int64) -> Void = { _ in }
 
     private var lines: [LrcLine] { LrcParser.parse(lyrics) }
     private var activeIndex: Int {
@@ -531,9 +503,9 @@ private struct SyncedLyricsPanel: View {
         let distance = abs(index - activeIndex)
         switch distance {
         case 0: return 1
-        case 1: return 0.62
-        case 2: return 0.45
-        default: return 0.28
+        case 1: return 0.5
+        case 2: return 0.35
+        default: return 0.22
         }
     }
 
@@ -551,15 +523,28 @@ private struct SyncedLyricsPanel: View {
                 } else {
                     VStack(alignment: .center, spacing: 8) {
                         ForEach(Array(lines.enumerated()), id: \.offset) { index, line in
-                            Text(line.text)
-                                .font(index == activeIndex ? .title3.weight(.semibold) : .subheadline)
-                                .foregroundStyle(index == activeIndex ? accentColor : textColor)
-                                .opacity(lineOpacity(index: index))
-                                .multilineTextAlignment(.center)
-                                .frame(maxWidth: .infinity, alignment: .center)
-                                .padding(.vertical, 2)
-                                .animation(reducedMotion ? nil : .easeOut(duration: 0.22), value: activeIndex)
-                                .id(index)
+                            let isActive = index == activeIndex
+                            Button {
+                                onSeekToMs(line.timeMs)
+                            } label: {
+                                Text(line.text)
+                                    .font(isActive ? .title2.weight(.bold) : .subheadline)
+                                    .foregroundStyle(isActive ? accentColor : textColor)
+                                    .opacity(lineOpacity(index: index))
+                                    .multilineTextAlignment(.center)
+                                    .frame(maxWidth: .infinity, alignment: .center)
+                                    .padding(.vertical, isActive ? 8 : 4)
+                                    .padding(.horizontal, isActive ? 12 : 4)
+                                    .background(
+                                        isActive
+                                            ? accentColor.opacity(0.18)
+                                            : Color.clear,
+                                        in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                    )
+                            }
+                            .buttonStyle(.plain)
+                            .animation(reducedMotion ? nil : .easeOut(duration: 0.22), value: activeIndex)
+                            .id(index)
                         }
                     }
                     .padding(.vertical, 8)

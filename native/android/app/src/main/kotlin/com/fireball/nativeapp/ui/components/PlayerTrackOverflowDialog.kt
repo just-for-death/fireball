@@ -1,6 +1,7 @@
 package com.fireball.nativeapp.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -14,19 +15,25 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
+import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
-import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PersonAdd
-import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import kotlinx.coroutines.delay
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -35,6 +42,8 @@ import androidx.compose.ui.unit.dp
 import com.fireball.nativeapp.core.model.Playlist
 import com.fireball.nativeapp.core.model.Track
 import com.fireball.nativeapp.ui.theme.MotionTokens
+import java.util.Locale
+import kotlin.math.max
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -43,6 +52,8 @@ fun PlayerTrackOverflowDialog(
     isFavorite: Boolean,
     isArtistFollowed: Boolean,
     playlists: List<Playlist>,
+    sleepTimerEndEpochMs: Long?,
+    sleepAfterCurrent: Boolean,
     onDismiss: () -> Unit,
     onPlayNext: () -> Unit,
     onAddToQueue: () -> Unit,
@@ -51,8 +62,29 @@ fun PlayerTrackOverflowDialog(
     onSeeArtist: () -> Unit,
     onFollowArtist: () -> Unit,
     onUnfollowArtist: () -> Unit = {},
+    onSetSleepTimer: (Int?) -> Unit,
+    onSetSleepAfterCurrent: (Boolean) -> Unit,
+    artistImageUrl: String? = null,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    var tickMs by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(sleepTimerEndEpochMs) {
+        while (sleepTimerEndEpochMs != null) {
+            delay(1_000)
+            tickMs = System.currentTimeMillis()
+            if ((sleepTimerEndEpochMs ?: 0L) <= tickMs) break
+        }
+    }
+    val sleepStatus =
+        remember(sleepTimerEndEpochMs, tickMs) {
+            val end = sleepTimerEndEpochMs ?: return@remember null
+            val remainingMs = max(0L, end - tickMs)
+            if (remainingMs <= 0L) return@remember null
+            val totalSec = (remainingMs / 1000).toInt()
+            val mins = totalSec / 60
+            val secs = totalSec % 60
+            String.format(Locale.getDefault(), "Stops in %d:%02d", mins, secs)
+        }
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
@@ -113,10 +145,61 @@ fun PlayerTrackOverflowDialog(
                 )
             }
             ActionSheetDivider()
-            SuvFadeSlideIn(delayMs = MotionTokens.DurationShort3 * 3) {
-                ActionSheetRow(Icons.Default.Person, "View artist catalog", onSeeArtist)
+            ActionSheetSectionLabel("Sleep")
+            if (sleepStatus != null) {
+                Text(
+                    text = sleepStatus,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(start = 4.dp, bottom = 6.dp),
+                )
             }
+            SuvFadeSlideIn(delayMs = MotionTokens.DurationShort3 * 3) {
+                ActionSheetChipRow(
+                    labels = listOf("15m", "30m", "45m", "60m", "Clear"),
+                    selectedLabel = null,
+                    onSelect = { label ->
+                        when (label) {
+                            "15m" -> onSetSleepTimer(15)
+                            "30m" -> onSetSleepTimer(30)
+                            "45m" -> onSetSleepTimer(45)
+                            "60m" -> onSetSleepTimer(60)
+                            "Clear" -> onSetSleepTimer(null)
+                        }
+                    },
+                )
+            }
+            Spacer(Modifier.height(8.dp))
+            Row(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 4.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text("Sleep after current track", style = MaterialTheme.typography.bodyLarge)
+                    Text(
+                        "Pause when this song ends",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Switch(
+                    checked = sleepAfterCurrent,
+                    onCheckedChange = onSetSleepAfterCurrent,
+                )
+            }
+            ActionSheetDivider()
             SuvFadeSlideIn(delayMs = MotionTokens.DurationShort3 * 4) {
+                ActionSheetRowWithAvatar(
+                    imageUrl = artistImageUrl ?: track.artwork,
+                    label = "View artist catalog",
+                    onClick = onSeeArtist,
+                )
+            }
+            SuvFadeSlideIn(delayMs = MotionTokens.DurationShort3 * 5) {
                 ActionSheetRow(
                     Icons.Default.PersonAdd,
                     if (isArtistFollowed) "Unfollow artist" else "Follow artist",
@@ -128,7 +211,7 @@ fun PlayerTrackOverflowDialog(
                 ActionSheetSectionLabel("Add to playlist")
                 playlists.forEachIndexed { index, pl ->
                     val alreadyInPlaylist = pl.videos.any { it.effectiveId == track.effectiveId }
-                    SuvFadeSlideIn(delayMs = MotionTokens.DurationShort3 * (5 + index.coerceAtMost(4))) {
+                    SuvFadeSlideIn(delayMs = MotionTokens.DurationShort3 * (6 + index.coerceAtMost(4))) {
                         ActionSheetRow(
                             Icons.AutoMirrored.Filled.PlaylistAdd,
                             pl.title,
