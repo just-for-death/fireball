@@ -6,7 +6,6 @@ enum ItunesFeedParser {
         let title: String
         let artist: String
         let artwork: String?
-        let previewUrl: String?
     }
 
     static func feedEntries(from data: Data) -> [[String: Any]] {
@@ -36,28 +35,8 @@ enum ItunesFeedParser {
                 id: id,
                 title: title,
                 artist: artist,
-                artwork: artwork,
-                previewUrl: extractPreviewUrl(e["link"])
+                artwork: artwork
             )
         }
-    }
-
-    private static func extractPreviewUrl(_ link: Any?) -> String? {
-        if let list = link as? [[String: Any]] {
-            for item in list {
-                guard let attrs = item["attributes"] as? [String: Any] else { continue }
-                let type = attrs["type"] as? String
-                let title = attrs["title"] as? String
-                if type == "audio/x-m4a" || title == "Preview" {
-                    return attrs["href"] as? String
-                }
-            }
-            return nil
-        }
-        if let map = link as? [String: Any],
-           let attrs = map["attributes"] as? [String: Any] {
-            return attrs["href"] as? String
-        }
-        return nil
     }
 }

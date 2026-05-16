@@ -52,6 +52,8 @@ final class MainViewModel: ObservableObject {
     @Published var lbTopTracks: [Track] = []
     @Published var lbTopRange = "month"
     @Published var lbHomeLoading = false
+    @Published var isPlaybackLoading = false
+    @Published var searchFocusRequest: String?
 
     private let repository: FireballRepository
     private let listenBrainz = ListenBrainzClient()
@@ -300,6 +302,8 @@ final class MainViewModel: ObservableObject {
         let settings = library.settings
         activePlayTask?.cancel()
         activePlayTask = Task {
+            defer { isPlaybackLoading = false }
+            isPlaybackLoading = true
             error = nil
             scrobbledTrackIds.removeAll()
             let resolvedTrack = await repository.resolvePlayableTrack(track, settings: settings)
@@ -356,6 +360,76 @@ final class MainViewModel: ObservableObject {
             if !privacy {
                 FireballAnalytics.log("track_started", settings: settings, properties: ["id": resolvedTrack.effectiveId])
             }
+        }
+    }
+
+    func consumeSearchFocusRequest() {
+        searchFocusRequest = nil
+    }
+
+    /// Switch to Search with this query; consumed by root UI via `searchFocusRequest`.
+    func requestSearchForArtist(_ query: String) {
+        let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !q.isEmpty else { return }
+        searchFocusRequest = q
+        error = nil
+    }
+
+    func userPlaylistsForPicker() -> [Playlist] {
+        library.playlists.filter { $0.id != "ai_queue" }
+    }
+
+    func addTrackToPlaylist(track: Track, playlistId: String) {
+        let id = playlistId.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !id.isEmpty, let idx = library.playlists.firstIndex(where: { $0.id == id }) else { return }
+        let pl = library.playlists[idx]
+        guard !pl.videos.contains(where: { $0.effectiveId == track.effectiveId }) else { return }
+        library.playlists = library.playlists.enumerated().map { i, p in
+            i == idx ? Playlist(id: p.id, title: p.title, videos: p.videos + [track]) : p
+        }
+        persist()
+    }
+
+    func playTrackUpNext(track: Track) {
+        Task {
+            let settings = library.settings
+            guard let idx = currentIndex, !queue.isEmpty else {
+                play(track: track, source: [track])
+                return
+            }
+            let resolved = await repository.resolvePlayableTrack(track, settings: settings)
+            let url = resolved.url?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            guard !url.isEmpty else {
+                error = "Could not resolve audio for Play next."
+                return
+            }
+            var q = queue
+            let insertAt = min(idx + 1, q.count)
+            q.insert(resolved, at: insertAt)
+            queue = q
+            audioEngine.applyQueueMutation(q, currentIndex: idx)
+            persist()
+        }
+    }
+
+    func appendTrackToQueue(track: Track) {
+        Task {
+            let settings = library.settings
+            guard let idx = currentIndex, !queue.isEmpty else {
+                play(track: track, source: [track])
+                return
+            }
+            let resolved = await repository.resolvePlayableTrack(track, settings: settings)
+            let url = resolved.url?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            guard !url.isEmpty else {
+                error = "Could not resolve audio."
+                return
+            }
+            var q = queue
+            q.append(resolved)
+            queue = q
+            audioEngine.applyQueueMutation(q, currentIndex: idx)
+            persist()
         }
     }
 

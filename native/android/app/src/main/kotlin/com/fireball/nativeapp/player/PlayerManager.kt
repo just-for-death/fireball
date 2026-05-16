@@ -125,11 +125,21 @@ class PlayerManager {
         }
     }
 
+    fun insertTracksAt(insertIndex: Int, tracks: List<Track>) {
+        if (tracks.isEmpty()) return
+        _state.update { st ->
+            val idx = insertIndex.coerceIn(0, st.queue.size)
+            val merged = st.queue.toMutableList()
+            merged.addAll(idx, tracks)
+            st.copy(queue = merged)
+        }
+    }
+
+    /** Appends tracks to the end of the queue (allows duplicates). */
     fun appendToQueue(tracks: List<Track>) {
         if (tracks.isEmpty()) return
         _state.update { current ->
-            val merged = (current.queue + tracks).distinctBy { it.effectiveId }
-            current.copy(queue = merged)
+            current.copy(queue = current.queue + tracks)
         }
     }
 

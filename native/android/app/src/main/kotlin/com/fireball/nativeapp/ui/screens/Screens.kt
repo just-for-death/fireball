@@ -12,12 +12,14 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items as gridItems
@@ -72,6 +74,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -121,6 +124,12 @@ fun HomeScreen(
     var isRefreshing by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
     val scope = androidx.compose.runtime.rememberCoroutineScope()
 
+    LaunchedEffect(trendingLoading, lbHomeLoading) {
+        if (isRefreshing && !trendingLoading && !lbHomeLoading) {
+            isRefreshing = false
+        }
+    }
+
     Box(modifier = Modifier.fillMaxSize()) {
         androidx.compose.material3.pulltorefresh.PullToRefreshBox(
             isRefreshing = isRefreshing,
@@ -128,8 +137,8 @@ fun HomeScreen(
                 isRefreshing = true
                 onRefreshHome()
                 scope.launch {
-                    kotlinx.coroutines.delay(400)
-                    isRefreshing = false
+                    kotlinx.coroutines.delay(4500)
+                    if (isRefreshing) isRefreshing = false
                 }
             },
             state = pullRefreshState,
@@ -226,8 +235,7 @@ fun HomeScreen(
                         horizontalArrangement = Arrangement.spacedBy(14.dp),
                         contentPadding = PaddingValues(horizontal = 20.dp),
                     ) {
-                        items(trendingTracks, key = { it.effectiveId }) { track ->
-                            val idx = trendingTracks.indexOfFirst { it.effectiveId == track.effectiveId }
+                        itemsIndexed(trendingTracks, key = { _, t -> t.effectiveId }) { idx, track ->
                             com.fireball.nativeapp.ui.components.SuvFadeSlideInStaggered(index = idx) {
                             Column(
                                 modifier = Modifier
@@ -349,6 +357,22 @@ fun HomeScreen(
                 }
             }
 
+            val listenBrainzReady = library.settings.listenBrainzEnabled &&
+                library.settings.listenBrainzUsername.isNotBlank() &&
+                library.settings.listenBrainzToken.isNotBlank()
+            if (!library.settings.offlineModeEnabled && !listenBrainzReady && !lbHomeLoading &&
+                lbRecentTracks.isEmpty() && lbTopTracks.isEmpty()
+            ) {
+                item {
+                    Text(
+                        "Connect ListenBrainz in Settings to see your recent listens and top tracks.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp),
+                    )
+                }
+            }
+
             val isEmptyDashboard = library.history.isEmpty() && library.favorites.isEmpty() &&
                 library.playlists.isEmpty() && library.albums.isEmpty() && trendingTracks.isEmpty() &&
                 lbRecentTracks.isEmpty() && lbTopTracks.isEmpty()
@@ -408,7 +432,10 @@ fun HomeScreen(
                         horizontalArrangement = Arrangement.spacedBy(14.dp),
                         contentPadding = PaddingValues(horizontal = 20.dp)
                     ) {
-                        items(library.history.take(20)) { track ->
+                        items(
+                            items = library.history.take(20),
+                            key = { it.effectiveId },
+                        ) { track ->
                             Column(
                                 modifier = Modifier
                                     .width(140.dp)
@@ -538,7 +565,10 @@ fun HomeScreen(
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                         contentPadding = PaddingValues(horizontal = 20.dp)
                     ) {
-                        items(library.playlists) { playlist ->
+                        items(
+                            items = library.playlists,
+                            key = { it.id },
+                        ) { playlist ->
                             Card(
                                 modifier = Modifier
                                     .widthIn(min = 160.dp)
@@ -592,7 +622,10 @@ fun HomeScreen(
                         horizontalArrangement = Arrangement.spacedBy(14.dp),
                         contentPadding = PaddingValues(horizontal = 20.dp)
                     ) {
-                        items(library.albums) { album ->
+                        items(
+                            items = library.albums,
+                            key = { it.id },
+                        ) { album ->
                             Column(
                                 modifier = Modifier
                                     .width(130.dp)
@@ -644,7 +677,8 @@ fun HomeScreen(
                 onClick = { onPlay(library.history.random(), library.history) },
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
-                    .padding(end = 20.dp, bottom = 100.dp),
+                    .navigationBarsPadding()
+                    .padding(end = 20.dp, bottom = 92.dp),
                 containerColor = MaterialTheme.colorScheme.primaryContainer,
                 contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
                 icon = { Icon(Icons.Default.Shuffle, contentDescription = null) },

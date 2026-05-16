@@ -2,6 +2,7 @@ package com.fireball.nativeapp.ui.theme
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import androidx.core.graphics.get
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -62,7 +63,7 @@ class DominantColorExtractor {
         var count = 0L
         for (x in 0 until width step step) {
             for (y in 0 until height step step) {
-                val pixel = bitmap.getPixel(x, y)
+                val pixel = bitmap[x, y]
                 totalR += android.graphics.Color.red(pixel)
                 totalG += android.graphics.Color.green(pixel)
                 totalB += android.graphics.Color.blue(pixel)

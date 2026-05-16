@@ -20,7 +20,7 @@ import androidx.compose.ui.graphics.Color
  *
  * This commonMain version differs from the Android original in two ways:
  *  - Dynamic-Color (Material You) lookup is delegated to platform code via
- *    [DynamicColorScheme]. Android wires it through Build.VERSION_CODES.S +
+ *    [dynamicColorScheme]. Android wires it through Build.VERSION_CODES.S +
  *    `dynamicDarkColorScheme(context)`; Desktop returns null and the
  *    static palettes always win.
  *  - Status / navigation bar styling moves to [ApplySystemBars] (expect /
@@ -86,7 +86,7 @@ fun SuvMusicTheme(
         null
     }
 
-    val dynamicScheme = if (dynamicColor) DynamicColorScheme(darkTheme) else null
+    val dynamicScheme = if (dynamicColor) dynamicColorScheme(darkTheme) else null
 
     var colorScheme: ColorScheme = when {
         animatedColors != null -> createColorSchemeFromDominantColors(animatedColors, darkTheme)

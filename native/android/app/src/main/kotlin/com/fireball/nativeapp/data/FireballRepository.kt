@@ -16,6 +16,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import java.io.File
 import android.net.Uri
+import androidx.core.net.toUri
 
 class FireballRepository(
     private val api: FireballApiClient,
@@ -338,7 +339,7 @@ class FireballRepository(
     private fun proxyStreamUrl(url: String, instance: String): String {
         if (instance.isBlank()) return url
         return try {
-            val uri = Uri.parse(url)
+            val uri = url.toUri()
             val host = uri.host ?: return url
             if (!host.contains("googlevideo.com")) return url
 

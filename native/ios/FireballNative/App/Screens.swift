@@ -24,275 +24,493 @@ struct HomeScreen: View {
     let onNext: () -> Void
     let isPlaying: Bool
 
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.dominantColors) var dominantColors
 
+    private var contentGutter: CGFloat {
+        horizontalSizeClass == .regular ? 24 : 16
+    }
+
+    private var hourGreeting: String {
+        let h = Calendar.current.component(.hour, from: Date())
+        switch h {
+        case 5 ... 11: return "Good Morning"
+        case 12 ... 16: return "Good Afternoon"
+        default: return "Good Evening"
+        }
+    }
+
+    private var dashboardEmpty: Bool {
+        library.history.isEmpty && library.favorites.isEmpty && library.playlists.isEmpty &&
+            library.albums.isEmpty && trendingTracks.isEmpty &&
+            lbRecentTracks.isEmpty && lbTopTracks.isEmpty
+    }
+
+    private var listenBrainzReady: Bool {
+        let s = library.settings
+        let u = s.listenBrainzUsername.trimmingCharacters(in: .whitespacesAndNewlines)
+        let t = s.listenBrainzToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        return s.listenBrainzEnabled && !u.isEmpty && !t.isEmpty
+    }
+
+    @ViewBuilder
+    private var headerBlock: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(hourGreeting)
+                .font(.largeTitle)
+                .fontWeight(.bold)
+                .foregroundStyle(dominantColors.onBackground)
+
+            if let track = currentTrack {
+                HStack(alignment: .center, spacing: 10) {
+                    Image(systemName: "waveform")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(dominantColors.accent)
+                        .accessibilityHidden(true)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Now playing")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(dominantColors.onBackground.opacity(0.55))
+                        Text("\(track.title) — \(track.artist)")
+                            .font(.subheadline.weight(.medium))
+                            .foregroundStyle(dominantColors.onBackground)
+                            .lineLimit(2)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    Button(action: onPlayPause) {
+                        Image(systemName: isPlaying ? "pause.circle.fill" : "play.circle.fill")
+                            .font(.title)
+                            .symbolRenderingMode(.hierarchical)
+                            .foregroundStyle(dominantColors.onBackground)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(isPlaying ? "Pause" : "Play")
+                }
+                .padding(12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(dominantColors.secondary.opacity(0.35), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            }
+        }
+        .padding(.horizontal, contentGutter)
+        .padding(.bottom, 4)
+    }
+
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
-                if !homeCountries.isEmpty {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Top Charts")
-                            .font(.title3)
-                            .fontWeight(.semibold)
-                            .padding(.horizontal)
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 8) {
-                                ForEach(homeCountries, id: \.self) { code in
-                                    let name = HomeCountries.all.first(where: {
-                                        $0.code.caseInsensitiveCompare(code) == .orderedSame
-                                    })?.name ?? code
-                                    let selected = code.caseInsensitiveCompare(chartCountryCode) == .orderedSame
-                                    Button {
-                                        onSelectChartCountry(code)
-                                    } label: {
-                                        Text(name)
-                                            .font(.caption)
-                                            .padding(.horizontal, 12)
-                                            .padding(.vertical, 6)
-                                            .background(
-                                                selected
-                                                    ? dominantColors.primary.opacity(0.35)
-                                                    : dominantColors.secondary.opacity(0.5),
-                                                in: Capsule()
-                                            )
-                                    }
-                                    .buttonStyle(.plain)
-                                }
-                            }
-                            .padding(.horizontal)
-                        }
-                    }
-                }
+        ZStack(alignment: .bottomTrailing) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 24) {
+                    headerBlock
 
-                if trendingLoading && trendingTracks.isEmpty {
-                    ProgressView()
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                } else if !trendingTracks.isEmpty {
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("Trending")
-                            .font(.title2)
-                            .fontWeight(.bold)
-                            .padding(.horizontal)
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 16) {
-                                ForEach(Array(trendingTracks.enumerated()), id: \.element.effectiveId) { index, track in
-                                    SuvFadeSlideIn.staggered(index: index) {
-                                    Button {
-                                        onPlay(track, trendingTracks)
-                                    } label: {
-                                        VStack(alignment: .leading) {
-                                            AsyncImage(url: URL(string: track.artwork ?? "")) { phase in
-                                                if let image = phase.image {
-                                                    image.resizable().aspectRatio(contentMode: .fill)
-                                                } else {
-                                                    Rectangle().fill(dominantColors.secondary)
-                                                }
-                                            }
-                                            .frame(width: 140, height: 140)
-                                            .clipShape(RoundedRectangle(cornerRadius: 16))
-                                            Text(track.title)
-                                                .font(.headline)
-                                                .foregroundColor(dominantColors.onBackground)
-                                                .lineLimit(1)
-                                            Text(track.artist)
+                    if !homeCountries.isEmpty {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Top Charts")
+                                .font(.title3)
+                                .fontWeight(.semibold)
+                                .padding(.horizontal, contentGutter)
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                HStack(spacing: 8) {
+                                    ForEach(homeCountries, id: \.self) { code in
+                                        let name = HomeCountries.all.first(where: {
+                                            $0.code.caseInsensitiveCompare(code) == .orderedSame
+                                        })?.name ?? code
+                                        let selected = code.caseInsensitiveCompare(chartCountryCode) == .orderedSame
+                                        Button {
+                                            onSelectChartCountry(code)
+                                        } label: {
+                                            Text(name)
                                                 .font(.caption)
-                                                .foregroundColor(dominantColors.onBackground.opacity(0.7))
-                                                .lineLimit(1)
+                                                .padding(.horizontal, 12)
+                                                .padding(.vertical, 6)
+                                                .background(
+                                                    selected
+                                                        ? dominantColors.primary.opacity(0.35)
+                                                        : dominantColors.secondary.opacity(0.5),
+                                                    in: Capsule()
+                                                )
                                         }
-                                        .frame(width: 140)
-                                    }
+                                        .buttonStyle(.plain)
                                     }
                                 }
+                                .padding(.horizontal, contentGutter)
                             }
-                            .padding(.horizontal)
                         }
                     }
-                }
 
-                if !lbRecentTracks.isEmpty {
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("ListenBrainz — Recent")
-                            .font(.title2)
-                            .fontWeight(.bold)
-                            .padding(.horizontal)
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 16) {
-                                ForEach(lbRecentTracks, id: \.effectiveId) { track in
-                                    HomeTrackCard(track: track, onPlay: { onPlay(track, lbRecentTracks) }, onFollowArtist: { onFollowArtist(track.artist, track.artwork) })
-                                }
-                            }
-                            .padding(.horizontal)
-                        }
-                    }
-                }
-
-                if !lbTopTracks.isEmpty || lbHomeLoading {
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("ListenBrainz — Top")
-                            .font(.title2)
-                            .fontWeight(.bold)
-                            .padding(.horizontal)
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 8) {
-                                ForEach(["week", "month", "year", "all_time"], id: \.self) { range in
-                                    let label = range == "all_time" ? "All time" : range.capitalized
-                                    Button(label) {
-                                        onSelectLbTopRange(range)
-                                    }
-                                    .font(.caption)
-                                    .padding(.horizontal, 12)
-                                    .padding(.vertical, 6)
-                                    .background(
-                                        lbTopRange == range
-                                            ? dominantColors.primary.opacity(0.35)
-                                            : dominantColors.secondary.opacity(0.5),
-                                        in: Capsule()
-                                    )
-                                }
-                            }
-                            .padding(.horizontal)
-                        }
-                        if lbHomeLoading && lbTopTracks.isEmpty {
-                            ProgressView().frame(maxWidth: .infinity).padding()
-                        } else {
+                    if trendingLoading && trendingTracks.isEmpty {
+                        ProgressView()
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                    } else if !trendingTracks.isEmpty {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("Trending")
+                                .font(.title2)
+                                .fontWeight(.bold)
+                                .padding(.horizontal, contentGutter)
                             ScrollView(.horizontal, showsIndicators: false) {
                                 HStack(spacing: 16) {
-                                    ForEach(lbTopTracks, id: \.effectiveId) { track in
-                                        HomeTrackCard(track: track, onPlay: { onPlay(track, lbTopTracks) }, onFollowArtist: { onFollowArtist(track.artist, track.artwork) })
-                                    }
-                                }
-                                .padding(.horizontal)
-                            }
-                        }
-                    }
-                }
-
-                if !library.history.isEmpty {
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("Recently Played")
-                            .font(.title2)
-                            .fontWeight(.bold)
-                            .padding(.horizontal)
-                        
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 16) {
-                                ForEach(library.history.prefix(20), id: \.effectiveId) { track in
-                                    Button {
-                                        onPlay(track, library.history)
-                                    } label: {
-                                        VStack(alignment: .leading) {
-                                            AsyncImage(url: URL(string: track.artwork ?? "")) { phase in
-                                                if let image = phase.image {
-                                                    image.resizable().aspectRatio(contentMode: .fill)
-                                                } else {
-                                                    Rectangle().fill(dominantColors.secondary)
+                                    ForEach(Array(trendingTracks.enumerated()), id: \.offset) { index, track in
+                                        SuvFadeSlideIn.staggered(index: index) {
+                                            Button {
+                                                onPlay(track, trendingTracks)
+                                            } label: {
+                                                VStack(alignment: .leading, spacing: 6) {
+                                                    AsyncImage(url: URL(string: track.artwork ?? "")) { phase in
+                                                        if let image = phase.image {
+                                                            image.resizable().aspectRatio(contentMode: .fill)
+                                                        } else {
+                                                            Rectangle().fill(dominantColors.secondary)
+                                                        }
+                                                    }
+                                                    .frame(width: 140, height: 140)
+                                                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                                                    Text(track.title)
+                                                        .font(.headline)
+                                                        .foregroundStyle(dominantColors.onBackground)
+                                                        .lineLimit(1)
+                                                    Text(track.artist)
+                                                        .font(.caption)
+                                                        .foregroundStyle(dominantColors.onBackground.opacity(0.72))
+                                                        .lineLimit(1)
                                                 }
+                                                .frame(width: 140, alignment: .leading)
                                             }
-                                            .frame(width: 140, height: 140)
-                                            .clipShape(RoundedRectangle(cornerRadius: 16))
-                                            
-                                            Text(track.title)
-                                                .font(.headline)
-                                                .foregroundColor(dominantColors.onBackground)
-                                                .lineLimit(1)
-                                            Text(track.artist)
-                                                .font(.caption)
-                                                .foregroundColor(dominantColors.onBackground.opacity(0.7))
-                                                .lineLimit(1)
+                                            .buttonStyle(.plain)
                                         }
-                                        .frame(width: 140)
                                     }
                                 }
+                                .padding(.horizontal, contentGutter)
                             }
-                            .padding(.horizontal)
                         }
                     }
-                }
 
-                if !library.playlists.isEmpty {
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("Playlists")
-                            .font(.title2)
-                            .fontWeight(.bold)
-                            .padding(.horizontal)
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 16) {
-                                ForEach(library.playlists, id: \.id) { playlist in
-                                    Button {
-                                        guard let first = playlist.videos.first else { return }
-                                        onPlay(first, playlist.videos)
-                                    } label: {
-                                        VStack(alignment: .leading) {
-                                            Text(playlist.title)
-                                                .font(.headline)
-                                                .foregroundColor(dominantColors.onBackground)
-                                                .lineLimit(2)
-                                            Text("\(playlist.videos.count) tracks")
-                                                .font(.caption)
-                                                .foregroundColor(dominantColors.onBackground.opacity(0.7))
-                                        }
-                                        .frame(width: 140, alignment: .leading)
-                                        .padding(12)
-                                        .background(dominantColors.secondary.opacity(0.4), in: RoundedRectangle(cornerRadius: 16))
+                    if !lbRecentTracks.isEmpty {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("ListenBrainz — Recent")
+                                .font(.title2)
+                                .fontWeight(.bold)
+                                .padding(.horizontal, contentGutter)
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                HStack(spacing: 16) {
+                                    ForEach(lbRecentTracks, id: \.effectiveId) { track in
+                                        HomeTrackCard(
+                                            track: track,
+                                            onPlay: { onPlay(track, lbRecentTracks) },
+                                            onFollowArtist: { onFollowArtist(track.artist, track.artwork) }
+                                        )
                                     }
-                                    .disabled(playlist.videos.isEmpty)
                                 }
+                                .padding(.horizontal, contentGutter)
                             }
-                            .padding(.horizontal)
                         }
                     }
-                }
 
-                // Favorites Carousel
-                if !library.favorites.isEmpty {
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("Favorites")
-                            .font(.title2)
-                            .fontWeight(.bold)
-                            .padding(.horizontal)
-                        
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 16) {
-                                ForEach(library.favorites, id: \.effectiveId) { track in
-                                    Button {
-                                        onPlay(track, library.favorites)
-                                    } label: {
-                                        VStack(alignment: .leading) {
-                                            AsyncImage(url: URL(string: track.artwork ?? "")) { phase in
-                                                if let image = phase.image {
-                                                    image.resizable().aspectRatio(contentMode: .fill)
-                                                } else {
-                                                    Rectangle().fill(dominantColors.tertiary)
-                                                }
-                                            }
-                                            .frame(width: 140, height: 140)
-                                            .clipShape(RoundedRectangle(cornerRadius: 16))
-                                            
-                                            Text(track.title)
-                                                .font(.headline)
-                                                .foregroundColor(dominantColors.onBackground)
-                                                .lineLimit(1)
-                                            Text(track.artist)
-                                                .font(.caption)
-                                                .foregroundColor(dominantColors.onBackground.opacity(0.7))
-                                                .lineLimit(1)
+                    if !lbTopTracks.isEmpty || lbHomeLoading {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("ListenBrainz — Top")
+                                .font(.title2)
+                                .fontWeight(.bold)
+                                .padding(.horizontal, contentGutter)
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                HStack(spacing: 8) {
+                                    ForEach(["week", "month", "year", "all_time"], id: \.self) { range in
+                                        let label = range == "all_time" ? "All time" : range.capitalized
+                                        let selected = lbTopRange.caseInsensitiveCompare(range) == .orderedSame
+                                        Button(label) {
+                                            onSelectLbTopRange(range)
                                         }
-                                        .frame(width: 140)
+                                        .font(.caption)
+                                        .padding(.horizontal, 12)
+                                        .padding(.vertical, 6)
+                                        .background(
+                                            selected
+                                                ? dominantColors.primary.opacity(0.35)
+                                                : dominantColors.secondary.opacity(0.5),
+                                            in: Capsule()
+                                        )
+                                        .buttonStyle(.plain)
                                     }
                                 }
+                                .padding(.horizontal, contentGutter)
                             }
-                            .padding(.horizontal)
+                            if lbHomeLoading && lbTopTracks.isEmpty {
+                                ProgressView().frame(maxWidth: .infinity).padding()
+                            } else {
+                                ScrollView(.horizontal, showsIndicators: false) {
+                                    HStack(spacing: 16) {
+                                        ForEach(lbTopTracks, id: \.effectiveId) { track in
+                                            HomeTrackCard(
+                                                track: track,
+                                                onPlay: { onPlay(track, lbTopTracks) },
+                                                onFollowArtist: { onFollowArtist(track.artist, track.artwork) }
+                                            )
+                                        }
+                                    }
+                                    .padding(.horizontal, contentGutter)
+                                }
+                            }
                         }
                     }
+
+                    if !library.settings.offlineModeEnabled && !listenBrainzReady && !lbHomeLoading &&
+                        lbRecentTracks.isEmpty && lbTopTracks.isEmpty {
+                        Text("Connect ListenBrainz in Settings to see your recent listens and top tracks.")
+                            .font(.subheadline)
+                            .foregroundStyle(dominantColors.onBackground.opacity(0.72))
+                            .fixedSize(horizontal: false, vertical: true)
+                            .padding(.horizontal, contentGutter)
+                    }
+
+                    if dashboardEmpty {
+                        VStack(spacing: 16) {
+                            Image(systemName: "books.vertical.fill")
+                                .font(.system(size: 56))
+                                .foregroundStyle(dominantColors.accent)
+                                .padding(28)
+                                .background(dominantColors.secondary.opacity(0.45), in: Circle())
+                            Text("Welcome to Fireball")
+                                .font(.title2.bold())
+                                .foregroundStyle(dominantColors.onBackground)
+                                .multilineTextAlignment(.center)
+                            Text("Your dashboard is empty. Use Search to find music and build your library.")
+                                .font(.body)
+                                .foregroundStyle(dominantColors.onBackground.opacity(0.74))
+                                .multilineTextAlignment(.center)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 40)
+                        .padding(.horizontal, 28)
+                    }
+
+                    jumpBackSection
+                    favoritesSection
+                    playlistsSection
+                    albumsSection
+
+                    Spacer(minLength: 88)
                 }
-                
-                Spacer(minLength: 80) // Padding for PillMiniPlayer
+                .padding(.top, 8)
             }
-            .padding(.top)
+
+            quickMixFAB
         }
         .refreshable { await onRefreshHome() }
         .background(dominantColors.primary.ignoresSafeArea())
+    }
+
+    @ViewBuilder
+    private var jumpBackSection: some View {
+        if !library.history.isEmpty {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Jump Back In")
+                    .font(.title2)
+                    .fontWeight(.bold)
+                    .padding(.horizontal, contentGutter)
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 16) {
+                        ForEach(Array(library.history.prefix(20)), id: \.effectiveId) { track in
+                            Button {
+                                onPlay(track, library.history)
+                            } label: {
+                                VStack(alignment: .leading, spacing: 6) {
+                                    AsyncImage(url: URL(string: track.artwork ?? "")) { phase in
+                                        if let image = phase.image {
+                                            image.resizable().aspectRatio(contentMode: .fill)
+                                        } else {
+                                            Rectangle().fill(dominantColors.secondary)
+                                        }
+                                    }
+                                    .frame(width: 140, height: 140)
+                                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                                    Text(track.title)
+                                        .font(.headline)
+                                        .foregroundStyle(dominantColors.onBackground)
+                                        .lineLimit(1)
+                                    Text(track.artist)
+                                        .font(.caption)
+                                        .foregroundStyle(dominantColors.onBackground.opacity(0.72))
+                                        .lineLimit(1)
+                                }
+                                .frame(width: 140, alignment: .leading)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(.horizontal, contentGutter)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var favoritesSection: some View {
+        if !library.favorites.isEmpty {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Your Favorites")
+                    .font(.title2)
+                    .fontWeight(.bold)
+                    .padding(.horizontal, contentGutter)
+                VStack(spacing: 6) {
+                    ForEach(Array(library.favorites.prefix(8)), id: \.effectiveId) { track in
+                        Button {
+                            onPlay(track, library.favorites)
+                        } label: {
+                            HStack(spacing: 12) {
+                                AsyncImage(url: URL(string: track.artwork ?? "")) { phase in
+                                    if let image = phase.image {
+                                        image.resizable().aspectRatio(contentMode: .fill)
+                                    } else {
+                                        Rectangle().fill(dominantColors.tertiary)
+                                    }
+                                }
+                                .frame(width: 48, height: 48)
+                                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(track.title)
+                                        .font(.body.weight(.semibold))
+                                        .foregroundStyle(dominantColors.onBackground)
+                                        .lineLimit(1)
+                                    Text(track.artist)
+                                        .font(.caption)
+                                        .foregroundStyle(dominantColors.onBackground.opacity(0.7))
+                                        .lineLimit(1)
+                                }
+                                Spacer(minLength: 0)
+                                Image(systemName: "chevron.right")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(dominantColors.onBackground.opacity(0.35))
+                            }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(dominantColors.secondary.opacity(0.32), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.horizontal, contentGutter)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var playlistsSection: some View {
+        if !library.playlists.isEmpty {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Your Playlists")
+                    .font(.title2)
+                    .fontWeight(.bold)
+                    .padding(.horizontal, contentGutter)
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 16) {
+                        ForEach(library.playlists, id: \.id) { playlist in
+                            Button {
+                                guard let first = playlist.videos.first else { return }
+                                onPlay(first, playlist.videos)
+                            } label: {
+                                VStack(alignment: .leading, spacing: 6) {
+                                    Image(systemName: "music.note.list")
+                                        .font(.title3)
+                                        .foregroundStyle(dominantColors.onBackground.opacity(0.85))
+                                    Text(playlist.title)
+                                        .font(.headline)
+                                        .foregroundStyle(dominantColors.onBackground)
+                                        .lineLimit(2)
+                                    Text("\(playlist.videos.count) tracks")
+                                        .font(.caption)
+                                        .foregroundStyle(dominantColors.onBackground.opacity(0.72))
+                                }
+                                .frame(width: 160, alignment: .leading)
+                                .padding(14)
+                                .background(dominantColors.secondary.opacity(0.42), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(playlist.videos.isEmpty)
+                        }
+                    }
+                    .padding(.horizontal, contentGutter)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var albumsSection: some View {
+        if !library.albums.isEmpty {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Saved Albums")
+                    .font(.title2)
+                    .fontWeight(.bold)
+                    .padding(.horizontal, contentGutter)
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 16) {
+                        ForEach(library.albums, id: \.id) { album in
+                            Button {
+                                guard let tracks = album.tracks, let first = tracks.first else { return }
+                                onPlay(first, tracks)
+                            } label: {
+                                VStack(alignment: .leading, spacing: 6) {
+                                    ZStack {
+                                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                            .fill(dominantColors.secondary.opacity(0.55))
+                                        if let art = album.artwork, let u = URL(string: art), !art.isEmpty {
+                                            AsyncImage(url: u) { phase in
+                                                if let image = phase.image {
+                                                    image.resizable().aspectRatio(contentMode: .fill)
+                                                } else {
+                                                    Image(systemName: "square.stack")
+                                                        .font(.title)
+                                                        .foregroundStyle(dominantColors.onBackground.opacity(0.45))
+                                                }
+                                            }
+                                        } else {
+                                            Image(systemName: "square.stack")
+                                                .font(.title)
+                                                .foregroundStyle(dominantColors.onBackground.opacity(0.45))
+                                        }
+                                    }
+                                    .frame(width: 130, height: 130)
+                                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                                    Text(album.title)
+                                        .font(.subheadline.weight(.semibold))
+                                        .foregroundStyle(dominantColors.onBackground)
+                                        .lineLimit(1)
+                                    Text(album.artist)
+                                        .font(.caption)
+                                        .foregroundStyle(dominantColors.onBackground.opacity(0.72))
+                                        .lineLimit(1)
+                                }
+                                .frame(width: 130, alignment: .leading)
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(album.tracks?.isEmpty != false)
+                        }
+                    }
+                    .padding(.horizontal, contentGutter)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var quickMixFAB: some View {
+        if !library.history.isEmpty {
+            Button {
+                if let pick = library.history.randomElement() {
+                    onPlay(pick, library.history)
+                }
+            } label: {
+                Label("Quick Mix", systemImage: "shuffle")
+                    .font(.subheadline.weight(.semibold))
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                    .background(dominantColors.accent, in: Capsule())
+                    .foregroundStyle(Color.white.opacity(0.95))
+                    .shadow(color: .black.opacity(0.18), radius: 8, x: 0, y: 4)
+            }
+            .buttonStyle(.plain)
+            .padding(.trailing, 20)
+            .padding(.bottom, 92)
+            .accessibilityHint("Shuffle play from listening history.")
+        }
     }
 }
 
@@ -303,29 +521,38 @@ private struct HomeTrackCard: View {
     @Environment(\.dominantColors) var dominantColors
 
     var body: some View {
-        Button(action: onPlay) {
-            VStack(alignment: .leading) {
-                AsyncImage(url: URL(string: track.artwork ?? "")) { phase in
-                    if let image = phase.image {
-                        image.resizable().aspectRatio(contentMode: .fill)
-                    } else {
-                        Rectangle().fill(dominantColors.secondary)
+        VStack(alignment: .leading, spacing: 8) {
+            Button(action: onPlay) {
+                VStack(alignment: .leading, spacing: 8) {
+                    AsyncImage(url: URL(string: track.artwork ?? "")) { phase in
+                        if let image = phase.image {
+                            image.resizable().aspectRatio(contentMode: .fill)
+                        } else {
+                            Rectangle().fill(dominantColors.secondary)
+                        }
                     }
+                    .frame(width: 140, height: 140)
+                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    Text(track.title)
+                        .font(.headline)
+                        .foregroundStyle(dominantColors.onBackground)
+                        .lineLimit(1)
                 }
-                .frame(width: 140, height: 140)
-                .clipShape(RoundedRectangle(cornerRadius: 16))
-                Text(track.title).font(.headline).foregroundColor(dominantColors.onBackground).lineLimit(1)
-                Button(track.artist, action: onFollowArtist)
-                    .font(.caption)
-                    .foregroundColor(dominantColors.onBackground.opacity(0.7))
-                    .lineLimit(1)
+                .frame(width: 140, alignment: .leading)
             }
-            .frame(width: 140)
+            .buttonStyle(.plain)
+            Text(track.artist)
+                .font(.caption)
+                .foregroundStyle(dominantColors.onBackground.opacity(0.72))
+                .lineLimit(1)
+                .frame(maxWidth: 140, alignment: .leading)
+                .contentShape(Rectangle())
+                .onTapGesture { onFollowArtist() }
+                .accessibilityLabel("Follow \(track.artist)")
         }
-        .buttonStyle(.plain)
+        .frame(width: 140, alignment: .leading)
     }
 }
-
 struct SearchScreen: View {
     @Binding var query: String
     let results: [Track]

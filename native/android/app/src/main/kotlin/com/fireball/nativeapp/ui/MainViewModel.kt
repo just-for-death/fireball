@@ -59,6 +59,8 @@ data class MainUiState(
     val lbTopTracks: List<Track> = emptyList(),
     val lbTopRange: String = "month",
     val lbHomeLoading: Boolean = false,
+    /** When non-null, root should navigate to Search and run a query once (artist / discovery). */
+    val searchFocusRequest: String? = null,
 )
 
 class MainViewModel(
@@ -352,8 +354,75 @@ class MainViewModel(
         }
     }
 
-    fun isFavorite(track: Track): Boolean =
-        _uiState.value.library.favorites.any { it.effectiveId == track.effectiveId }
+    fun consumeSearchFocusRequest() {
+        _uiState.update { it.copy(searchFocusRequest = null) }
+    }
+
+    /** Jump to Search tab with this query (e.g. artist name); consumed by Root UI. */
+    fun requestSearchForArtist(query: String) {
+        val q = query.trim()
+        if (q.isEmpty()) return
+        _uiState.update { it.copy(searchFocusRequest = q, error = null) }
+    }
+
+    /** Insert a resolved copy of [track] after the current item without interrupting playback. */
+    fun playTrackUpNext(track: Track) {
+        viewModelScope.launch {
+            val settings = _uiState.value.library.settings
+            val snapshot = playbackState.value
+            if (snapshot.queue.isEmpty() || snapshot.currentIndex < 0) {
+                play(track, listOf(track))
+                return@launch
+            }
+            val resolved = runCatching { repository.resolvePlayableTrack(track, settings) }.getOrElse { track }
+            if (resolved.url.isNullOrBlank()) {
+                _uiState.update { it.copy(error = "Could not resolve audio for Play next.") }
+                return@launch
+            }
+            playerManager.insertTracksAt(snapshot.currentIndex + 1, listOf(resolved))
+            persistPlaybackSessionDebounced()
+            resyncEntireExoQueueFromLogicalState(preservePlaybackPosition = true)
+        }
+    }
+
+    /** Append a resolved copy of [track] to the tail of the queue. */
+    fun appendTrackToQueue(track: Track) {
+        viewModelScope.launch {
+            val settings = _uiState.value.library.settings
+            val snapshot = playbackState.value
+            if (snapshot.queue.isEmpty() || snapshot.currentIndex < 0) {
+                play(track, listOf(track))
+                return@launch
+            }
+            val resolved = runCatching { repository.resolvePlayableTrack(track, settings) }.getOrElse { track }
+            if (resolved.url.isNullOrBlank()) {
+                _uiState.update { it.copy(error = "Could not resolve audio.") }
+                return@launch
+            }
+            playerManager.appendToQueue(listOf(resolved))
+            persistPlaybackSessionDebounced()
+            appendResolvedTracksToExo(listOf(resolved), settings)
+        }
+    }
+
+    /** Adds [track] to a user playlist ([playlistId]); does not duplicate by [Track.effectiveId]. */
+    fun addTrackToPlaylist(track: Track, playlistId: String) {
+        val id = playlistId.trim()
+        if (id.isEmpty()) return
+        val library = _uiState.value.library
+        val idx = library.playlists.indexOfFirst { it.id == id }
+        if (idx < 0) return
+        val pl = library.playlists[idx]
+        if (pl.videos.any { it.effectiveId == track.effectiveId }) return
+        val updated = library.playlists.mapIndexed { i, p ->
+            if (i == idx) p.copy(videos = p.videos + track) else p
+        }
+        persist(library.copy(playlists = updated))
+    }
+
+    /** User playlists suitable for overflow (exclude internal AI stash). */
+    fun userPlaylistsForPicker(): List<Playlist> =
+        _uiState.value.library.playlists.filter { it.id != "ai_queue" }
 
     fun updateQuery(query: String) {
         _uiState.update { it.copy(query = query) }
@@ -544,14 +613,19 @@ class MainViewModel(
         }
     }
 
-    private fun toMediaItem(t: Track): MediaItem =
-        NativePlaybackService.mediaItem(
+    private fun toMediaItem(t: Track): MediaItem {
+        val url = t.url?.trim().orEmpty()
+        require(url.isNotEmpty()) {
+            "Missing playback URL for track ${t.title} (${t.effectiveId})"
+        }
+        return NativePlaybackService.mediaItem(
             id = t.effectiveId,
             title = t.title,
             artist = t.artist,
-            url = t.url!!,
+            url = url,
             artworkUrl = t.artwork
         )
+    }
 
     private suspend fun openQueueIndex(index: Int) {
         val settings = _uiState.value.library.settings
@@ -664,6 +738,9 @@ class MainViewModel(
             autoPushFavoriteTrack(track)
         }
     }
+
+    fun isFavorite(track: Track): Boolean =
+        _uiState.value.library.favorites.any { it.effectiveId == track.effectiveId }
 
     fun updateSettings(transform: (FireballSettings) -> FireballSettings) {
         val previous = _uiState.value.library.settings
@@ -956,7 +1033,7 @@ class MainViewModel(
      * Rebuilds the ExoPlayer queue from [PlayerManager] after URLs were missing (e.g. AI suggestions)
      * or the logical list was compacted to playable-only tracks.
      */
-    private suspend fun resyncEntireExoQueueFromLogicalState() {
+    private suspend fun resyncEntireExoQueueFromLogicalState(preservePlaybackPosition: Boolean = false) {
         val settings = _uiState.value.library.settings
         val snapshot = playbackState.value
         if (snapshot.queue.isEmpty()) return
@@ -992,11 +1069,15 @@ class MainViewModel(
 
         val repeatMode = playbackState.value.repeatMode
         val items = playable.map { t ->
+            val url = t.url?.trim().orEmpty()
+            require(url.isNotEmpty()) {
+                "Missing playback URL for track ${t.title} (${t.effectiveId})"
+            }
             NativePlaybackService.mediaItem(
                 id = t.effectiveId,
                 title = t.title,
                 artist = t.artist,
-                url = t.url!!,
+                url = url,
                 artworkUrl = t.artwork
             )
         }
@@ -1005,7 +1086,7 @@ class MainViewModel(
             playerManager.updateQueueTracks(resolved, chosenResolvedIdx)
             playbackController.setRepeatMode(repeatMode)
             playbackController.setShuffle(false)
-            playbackController.replaceMediaItems(items, newIdx, preservePosition = false)
+            playbackController.replaceMediaItems(items, newIdx, preservePosition = preservePlaybackPosition)
         }
         refreshSponsorForTrack(chosenTrack, settings)
     }

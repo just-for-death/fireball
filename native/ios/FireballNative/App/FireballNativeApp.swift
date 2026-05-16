@@ -24,20 +24,66 @@ private enum RootTab: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
+private struct OverflowTrackDraft: Identifiable {
+    let track: Track
+    var id: String { track.effectiveId }
+}
+
 private struct RootShellView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @EnvironmentObject private var viewModel: MainViewModel
     @State private var selectedTab: RootTab = .home
     @State private var isPlayerOpen = false
+    @State private var overflowDraft: OverflowTrackDraft?
     @State private var splitVisibility: NavigationSplitViewVisibility = .automatic
 
     var body: some View {
         PremiumBackground {
-        Group {
-            if horizontalSizeClass == .regular {
-                NavigationSplitView(columnVisibility: $splitVisibility) {
-                    List(RootTab.allCases, selection: $selectedTab) { tab in
-                        Label(tab.rawValue.capitalized, systemImage: icon(for: tab))
+            Group {
+                if horizontalSizeClass == .regular {
+                    NavigationSplitView(columnVisibility: $splitVisibility) {
+                        List(RootTab.allCases, selection: $selectedTab) { tab in
+                            Label(tab.rawValue.capitalized, systemImage: icon(for: tab))
+                        }
+                        .safeAreaInset(edge: .bottom) {
+                            if let track = viewModel.currentTrack {
+                                PillMiniPlayer(
+                                    track: track,
+                                    isPlaying: viewModel.isPlaying,
+                                    progress: viewModel.durationSeconds > 0 ? viewModel.positionSeconds / viewModel.durationSeconds : 0.0,
+                                    isLoading: viewModel.isPlaybackLoading,
+                                    onPlayPause: viewModel.togglePlayPause,
+                                    onNext: viewModel.next,
+                                    onPrevious: { viewModel.previous() },
+                                    onTap: { isPlayerOpen = true },
+                                    onLongPressMenu: { overflowDraft = OverflowTrackDraft(track: track) },
+                                    chrome: .ipadSidebarRail
+                                )
+                                .padding(.horizontal, 10)
+                                .padding(.bottom, 8)
+                            }
+                        }
+                        .navigationTitle("Fireball")
+                    } detail: {
+                        screen(for: selectedTab)
+                            .navigationTitle(selectedTab.rawValue.capitalized)
+                    }
+                    .sheet(isPresented: $isPlayerOpen, onDismiss: { isPlayerOpen = false }) {
+                        if let track = viewModel.currentTrack {
+                            fullPlayer(track: track)
+                                .modifier(PlayerSheetChrome())
+                        }
+                    }
+                } else {
+                    TabView(selection: $selectedTab) {
+                        ForEach(RootTab.allCases) { tab in
+                            NavigationStack {
+                                screen(for: tab)
+                                    .navigationTitle(tab.rawValue.capitalized)
+                            }
+                            .tabItem { Label(tab.rawValue.capitalized, systemImage: icon(for: tab)) }
+                            .tag(tab)
+                        }
                     }
                     .safeAreaInset(edge: .bottom) {
                         if let track = viewModel.currentTrack {
@@ -45,90 +91,115 @@ private struct RootShellView: View {
                                 track: track,
                                 isPlaying: viewModel.isPlaying,
                                 progress: viewModel.durationSeconds > 0 ? viewModel.positionSeconds / viewModel.durationSeconds : 0.0,
+                                isLoading: viewModel.isPlaybackLoading,
                                 onPlayPause: viewModel.togglePlayPause,
                                 onNext: viewModel.next,
-                                onTap: { isPlayerOpen = true }
+                                onTap: { isPlayerOpen = true },
+                                onLongPressMenu: { overflowDraft = OverflowTrackDraft(track: track) },
+                                chrome: .phone
                             )
+                            .padding(.horizontal)
                             .padding(.bottom, 8)
                         }
                     }
-                    .navigationTitle("Fireball")
-                } detail: {
-                    screen(for: selectedTab)
-                        .navigationTitle(selectedTab.rawValue.capitalized)
-                }
-            } else {
-                TabView(selection: $selectedTab) {
-                    ForEach(RootTab.allCases) { tab in
-                        NavigationStack {
-                            screen(for: tab)
-                                .navigationTitle(tab.rawValue.capitalized)
+                    .fullScreenCover(isPresented: $isPlayerOpen, onDismiss: { isPlayerOpen = false }) {
+                        if let track = viewModel.currentTrack {
+                            fullPlayer(track: track)
                         }
-                        .tabItem { Label(tab.rawValue.capitalized, systemImage: icon(for: tab)) }
-                        .tag(tab)
-                    }
-                }
-                .safeAreaInset(edge: .bottom) {
-                    if let track = viewModel.currentTrack {
-                        PillMiniPlayer(
-                            track: track,
-                            isPlaying: viewModel.isPlaying,
-                            progress: viewModel.durationSeconds > 0 ? viewModel.positionSeconds / viewModel.durationSeconds : 0.0,
-                            onPlayPause: viewModel.togglePlayPause,
-                            onNext: viewModel.next,
-                            onTap: { isPlayerOpen = true }
-                        )
-                        .padding(.horizontal)
-                        .padding(.bottom, 50) // Adjust for tab bar
                     }
                 }
             }
-        }
-        .dynamicTheme(
-            artworkUrl: viewModel.currentTrack?.artwork,
-            settings: viewModel.library.settings
-        )
-        .fullScreenCover(isPresented: $isPlayerOpen, onDismiss: { isPlayerOpen = false }) {
-            if let track = viewModel.currentTrack {
-                NowPlayingScreen(
-                    track: track,
-                    settings: viewModel.library.settings,
-                    isPlaying: viewModel.isPlaying,
-                    positionSeconds: viewModel.positionSeconds,
-                    durationSeconds: viewModel.durationSeconds,
-                    currentLyrics: viewModel.currentLyrics,
-                    lyricsAutoScroll: viewModel.library.settings.lyricsAutoScroll,
-                    lyricsReducedMotion: viewModel.library.settings.lyricsReducedMotion,
-                    onPlayPause: viewModel.togglePlayPause,
-                    onPrevious: viewModel.previous,
-                    onNext: viewModel.next,
-                    onSeek: { ratio in
-                        let d = viewModel.durationSeconds
-                        if d > 0 { viewModel.seekTo(seconds: ratio * d) }
+            .dynamicTheme(
+                artworkUrl: viewModel.currentTrack?.artwork,
+                settings: viewModel.library.settings
+            )
+            .onAppear {
+                if let tab = RootTab(rawValue: viewModel.library.settings.startTab.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()) {
+                    selectedTab = tab
+                }
+                splitVisibility = viewModel.library.settings.ipadSidebarCollapsed ? .detailOnly : .doubleColumn
+            }
+            .onChange(of: viewModel.library.settings.startTab) { newValue in
+                if let tab = RootTab(rawValue: newValue.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()) {
+                    selectedTab = tab
+                }
+            }
+            .onChange(of: viewModel.library.settings.ipadSidebarCollapsed) { collapsed in
+                splitVisibility = collapsed ? .detailOnly : .doubleColumn
+            }
+            .sheet(item: $overflowDraft) { draft in
+                PlayerTrackOverflowSheet(
+                    track: draft.track,
+                    onPlayNext: {
+                        viewModel.playTrackUpNext(draft.track)
+                        overflowDraft = nil
                     },
-                    queue: viewModel.queue,
-                    currentIndex: viewModel.currentIndex,
-                    onPlayQueueIndex: viewModel.playQueueIndex,
-                    onFollowArtist: viewModel.followArtist,
-                    onClose: { isPlayerOpen = false }
+                    onAddToQueue: {
+                        viewModel.appendTrackToQueue(draft.track)
+                        overflowDraft = nil
+                    },
+                    onToggleFavorite: {
+                        viewModel.toggleFavorite(draft.track)
+                        overflowDraft = nil
+                    },
+                    onAddToPlaylist: { pid in
+                        viewModel.addTrackToPlaylist(track: draft.track, playlistId: pid)
+                    },
+                    onSeeArtist: {
+                        viewModel.requestSearchForArtist(draft.track.artist)
+                        overflowDraft = nil
+                    }
                 )
             }
-        }
-        .onAppear {
-            if let tab = RootTab(rawValue: viewModel.library.settings.startTab.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()) {
-                selectedTab = tab
+            .onChange(of: viewModel.currentTrack?.effectiveId) { _ in
+                guard let draft = overflowDraft else { return }
+                if viewModel.currentTrack?.effectiveId != draft.track.effectiveId {
+                    overflowDraft = nil
+                }
             }
-            splitVisibility = viewModel.library.settings.ipadSidebarCollapsed ? .detailOnly : .doubleColumn
-        }
-        .onChange(of: viewModel.library.settings.startTab) { newValue in
-            if let tab = RootTab(rawValue: newValue.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()) {
-                selectedTab = tab
+            .onChange(of: viewModel.searchFocusRequest) { newValue in
+                guard let q = newValue, !q.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+                selectedTab = .search
+                viewModel.query = q
+                Task { await viewModel.search() }
+                viewModel.consumeSearchFocusRequest()
             }
         }
-        .onChange(of: viewModel.library.settings.ipadSidebarCollapsed) { collapsed in
-            splitVisibility = collapsed ? .detailOnly : .doubleColumn
-        }
-        }
+    }
+
+    @ViewBuilder
+    private func fullPlayer(track: Track) -> some View {
+        NowPlayingScreen(
+            track: track,
+            settings: viewModel.library.settings,
+            isPlaying: viewModel.isPlaying,
+            positionSeconds: viewModel.positionSeconds,
+            durationSeconds: viewModel.durationSeconds,
+            currentLyrics: viewModel.currentLyrics,
+            lyricsAutoScroll: viewModel.library.settings.lyricsAutoScroll,
+            lyricsReducedMotion: viewModel.library.settings.lyricsReducedMotion,
+            shuffled: viewModel.shuffled,
+            repeatMode: viewModel.repeatMode,
+            onPlayPause: viewModel.togglePlayPause,
+            onPrevious: viewModel.previous,
+            onNext: viewModel.next,
+            onSeek: { ratio in
+                let d = viewModel.durationSeconds
+                if d > 0 { viewModel.seekTo(seconds: ratio * d) }
+            },
+            onToggleShuffle: viewModel.toggleShuffle,
+            onCycleRepeat: viewModel.cycleRepeat,
+            queue: viewModel.queue,
+            currentIndex: viewModel.currentIndex,
+            onPlayQueueIndex: viewModel.playQueueIndex,
+            onFollowArtist: viewModel.followArtist,
+            onClose: { isPlayerOpen = false },
+            onOpenTrackMenu: {
+                if let t = viewModel.currentTrack {
+                    overflowDraft = OverflowTrackDraft(track: t)
+                }
+            }
+        )
     }
 
     @ViewBuilder
@@ -222,6 +293,22 @@ private struct RootShellView: View {
         case .search: return "magnifyingglass"
         case .library: return "books.vertical.fill"
         case .settings: return "gearshape.fill"
+        }
+    }
+}
+
+private struct PlayerSheetChrome: ViewModifier {
+    func body(content: Content) -> some View {
+        Group {
+            if #available(iOS 16.4, *) {
+                content
+                    .presentationDragIndicator(.visible)
+                    .presentationCornerRadius(28)
+            } else if #available(iOS 16.0, *) {
+                content.presentationDragIndicator(.visible)
+            } else {
+                content
+            }
         }
     }
 }

@@ -6,7 +6,7 @@ plugins {
 
 android {
     namespace = "com.fireball.nativeapp.core.model"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         minSdk = 26
@@ -20,8 +20,15 @@ android {
     kotlinOptions {
         jvmTarget = "17"
     }
+
+    lint {
+        disable += setOf(
+            "GradleDependency",
+            "NewerVersionAvailable",
+        )
+    }
 }
 
 dependencies {
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.8.1")
 }

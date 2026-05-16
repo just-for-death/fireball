@@ -13,6 +13,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.fireball.nativeapp.core.data.LrcParser
 
@@ -25,6 +26,8 @@ fun SyncedLyricsView(
     textColor: Color,
     accentColor: Color,
     modifier: Modifier = Modifier,
+    /** When set (e.g. tablet split-pane), expands the synced lyrics viewport. */
+    maxContentHeight: Dp? = null,
 ) {
     val lines = remember(lyrics) { LrcParser.parse(lyrics) }
     val synced = lines.isNotEmpty()
@@ -38,11 +41,13 @@ fun SyncedLyricsView(
         listState.animateScrollToItem(activeIndex)
     }
 
+    val cap = maxContentHeight
+        ?: if (reducedMotion) 80.dp else 140.dp
     LazyColumn(
         state = listState,
         modifier = modifier
             .fillMaxWidth()
-            .heightIn(max = if (reducedMotion) 80.dp else 140.dp),
+            .heightIn(max = cap),
     ) {
         if (synced) {
             itemsIndexed(lines, key = { index, line -> "$index-${line.timeMs}" }) { index, line ->

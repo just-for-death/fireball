@@ -153,6 +153,15 @@ class PlaybackController(private val context: Context) {
         pushControllerState(c)
     }
 
+    /** Inserts items at index without switching the active media item unless the index forces it. */
+    fun insertMediaItems(index: Int, items: List<MediaItem>) {
+        if (items.isEmpty()) return
+        val c = controller ?: return
+        val safeIdx = index.coerceIn(0, c.mediaItemCount)
+        c.addMediaItems(safeIdx, items)
+        pushControllerState(c)
+    }
+
     private fun applyPlayQueue(items: List<MediaItem>, startIndex: Int, startPositionMs: Long, autoPlay: Boolean) {
         val c = controller ?: run {
             pendingPlay.set(PendingPlay(items, startIndex.coerceIn(0, items.lastIndex)))
@@ -245,6 +254,7 @@ class PlaybackController(private val context: Context) {
         controller?.release()
         controller = null
         pendingPlay.set(null)
+        pendingToggleOnConnect = false
     }
 
     private fun startPolling() {
