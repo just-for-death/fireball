@@ -33,19 +33,10 @@ public struct NowPlayingScreen: View {
     var queue: [Track] = []
     var currentIndex: Int? = nil
     var onPlayQueueIndex: (Int) -> Void = { _ in }
-    var onFollowArtist: (String, String?) -> Void = { _, _ in }
     var onOpenArtist: (String, String?) -> Void = { _, _ in }
     let onClose: () -> Void
     var onOpenTrackMenu: () -> Void = {}
     var onOverflowQueueTrack: (Track) -> Void = { _ in }
-    var isFavorite: Bool = false
-    var onPlayNext: () -> Void = {}
-    var onAddToQueue: () -> Void = {}
-    var onToggleFavorite: () -> Void = {}
-    var onSeeArtist: () -> Void = {}
-    var isArtistFollowed: Bool = false
-    var onFollowArtistFromMenu: () -> Void = {}
-    var onUnfollowArtistFromMenu: () -> Void = {}
 
     @Environment(\.dominantColors) var dominantColors
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
@@ -368,7 +359,7 @@ public struct NowPlayingScreen: View {
 
                     seekBlock
 
-                    if pinnedLyricsPanel, artSlotShowsLyrics, let lyrics = currentLyrics {
+                    if pinnedLyricsPanel, hasLyricsToShow, !artSlotShowsLyrics, let lyrics = currentLyrics {
                         Text("Lyrics (expanded)")
                             .font(.subheadline.weight(.semibold))
                             .foregroundStyle(dominantColors.onBackground.opacity(0.54))
@@ -419,7 +410,7 @@ public struct NowPlayingScreen: View {
 
                 ScrollView {
                     VStack(alignment: .leading, spacing: 20) {
-                        if pinnedLyricsPanel, let lyrics = currentLyrics, !lyrics.isEmpty {
+                        if pinnedLyricsPanel, hasLyricsToShow, !artSlotShowsLyrics, let lyrics = currentLyrics {
                             Text("Lyrics")
                                 .font(.subheadline.weight(.semibold))
                                 .foregroundStyle(dominantColors.onBackground.opacity(0.54))

@@ -454,6 +454,7 @@ final class MainViewModel: ObservableObject {
             defer { isPlaybackLoading = false }
             isPlaybackLoading = true
             error = nil
+            currentLyrics = nil
             scrobbledTrackIds.removeAll()
             let resolvedTrack = await repository.resolvePlayableTrack(track, settings: settings)
             let queue = source.map { $0.effectiveId == track.effectiveId ? resolvedTrack : $0 }
@@ -1205,6 +1206,7 @@ final class MainViewModel: ObservableObject {
             return
         }
         error = nil
+        currentLyrics = nil
         scrobbledTrackIds.removeAll()
         guard audioEngine.playQueue(q, startIndex: index) else { return }
         currentIndex = index

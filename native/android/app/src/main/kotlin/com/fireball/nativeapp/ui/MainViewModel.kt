@@ -171,17 +171,7 @@ class MainViewModel(
             } else {
                 playerManager.setCurrentIndexByMediaId(mediaId)
                 persistPlaybackSessionDebounced()
-                if (!mediaId.isNullOrBlank() && mediaId != lastStartedMediaId) {
-                    val track = playbackState.value.currentTrack
-                    if (track != null && playbackController.state.value.isPlaying) {
-                        lastStartedMediaId = mediaId
-                        val settings = _uiState.value.library.settings
-                        viewModelScope.launch {
-                            refreshSponsorForTrack(track, settings)
-                            onTrackStarted(track, settings)
-                        }
-                    }
-                }
+                playbackState.value.currentTrack?.let { beginTrackIfPlaying(it) }
             }
         }
         playbackController.connect()
@@ -198,16 +188,7 @@ class MainViewModel(
         com.fireball.nativeapp.player.PlaybackEngineBridge.onIsPlayingChanged = { playing ->
             playerManager.syncFromEngine(isPlaying = playing)
             if (playing) {
-                val track = playbackState.value.currentTrack
-                val mediaId = track?.effectiveId
-                if (track != null && !mediaId.isNullOrBlank() && mediaId != lastStartedMediaId) {
-                    lastStartedMediaId = mediaId
-                    val settings = _uiState.value.library.settings
-                    viewModelScope.launch {
-                        refreshSponsorForTrack(track, settings)
-                        onTrackStarted(track, settings)
-                    }
-                }
+                playbackState.value.currentTrack?.let { beginTrackIfPlaying(it) }
             }
         }
         viewModelScope.launch {
@@ -772,7 +753,7 @@ class MainViewModel(
         val generation = ++playGeneration
         activePlayJob?.cancel()
         activePlayJob = viewModelScope.launch {
-            _uiState.update { it.copy(isPlaybackLoading = true, error = null) }
+            _uiState.update { it.copy(isPlaybackLoading = true, error = null, currentLyrics = null) }
             try {
                 val resolvedTrack = repository.resolvePlayableTrack(track, settings)
                 val startIndex = source.indexOfFirst { it.effectiveId == track.effectiveId }
@@ -811,9 +792,9 @@ class MainViewModel(
                 }
 
                 val nowPlaying = logicalQueue[startIndex]
+                lastStartedMediaId = nowPlaying.effectiveId
                 refreshSponsorForTrack(nowPlaying, settings)
                 onTrackStarted(nowPlaying, settings)
-                lastStartedMediaId = nowPlaying.effectiveId
 
                 expandQueueJob?.cancel()
                 expandQueueJob = viewModelScope.launch {
@@ -837,6 +818,19 @@ class MainViewModel(
         sponsorSkippedUuids.clear()
     }
 
+    /** Single entry for engine/UI "now playing" side effects; dedupes analytics/lyrics/scrobble hooks. */
+    private fun beginTrackIfPlaying(track: Track) {
+        val mediaId = track.effectiveId
+        if (mediaId.isBlank() || mediaId == lastStartedMediaId) return
+        if (!playbackController.state.value.isPlaying) return
+        lastStartedMediaId = mediaId
+        val settings = _uiState.value.library.settings
+        viewModelScope.launch {
+            refreshSponsorForTrack(track, settings)
+            onTrackStarted(track, settings)
+        }
+    }
+
     private suspend fun onTrackStarted(nowPlaying: Track, settings: FireballSettings) {
         val offline = settings.offlineModeEnabled
         val privacy = settings.privacyModeEnabled
@@ -851,6 +845,7 @@ class MainViewModel(
             _uiState.update { it.copy(currentLyrics = null) }
         } else {
             val trackId = nowPlaying.effectiveId
+            _uiState.update { it.copy(currentLyrics = null) }
             viewModelScope.launch {
                 val lyrics = lyricsAndAi.fetchLyrics(nowPlaying, settings)
                 if (playbackState.value.currentTrack?.effectiveId == trackId) {
@@ -925,7 +920,7 @@ class MainViewModel(
         if (queue.isEmpty() || index !in queue.indices) return
 
         scrobbledTrackIds.clear()
-        _uiState.update { it.copy(isPlaybackLoading = true, error = null) }
+        _uiState.update { it.copy(isPlaybackLoading = true, error = null, currentLyrics = null) }
         try {
             var track = queue[index]
             if (repository.needsInvidiousStreamResolution(track)) {
@@ -959,9 +954,9 @@ class MainViewModel(
                     playbackController.playQueue(listOf(item), 0)
                 }
             }
+            lastStartedMediaId = track.effectiveId
             refreshSponsorForTrack(track, settings)
             onTrackStarted(track, settings)
-            lastStartedMediaId = track.effectiveId
         } finally {
             _uiState.update { it.copy(isPlaybackLoading = false) }
         }
