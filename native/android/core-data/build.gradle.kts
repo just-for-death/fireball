@@ -6,7 +6,7 @@ plugins {
 
 android {
     namespace = "com.fireball.nativeapp.core.data"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         minSdk = 26
@@ -20,6 +20,14 @@ android {
     kotlinOptions {
         jvmTarget = "17"
     }
+
+    lint {
+        disable += setOf(
+            /** See :app — Ktor stays on 2.3.x until a dedicated Ktor 3 migration. */
+            "GradleDependency",
+            "NewerVersionAvailable",
+        )
+    }
 }
 
 dependencies {
@@ -28,10 +36,10 @@ dependencies {
     implementation("com.github.TeamNewPipe:NewPipeExtractor:v0.26.1")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
 
-    implementation("io.ktor:ktor-client-core:2.3.12")
-    implementation("io.ktor:ktor-client-okhttp:2.3.12")
-    implementation("io.ktor:ktor-client-content-negotiation:2.3.12")
-    implementation("io.ktor:ktor-serialization-kotlinx-json:2.3.12")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.1")
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
+    implementation("io.ktor:ktor-client-core:2.3.13")
+    implementation("io.ktor:ktor-client-okhttp:2.3.13")
+    implementation("io.ktor:ktor-client-content-negotiation:2.3.13")
+    implementation("io.ktor:ktor-serialization-kotlinx-json:2.3.13")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.8.1")
 }

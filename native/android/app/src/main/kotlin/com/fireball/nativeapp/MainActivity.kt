@@ -3,6 +3,7 @@ package com.fireball.nativeapp
 import android.Manifest
 import android.bluetooth.BluetoothA2dp
 import android.bluetooth.BluetoothProfile
+import android.graphics.Rect
 import android.content.pm.PackageManager
 import android.app.PictureInPictureParams
 import android.util.Rational
@@ -144,11 +145,17 @@ class MainActivity : ComponentActivity() {
         if (!PlaybackPreferences.pictureInPictureEnabled) return
         if (!viewModel.playbackState.value.isPlaying) return
         if (viewModel.playbackState.value.currentTrack == null) return
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val builder = PictureInPictureParams.Builder()
             .setAspectRatio(Rational(16, 9))
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            builder.setAutoEnterEnabled(false)
+            val anchor = window.decorView
+            val bounds = Rect()
+            anchor.getGlobalVisibleRect(bounds)
+            if (bounds.isEmpty || (bounds.width() <= 0 && bounds.height() <= 0)) {
+                bounds.set(0, 0, anchor.width.coerceAtLeast(1), anchor.height.coerceAtLeast(1))
+            }
+            builder.setSourceRectHint(bounds)
+            builder.setAutoEnterEnabled(true)
             builder.setSeamlessResizeEnabled(true)
         }
         enterPictureInPictureMode(builder.build())

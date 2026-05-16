@@ -4,8 +4,10 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.windowInsetsPadding
@@ -27,6 +29,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -38,7 +41,10 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.fireball.nativeapp.core.model.Track
 import com.fireball.nativeapp.navigation.Destination
+import com.fireball.nativeapp.ui.components.PlayerTrackOverflowDialog
+import com.fireball.nativeapp.ui.components.PillMiniPlayerLayout
 import com.fireball.nativeapp.ui.MainViewModel
 import com.fireball.nativeapp.ui.screens.HomeScreen
 import com.fireball.nativeapp.ui.screens.LibraryScreen
@@ -70,6 +76,18 @@ fun FireballNativeApp(viewModel: MainViewModel) {
         snackbarHostState.showSnackbar(message = msg)
         viewModel.dismissError()
     }
+
+    LaunchedEffect(uiState.searchFocusRequest) {
+        val q = uiState.searchFocusRequest ?: return@LaunchedEffect
+        navController.navigate("search") {
+            popUpTo(navController.graph.findStartDestination().id) { saveState = true }
+            launchSingleTop = true
+            restoreState = true
+        }
+        viewModel.updateQuery(q)
+        viewModel.search()
+        viewModel.consumeSearchFocusRequest()
+    }
     val isTablet = LocalConfiguration.current.smallestScreenWidthDp >= 700
     val startRoute = when (settings.startTab.trim().lowercase()) {
         "search", "library", "settings" -> settings.startTab.trim().lowercase()
@@ -92,6 +110,7 @@ fun FireballNativeApp(viewModel: MainViewModel) {
         }
     }
     var isPlayerOpen by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+    var overflowTrack by remember { mutableStateOf<Track?>(null) }
 
     val items = listOf(
         RootNavItem("home", "Home", Destination.Home, { Icon(Icons.Default.Home, contentDescription = null) }),
@@ -101,11 +120,24 @@ fun FireballNativeApp(viewModel: MainViewModel) {
     )
     val currentTrack = playback.currentTrack
     val systemDark = isSystemInDarkTheme()
+
+    LaunchedEffect(currentTrack?.effectiveId) {
+        val menuTrack = overflowTrack ?: return@LaunchedEffect
+        val currentId = currentTrack?.effectiveId
+        if (currentId == null || menuTrack.effectiveId != currentId) {
+            overflowTrack = null
+        }
+    }
     val darkTheme = themeModeToDark(settings.themeMode, systemDark)
     val albumArtColors = rememberAlbumArtColors(currentTrack?.artwork, darkTheme)
     val dominantColors = albumArtColors ?: rememberDominantColors(currentTrack?.artwork, darkTheme)
 
     val railCollapsed = isTablet && settings.ipadSidebarCollapsed
+    val miniPlayerLayout = when {
+        !isTablet -> PillMiniPlayerLayout.Phone
+        railCollapsed -> PillMiniPlayerLayout.NarrowRailStack
+        else -> PillMiniPlayerLayout.TabletRail
+    }
 
     SuvMusicTheme(
         darkTheme = darkTheme,
@@ -123,6 +155,7 @@ fun FireballNativeApp(viewModel: MainViewModel) {
                         modifier = Modifier
                             .fillMaxHeight()
                             .windowInsetsPadding(WindowInsets.statusBars)
+                            .windowInsetsPadding(WindowInsets.navigationBars)
                     ) {
                         items.forEach { item ->
                             NavigationRailItem(
@@ -155,8 +188,12 @@ fun FireballNativeApp(viewModel: MainViewModel) {
                                 },
                                 onPlayPause = viewModel::togglePlayPause,
                                 onNext = viewModel::next,
+                                onPrevious = viewModel::previous,
                                 onClose = { isPlayerOpen = false },
                                 onTap = { isPlayerOpen = true },
+                                onLongPressMenu = { overflowTrack = currentTrack },
+                                layout = miniPlayerLayout,
+                                isLoading = uiState.isPlaybackLoading,
                             )
                         }
                     }
@@ -169,7 +206,9 @@ fun FireballNativeApp(viewModel: MainViewModel) {
                     snackbarHost = { SnackbarHost(snackbarHostState) },
                     bottomBar = {
                         if (!isTablet) {
-                            androidx.compose.foundation.layout.Column {
+                            androidx.compose.foundation.layout.Column(
+                                modifier = Modifier.navigationBarsPadding(),
+                            ) {
                                 androidx.compose.animation.AnimatedVisibility(
                                     visible = currentTrack != null,
                                     enter = androidx.compose.animation.slideInVertically(
@@ -191,8 +230,12 @@ fun FireballNativeApp(viewModel: MainViewModel) {
                                         },
                                         onPlayPause = viewModel::togglePlayPause,
                                         onNext = viewModel::next,
+                                        onPrevious = viewModel::previous,
                                         onClose = { isPlayerOpen = false },
                                         onTap = { isPlayerOpen = true },
+                                        onLongPressMenu = { overflowTrack = track },
+                                        layout = PillMiniPlayerLayout.Phone,
+                                        isLoading = uiState.isPlaybackLoading,
                                         modifier = Modifier.fillMaxWidth()
                                     )
                                 }
@@ -340,7 +383,36 @@ fun FireballNativeApp(viewModel: MainViewModel) {
                     onToggleRepeatMode = viewModel::toggleRepeatMode,
                     onPlayQueueIndex = viewModel::playQueueIndex,
                     onFollowArtist = viewModel::followArtist,
-                    onCollapse = { isPlayerOpen = false }
+                    onCollapse = { isPlayerOpen = false },
+                    onOpenTrackMenu = { playback.currentTrack?.let { overflowTrack = it } },
+                )
+            }
+
+            overflowTrack?.let { t ->
+                PlayerTrackOverflowDialog(
+                    track = t,
+                    isFavorite = viewModel.isFavorite(t),
+                    playlists = viewModel.userPlaylistsForPicker(),
+                    onDismiss = { overflowTrack = null },
+                    onPlayNext = {
+                        viewModel.playTrackUpNext(t)
+                        overflowTrack = null
+                    },
+                    onAddToQueue = {
+                        viewModel.appendTrackToQueue(t)
+                        overflowTrack = null
+                    },
+                    onToggleFavorite = {
+                        viewModel.toggleFavorite(t)
+                        overflowTrack = null
+                    },
+                    onAddToPlaylist = { id ->
+                        viewModel.addTrackToPlaylist(t, id)
+                    },
+                    onSeeArtist = {
+                        viewModel.requestSearchForArtist(t.artist)
+                        overflowTrack = null
+                    },
                 )
             }
         }

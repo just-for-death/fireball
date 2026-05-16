@@ -1,5 +1,17 @@
 import SwiftUI
 
+private enum PlayerLayoutMetrics {
+    /// Matches native Android `PlayerSplitBreakpoint` (840.dp).
+    static let splitBreakpoint: CGFloat = 840
+}
+
+private struct PlayerContainerWidthKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
+    }
+}
+
 public struct NowPlayingScreen: View {
     let track: Track
     let settings: FireballSettings
@@ -9,19 +21,57 @@ public struct NowPlayingScreen: View {
     let currentLyrics: String?
     let lyricsAutoScroll: Bool
     let lyricsReducedMotion: Bool
+    let shuffled: Bool
+    let repeatMode: RepeatMode
     let onPlayPause: () -> Void
     let onPrevious: () -> Void
     let onNext: () -> Void
     let onSeek: (Double) -> Void
+    let onToggleShuffle: () -> Void
+    let onCycleRepeat: () -> Void
+
     var queue: [Track] = []
     var currentIndex: Int? = nil
     var onPlayQueueIndex: (Int) -> Void = { _ in }
     var onFollowArtist: (String, String?) -> Void = { _, _ in }
     let onClose: () -> Void
+    var onOpenTrackMenu: () -> Void = {}
 
     @Environment(\.dominantColors) var dominantColors
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var dragOffset: CGSize = .zero
     @State private var queueExpanded = false
+    @State private var containerWidth: CGFloat = 0
+
+    /// Two-column layout on iPad regular width when the column is actually wide enough (Stage Manager friendly).
+    private var splitLayoutEnabled: Bool {
+        let w = containerWidth > 1 ? containerWidth : (horizontalSizeClass == .regular ? 900 : 390)
+        return horizontalSizeClass == .regular && w >= PlayerLayoutMetrics.splitBreakpoint
+    }
+
+    private var swipeDismissGesture: some Gesture {
+        DragGesture(minimumDistance: 14, coordinateSpace: .local)
+            .onChanged { value in
+                if value.translation.height > 0 {
+                    dragOffset = CGSize(width: 0, height: value.translation.height)
+                }
+            }
+            .onEnded { value in
+                if value.translation.height > 110 {
+                    onClose()
+                }
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
+                    dragOffset = .zero
+                }
+            }
+    }
+
+    private var sliderBinding: Binding<Double> {
+        Binding(
+            get: { durationSeconds > 0 ? min(1, max(0, positionSeconds / durationSeconds)) : 0 },
+            set: { onSeek($0) }
+        )
+    }
 
     public var body: some View {
         ZStack {
@@ -32,186 +82,329 @@ public struct NowPlayingScreen: View {
             )
             .ignoresSafeArea()
 
-            VStack(spacing: 32) {
-                HStack {
-                    Button(action: onClose) {
-                        Image(systemName: "chevron.down")
-                            .font(.title2)
-                            .foregroundColor(dominantColors.onBackground)
-                            .frame(width: 44, height: 44)
-                    }
-                    Spacer()
-                    Text("Now Playing")
-                        .font(.headline)
-                        .foregroundColor(dominantColors.onBackground.opacity(0.8))
-                    Spacer()
-                    Menu {
-                        if #available(iOS 16.0, *) {
-                            if let lyrics = currentLyrics, !lyrics.isEmpty {
-                                ShareLink(item: lyrics) {
-                                    Label("Share lyrics", systemImage: "square.and.arrow.up")
-                                }
-                            }
-                            ShareLink(item: "\(track.title) — \(track.artist)") {
-                                Label("Share track", systemImage: "music.note")
-                            }
+            Group {
+                if splitLayoutEnabled {
+                    tabletTwoColumnBody
+                } else {
+                    phoneScrollBody
+                }
+            }
+            .offset(y: dragOffset.height > 0 ? dragOffset.height : 0)
+            .background(
+                GeometryReader { proxy in
+                    Color.clear.preference(key: PlayerContainerWidthKey.self, value: proxy.size.width)
+                }
+            )
+        }
+        .onPreferenceChange(PlayerContainerWidthKey.self) { containerWidth = $0 }
+        .dynamicTheme(artworkUrl: track.artwork, settings: settings)
+        .safeAreaInset(edge: .bottom) { Color.clear.frame(height: 8) }
+    }
+
+    private var playerDragHandle: some View {
+        RoundedRectangle(cornerRadius: 2.5, style: .continuous)
+            .fill(dominantColors.onBackground.opacity(0.28))
+            .frame(width: 44, height: 5)
+            .padding(.top, splitLayoutEnabled ? 6 : 10)
+            .padding(.bottom, 6)
+            .frame(maxWidth: .infinity)
+            .contentShape(Rectangle())
+            .accessibilityLabel("Swipe down to close")
+            .accessibilityAddTraits(.isButton)
+            .gesture(swipeDismissGesture)
+    }
+
+    private var pinnedHeaderChrome: some View {
+        VStack(spacing: 0) {
+            playerDragHandle
+            topBarRow
+        }
+    }
+
+    private var topBarRow: some View {
+        HStack {
+            Button(action: onClose) {
+                Image(systemName: "chevron.down")
+                    .font(.title2)
+                    .foregroundStyle(dominantColors.onBackground)
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
+            }
+            Spacer()
+            Text("Now Playing")
+                .font(splitLayoutEnabled ? .title3.weight(.semibold) : .headline)
+                .foregroundStyle(dominantColors.onBackground.opacity(0.82))
+            Spacer()
+            Menu {
+                if #available(iOS 16.0, *) {
+                    if let lyrics = currentLyrics, !lyrics.isEmpty {
+                        ShareLink(item: lyrics) {
+                            Label("Share lyrics", systemImage: "square.and.arrow.up")
                         }
-                    } label: {
-                        Image(systemName: "ellipsis")
-                            .font(.title2)
-                            .foregroundColor(dominantColors.onBackground)
-                            .frame(width: 44, height: 44)
+                    }
+                    ShareLink(item: "\(track.title) — \(track.artist)") {
+                        Label("Share track", systemImage: "music.note")
                     }
                 }
-                .padding(.horizontal)
+            } label: {
+                Image(systemName: "ellipsis")
+                    .font(.title2)
+                    .foregroundStyle(dominantColors.onBackground)
+                    .frame(width: 44, height: 44)
+            }
+        }
+        .padding(.horizontal, splitLayoutEnabled ? 24 : 20)
+    }
 
-                GeometryReader { geometry in
-                    let size = min(geometry.size.width - 64, geometry.size.height)
-                    ZStack {
-                        AsyncImage(url: URL(string: track.artwork ?? "")) { phase in
-                            if let image = phase.image {
-                                image.resizable()
-                                    .aspectRatio(contentMode: .fill)
-                            } else {
-                                Rectangle().fill(dominantColors.tertiary)
-                            }
-                        }
-                        .frame(width: size, height: size)
-                        .clipShape(RoundedRectangle(cornerRadius: 32, style: .continuous))
-                        .shadow(color: Color.black.opacity(0.3), radius: 24, x: 0, y: 12)
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                }
+    private var lyricsPanelCap: CGFloat {
+        if lyricsReducedMotion { return 112 }
+        return splitLayoutEnabled ? 420 : 160
+    }
 
-                VStack(spacing: 8) {
-                    Text(track.title)
-                        .font(.system(size: 28, weight: .bold))
-                        .foregroundColor(dominantColors.onBackground)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.8)
+    private func albumArtView(maxSquare: CGFloat) -> some View {
+        AsyncImage(url: URL(string: track.artwork ?? "")) { phase in
+            if let image = phase.image {
+                image.resizable().aspectRatio(contentMode: .fill)
+            } else {
+                Rectangle().fill(dominantColors.tertiary)
+            }
+        }
+        .frame(width: maxSquare, height: maxSquare)
+        .clipShape(RoundedRectangle(cornerRadius: splitLayoutEnabled ? 28 : 22, style: .continuous))
+        .shadow(color: Color.black.opacity(0.33), radius: splitLayoutEnabled ? 28 : 18, x: 0, y: 14)
+        .contentShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .onTapGesture(perform: onPlayPause)
+    }
 
-                    Text(track.artist)
-                        .font(.title3)
-                        .foregroundColor(dominantColors.onBackground.opacity(0.7))
-                        .lineLimit(1)
-                }
-                .padding(.horizontal, 32)
+    private var phoneArtSquare: CGFloat { 336 }
 
-                VStack(spacing: 8) {
-                    Slider(
-                        value: Binding(
-                            get: { durationSeconds > 0 ? min(1, max(0, positionSeconds / durationSeconds)) : 0 },
-                            set: { onSeek($0) }
-                        ),
-                        in: 0...1
-                    )
-                    .tint(dominantColors.accent)
 
+    private var titleStack: some View {
+        VStack(spacing: 8) {
+            Text(track.title)
+                .font(.system(size: splitLayoutEnabled ? 30 : 28, weight: .bold))
+                .foregroundStyle(dominantColors.onBackground)
+                .multilineTextAlignment(.center)
+                .lineLimit(2)
+                .minimumScaleFactor(0.76)
+
+            Text(track.artist)
+                .font(.title3)
+                .foregroundStyle(dominantColors.onBackground.opacity(0.74))
+                .lineLimit(1)
+                .minimumScaleFactor(0.82)
+        }
+        .padding(.horizontal, splitLayoutEnabled ? 12 : 32)
+        .frame(maxWidth: splitLayoutEnabled ? 440 : nil)
+        .overlay {
+            TapOrLongPressHostingView(onTap: {}, onLongPress: onOpenTrackMenu)
+        }
+    }
+
+    private var seekBlock: some View {
+        VStack(spacing: 8) {
+            Slider(value: sliderBinding)
+                .tint(dominantColors.accent)
+            HStack {
+                Text(formatTime(positionSeconds))
+                Spacer()
+                Text(formatTime(durationSeconds))
+            }
+            .font(.caption.weight(.medium))
+            .foregroundStyle(dominantColors.onBackground.opacity(0.62))
+        }
+        .padding(.horizontal, splitLayoutEnabled ? 0 : 32)
+        .frame(maxWidth: splitLayoutEnabled ? 400 : nil)
+    }
+
+    private var transportPlusModes: some View {
+        HStack(spacing: splitLayoutEnabled ? 18 : 8) {
+            Button(action: onToggleShuffle) {
+                Image(systemName: "shuffle")
+                    .font(.system(size: 22))
+                    .foregroundStyle(shuffled ? dominantColors.accent : dominantColors.onBackground.opacity(0.48))
+            }
+            .accessibilityLabel(shuffled ? "Shuffle on" : "Shuffle off")
+            .frame(minWidth: 44, minHeight: 44)
+
+            Button(action: onPrevious) {
+                Image(systemName: "backward.fill")
+                    .font(.system(size: 32))
+                    .foregroundStyle(dominantColors.onBackground)
+            }
+            .frame(minWidth: 48, minHeight: 44)
+
+            Button(action: onPlayPause) {
+                Image(systemName: isPlaying ? "pause.circle.fill" : "play.circle.fill")
+                    .font(.system(size: 74))
+                    .foregroundStyle(dominantColors.accent)
+                    .shadow(color: dominantColors.accent.opacity(0.32), radius: 14, x: 0, y: 5)
+            }
+            .buttonStyle(.plain)
+
+            Button(action: onNext) {
+                Image(systemName: "forward.fill")
+                    .font(.system(size: 32))
+                    .foregroundStyle(dominantColors.onBackground)
+            }
+            .frame(minWidth: 48, minHeight: 44)
+
+            Button(action: onCycleRepeat) {
+                Image(systemName: repeatMode == .one ? "repeat.1" : "repeat")
+                    .font(.system(size: 22))
+                    .foregroundStyle(repeatMode == .off ? dominantColors.onBackground.opacity(0.48) : dominantColors.accent)
+            }
+            .accessibilityLabel("Repeat: \(String(describing: repeatMode))")
+            .frame(minWidth: 44, minHeight: 44)
+        }
+    }
+
+    /// One outer `ScrollView` so queue does not nest another scroll surface.
+    private var phoneScrollBody: some View {
+        VStack(spacing: 0) {
+            pinnedHeaderChrome
+            ScrollView {
+                VStack(spacing: 24) {
                     HStack {
-                        Text(formatTime(positionSeconds))
-                        Spacer()
-                        Text(formatTime(durationSeconds))
+                        Spacer(minLength: 0)
+                        albumArtView(maxSquare: phoneArtSquare)
+                        Spacer(minLength: 0)
                     }
-                    .font(.caption)
-                    .foregroundColor(dominantColors.onBackground.opacity(0.6))
+
+                    titleStack
+
+                    seekBlock
+
+                    if let lyrics = currentLyrics, !lyrics.isEmpty {
+                        SyncedLyricsPanel(
+                            lyrics: lyrics,
+                            positionMs: Int64(positionSeconds * 1000),
+                            autoScroll: lyricsAutoScroll,
+                            reducedMotion: lyricsReducedMotion,
+                            textColor: dominantColors.onBackground,
+                            accentColor: dominantColors.accent,
+                            panelMaxHeight: lyricsPanelCap
+                        )
+                    }
+
+                    transportPlusModes
+                        .padding(.top, 4)
+
+                    queueSection
                 }
-                .padding(.horizontal, 32)
+                .padding(.bottom, 40)
+            }
+        }
+    }
 
-                if let lyrics = currentLyrics, !lyrics.isEmpty {
-                    SyncedLyricsPanel(
-                        lyrics: lyrics,
-                        positionMs: Int64(positionSeconds * 1000),
-                        autoScroll: lyricsAutoScroll,
-                        reducedMotion: lyricsReducedMotion,
-                        textColor: dominantColors.onBackground,
-                        accentColor: dominantColors.accent
-                    )
+    private var tabletTwoColumnBody: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            pinnedHeaderChrome
+                .padding(.top, 4)
+
+            HStack(alignment: .top, spacing: 28) {
+                ScrollView {
+                    VStack(spacing: 22) {
+                        albumArtView(maxSquare: 360)
+                            .padding(.top, 4)
+
+                        titleStack
+
+                        seekBlock
+
+                        transportPlusModes
+                            .padding(.top, 4)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.trailing, 6)
+                    .padding(.bottom, 32)
                 }
+                .frame(minWidth: 300, idealWidth: 370, maxWidth: 460)
 
-                HStack(spacing: 40) {
-                    Button(action: onPrevious) {
-                        Image(systemName: "backward.fill")
-                            .font(.system(size: 32))
-                            .foregroundColor(dominantColors.onBackground)
-                    }
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 20) {
+                        if let lyrics = currentLyrics, !lyrics.isEmpty {
+                            Text("Lyrics")
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(dominantColors.onBackground.opacity(0.54))
+                                .padding(.top, 4)
 
-                    Button(action: onPlayPause) {
-                        Image(systemName: isPlaying ? "pause.circle.fill" : "play.circle.fill")
-                            .font(.system(size: 72))
-                            .foregroundColor(dominantColors.accent)
-                            .shadow(color: dominantColors.accent.opacity(0.3), radius: 12, x: 0, y: 4)
-                    }
+                            SyncedLyricsPanel(
+                                lyrics: lyrics,
+                                positionMs: Int64(positionSeconds * 1000),
+                                autoScroll: lyricsAutoScroll,
+                                reducedMotion: lyricsReducedMotion,
+                                textColor: dominantColors.onBackground,
+                                accentColor: dominantColors.accent,
+                                panelMaxHeight: lyricsPanelCap
+                            )
+                        }
 
-                    Button(action: onNext) {
-                        Image(systemName: "forward.fill")
-                            .font(.system(size: 32))
-                            .foregroundColor(dominantColors.onBackground)
+                        queueSection
+
+                        Color.clear.frame(height: 28)
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.trailing, 12)
+                    .padding(.bottom, 12)
                 }
+                .frame(maxWidth: .infinity)
+            }
+            .padding(.horizontal, 12)
+        }
+    }
 
-                if queue.count > 1 {
-                    Button(queueExpanded ? "Hide queue (\(queue.count))" : "Show queue (\(queue.count))") {
-                        queueExpanded.toggle()
-                    }
-                    .foregroundColor(dominantColors.onBackground)
-                    if queueExpanded {
-                        ScrollView {
-                            VStack(spacing: 6) {
-                                ForEach(Array(queue.enumerated()), id: \.element.effectiveId) { index, item in
-                                    let selected = index == (currentIndex ?? -1)
+    @ViewBuilder
+    private var queueSection: some View {
+        if queue.count > 1 {
+            Button {
+                queueExpanded.toggle()
+            } label: {
+                Text(queueExpanded ? "Hide queue (\(queue.count))" : "Show queue (\(queue.count))")
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(dominantColors.onBackground)
+            }
+            .buttonStyle(.plain)
+            .padding(.horizontal, splitLayoutEnabled ? 0 : 16)
+
+            if queueExpanded {
+                VStack(spacing: 8) {
+                    ForEach(Array(queue.enumerated()), id: \.element.effectiveId) { index, item in
+                        let selected = index == (currentIndex ?? -1)
+                        Button {
+                            onPlayQueueIndex(index)
+                        } label: {
+                            HStack {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(item.title)
+                                        .fontWeight(selected ? .semibold : .regular)
+                                        .foregroundStyle(dominantColors.onBackground)
+
                                     Button {
-                                        onPlayQueueIndex(index)
+                                        onFollowArtist(item.artist, item.artwork)
                                     } label: {
-                                        HStack {
-                                            VStack(alignment: .leading) {
-                                                Text(item.title)
-                                                    .fontWeight(selected ? .semibold : .regular)
-                                                    .foregroundColor(dominantColors.onBackground)
-                                                Button(item.artist) {
-                                                    onFollowArtist(item.artist, item.artwork)
-                                                }
-                                                .font(.caption)
-                                                .foregroundColor(dominantColors.onBackground.opacity(0.7))
-                                            }
-                                            Spacer()
-                                        }
-                                        .padding(10)
-                                        .background(
-                                            selected
-                                                ? dominantColors.accent.opacity(0.25)
-                                                : dominantColors.secondary.opacity(0.2),
-                                            in: RoundedRectangle(cornerRadius: 12)
-                                        )
+                                        Text(item.artist)
+                                            .font(.caption)
+                                            .foregroundStyle(dominantColors.onBackground.opacity(0.74))
+                                            .underline(false)
                                     }
                                     .buttonStyle(.plain)
                                 }
+                                Spacer()
                             }
+                            .padding(12)
+                            .background(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .fill(selected ? dominantColors.accent.opacity(0.26) : dominantColors.secondary.opacity(0.2))
+                            )
                         }
-                        .frame(maxHeight: 200)
-                        .padding(.horizontal)
+                        .buttonStyle(.plain)
                     }
                 }
+                .padding(.horizontal, splitLayoutEnabled ? 0 : 8)
+                .padding(.bottom, splitLayoutEnabled ? 0 : 8)
             }
-            .padding(.bottom, 48)
         }
-        .dynamicTheme(artworkUrl: track.artwork, settings: settings)
-        .offset(y: dragOffset.height > 0 ? dragOffset.height : 0)
-        .gesture(
-            DragGesture()
-                .onChanged { value in
-                    if value.translation.height > 0 {
-                        dragOffset = value.translation
-                    }
-                }
-                .onEnded { value in
-                    if value.translation.height > 100 {
-                        onClose()
-                    }
-                    withAnimation(.spring()) {
-                        dragOffset = .zero
-                    }
-                }
-        )
     }
 
     private func formatTime(_ seconds: Double) -> String {
@@ -229,6 +422,8 @@ private struct SyncedLyricsPanel: View {
     let reducedMotion: Bool
     let textColor: Color
     let accentColor: Color
+    /// Default mirrors the portrait mini lyrics strip; enlarged on iPad column.
+    var panelMaxHeight: CGFloat = 140
 
     private var lines: [LrcLine] { LrcParser.parse(lyrics) }
     private var activeIndex: Int {
@@ -242,7 +437,7 @@ private struct SyncedLyricsPanel: View {
                 if lines.isEmpty {
                     Text(lyrics)
                         .font(.footnote)
-                        .foregroundColor(textColor.opacity(0.85))
+                        .foregroundStyle(textColor.opacity(0.86))
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .id("plain")
                 } else {
@@ -250,18 +445,18 @@ private struct SyncedLyricsPanel: View {
                         ForEach(Array(lines.enumerated()), id: \.offset) { index, line in
                             Text(line.text)
                                 .font(index == activeIndex ? .body.weight(.bold) : .footnote)
-                                .foregroundColor(index == activeIndex ? accentColor : textColor.opacity(0.75))
+                                .foregroundStyle(index == activeIndex ? accentColor : textColor.opacity(0.78))
                                 .id(index)
                         }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
-            .frame(maxHeight: reducedMotion ? 80 : 140)
-            .padding(.horizontal, 24)
+            .frame(maxHeight: panelMaxHeight)
+            .padding(.horizontal, reducedMotion ? 12 : 20)
             .onChange(of: activeIndex) { idx in
                 guard autoScroll, !reducedMotion, idx >= 0 else { return }
-                withAnimation(reducedMotion ? nil : .easeInOut(duration: 0.25)) {
+                withAnimation(.easeInOut(duration: 0.25)) {
                     proxy.scrollTo(idx, anchor: .center)
                 }
             }

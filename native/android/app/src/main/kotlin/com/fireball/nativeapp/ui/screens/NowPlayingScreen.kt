@@ -1,25 +1,35 @@
+@file:OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+
 package com.fireball.nativeapp.ui.screens
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.semantics.onLongClick
+import androidx.compose.ui.semantics.semantics
+import android.view.HapticFeedbackConstants
+import java.util.Locale
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Pause
@@ -43,10 +53,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
 import com.fireball.nativeapp.core.model.Track
 import com.fireball.nativeapp.player.PlaybackState
@@ -55,7 +67,10 @@ import com.fireball.nativeapp.ui.components.AlbumArt
 import com.fireball.nativeapp.ui.components.SyncedLyricsView
 import com.fireball.nativeapp.ui.components.seekbar.Seekbar
 import com.fireball.nativeapp.ui.components.seekbar.SeekbarStyle
+import com.fireball.nativeapp.ui.theme.DominantColors
 import com.fireball.nativeapp.ui.theme.rememberDominantColors
+
+private val PlayerSplitBreakpoint = 840.dp
 
 @Composable
 fun NowPlayingScreen(
@@ -72,6 +87,7 @@ fun NowPlayingScreen(
     onPlayQueueIndex: (Int) -> Unit = {},
     onFollowArtist: (String, String?) -> Unit = { _, _ -> },
     onCollapse: () -> Unit,
+    onOpenTrackMenu: () -> Unit = {},
 ) {
     var queueExpanded by remember { mutableStateOf(false) }
     val currentSong = playbackState.currentTrack
@@ -82,243 +98,471 @@ fun NowPlayingScreen(
     val shuffleEnabled = playbackState.shuffled
 
     val isDark = isSystemInDarkTheme()
-    val dominant = rememberDominantColors(currentSong?.artwork, isSystemInDarkTheme())
+    val dominant = rememberDominantColors(currentSong?.artwork, isDark)
+    val progress = if (durationMs > 0) positionMs.toFloat() / durationMs.toFloat() else 0f
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(
-                Brush.verticalGradient(
-                    colors = listOf(
-                        dominant.primary,
-                        dominant.secondary,
-                        MaterialTheme.colorScheme.background,
-                    ),
-                ),
-            ),
-    ) {
-        Column(
+    Box(modifier = Modifier.fillMaxSize()) {
+        Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            // Top bar — collapse button.
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                IconButton(onClick = onCollapse) {
-                    Icon(
-                        Icons.Filled.KeyboardArrowDown,
-                        contentDescription = "Collapse player",
-                        modifier = Modifier.size(32.dp),
-                        tint = dominant.onBackground
-                    )
-                }
-                Text(
-                    text = "Now Playing",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = dominant.onBackground.copy(alpha = 0.8f),
-                    modifier = Modifier.padding(start = 8.dp),
-                )
-            }
-
-            Spacer(Modifier.height(24.dp))
-
-            AlbumArt(
-                thumbnailUrl = currentSong?.artwork,
-                contentDescription = currentSong?.title,
-                onClick = onPlayPause,
-                modifier = Modifier
-                    .widthIn(max = 360.dp)
-                    .fillMaxWidth()
-                    .aspectRatio(1f)
-                    .clip(RoundedCornerShape(16.dp)),
-            )
-
-            Spacer(Modifier.height(32.dp))
-
-            // Track metadata.
-            Text(
-                text = currentSong?.title ?: "Nothing playing",
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Bold,
-                textAlign = TextAlign.Center,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                color = dominant.onBackground,
-                modifier = Modifier.widthIn(max = 480.dp),
-            )
-            Spacer(Modifier.height(4.dp))
-            Text(
-                text = currentSong?.artist.orEmpty(),
-                style = MaterialTheme.typography.bodyLarge,
-                color = dominant.onBackground.copy(alpha = 0.7f),
-                textAlign = TextAlign.Center,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.widthIn(max = 480.dp),
-            )
-
-            Spacer(Modifier.height(24.dp))
-
-            // Seek bar + time labels.
-            Column(modifier = Modifier.widthIn(max = 480.dp).fillMaxWidth()) {
-                val progress = if (durationMs > 0) positionMs.toFloat() / durationMs.toFloat() else 0f
-                Seekbar(
-                    progress = progress,
-                    isPlaying = isPlaying,
-                    style = SeekbarStyle.WAVEFORM, // Hardcoded to WAVEFORM for the beautiful expressive UI
-                    onSeek = onSeek,
-                    activeColor = dominant.accent,
-                    inactiveColor = dominant.onBackground.copy(alpha = 0.3f),
-                    modifier = Modifier.fillMaxWidth()
-                )
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                ) {
-                    Text(
-                        text = formatMs(positionMs),
-                        style = MaterialTheme.typography.labelMedium,
-                        color = dominant.onBackground.copy(alpha = 0.7f),
-                    )
-                    Text(
-                        text = formatMs(durationMs),
-                        style = MaterialTheme.typography.labelMedium,
-                        color = dominant.onBackground.copy(alpha = 0.7f),
-                    )
-                }
-            }
-
-            if (!currentLyrics.isNullOrBlank()) {
-                Spacer(Modifier.height(12.dp))
-                SyncedLyricsView(
-                    lyrics = currentLyrics,
-                    positionMs = positionMs,
-                    autoScroll = lyricsAutoScroll,
-                    reducedMotion = lyricsReducedMotion,
-                    textColor = dominant.onBackground,
-                    accentColor = dominant.accent,
-                    modifier = Modifier.widthIn(max = 480.dp),
-                )
-            }
-
-            Spacer(Modifier.height(24.dp))
-
-            // Transport controls — shuffle | prev | play/pause | next | repeat.
-            Row(
-                modifier = Modifier.widthIn(max = 480.dp).fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceEvenly,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                ShuffleButton(
-                    enabled = shuffleEnabled,
-                    activeColor = dominant.accent,
-                    inactiveColor = dominant.onBackground.copy(alpha = 0.5f),
-                    onToggle = onToggleShuffle,
-                )
-
-                IconButton(
-                    onClick = onPrevious,
-                    enabled = currentSong != null,
-                ) {
-                    Icon(
-                        Icons.Filled.SkipPrevious,
-                        contentDescription = "Previous",
-                        modifier = Modifier.size(36.dp),
-                        tint = dominant.onBackground
-                    )
-                }
-
-                FilledIconButton(
-                    onClick = onPlayPause,
-                    enabled = currentSong != null,
-                    modifier = Modifier.size(72.dp),
-                    colors = IconButtonDefaults.filledIconButtonColors(
-                        containerColor = dominant.accent,
-                        contentColor = MaterialTheme.colorScheme.onPrimary,
+                .background(
+                    Brush.verticalGradient(
+                        colors = listOf(
+                            dominant.primary,
+                            dominant.secondary,
+                            MaterialTheme.colorScheme.background,
+                        ),
                     ),
+                ),
+        )
+        BoxWithConstraints(modifier = Modifier.fillMaxSize().statusBarsPadding()) {
+            val useSplit = maxWidth >= PlayerSplitBreakpoint
+            val sidePad = 24.dp
+
+            Column(Modifier.fillMaxSize()) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = sidePad)
+                        .padding(horizontal = sidePad),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Icon(
-                        imageVector = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                        contentDescription = if (isPlaying) "Pause" else "Play",
-                        modifier = Modifier.size(40.dp),
+                    IconButton(onClick = onCollapse) {
+                        Icon(
+                            Icons.Filled.KeyboardArrowDown,
+                            contentDescription = "Collapse player",
+                            modifier = Modifier.size(32.dp),
+                            tint = dominant.onBackground,
+                        )
+                    }
+                    Text(
+                        text = "Now Playing",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = dominant.onBackground.copy(alpha = 0.8f),
+                        modifier = Modifier.padding(start = 8.dp),
                     )
                 }
 
-                IconButton(
-                    onClick = onNext,
-                    enabled = currentSong != null,
-                ) {
-                    Icon(
-                        Icons.Filled.SkipNext,
-                        contentDescription = "Next",
-                        modifier = Modifier.size(36.dp),
-                        tint = dominant.onBackground
-                    )
-                }
+                if (useSplit) {
+                    Row(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth()
+                            .padding(horizontal = sidePad)
+                            .padding(bottom = sidePad),
+                        horizontalArrangement = Arrangement.spacedBy(32.dp),
+                    ) {
+                        val scrollLeft = rememberScrollState()
+                        Column(
+                            modifier = Modifier
+                                .weight(0.42f)
+                                .fillMaxHeight()
+                                .verticalScroll(scrollLeft),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                        ) {
+                            Spacer(Modifier.height(8.dp))
+                            AlbumArt(
+                                thumbnailUrl = currentSong?.artwork,
+                                contentDescription = currentSong?.title,
+                                onClick = onPlayPause,
+                                modifier = Modifier
+                                    .widthIn(max = 420.dp)
+                                    .fillMaxWidth()
+                                    .aspectRatio(1f)
+                                    .clip(RoundedCornerShape(20.dp)),
+                            )
+                            Spacer(Modifier.height(24.dp))
+                            TrackMetadata(
+                                currentSong = currentSong,
+                                dominant = dominant,
+                                titleStyle = MaterialTheme.typography.headlineMedium,
+                                artistStyle = MaterialTheme.typography.titleMedium,
+                                onOpenTrackMenu = onOpenTrackMenu,
+                            )
+                            Spacer(Modifier.height(20.dp))
+                            SeekSection(
+                                progress = progress,
+                                isPlaying = isPlaying,
+                                positionMs = positionMs,
+                                durationMs = durationMs,
+                                dominant = dominant,
+                                onSeek = onSeek,
+                                fillMax = false,
+                            )
+                            Spacer(Modifier.height(24.dp))
+                            TransportRow(
+                                shuffleEnabled = shuffleEnabled,
+                                repeatMode = repeatMode,
+                                isPlaying = isPlaying,
+                                currentSong = currentSong,
+                                dominant = dominant,
+                                onPlayPause = onPlayPause,
+                                onNext = onNext,
+                                onPrevious = onPrevious,
+                                onToggleShuffle = onToggleShuffle,
+                                onToggleRepeatMode = onToggleRepeatMode,
+                            )
+                        }
 
-                RepeatButton(
-                    mode = repeatMode,
-                    activeColor = dominant.accent,
-                    inactiveColor = dominant.onBackground.copy(alpha = 0.5f),
-                    onToggle = onToggleRepeatMode,
+                        val scrollRight = rememberScrollState()
+                        val lyricsCap = if (lyricsReducedMotion) 120.dp else 440.dp
+                        Column(
+                            modifier = Modifier
+                                .weight(0.58f)
+                                .fillMaxHeight()
+                                .verticalScroll(scrollRight),
+                        ) {
+                            Spacer(Modifier.height(8.dp))
+                            if (!currentLyrics.isNullOrBlank()) {
+                                Text(
+                                    text = "Lyrics",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = dominant.onBackground.copy(alpha = 0.55f),
+                                    modifier = Modifier.padding(bottom = 8.dp),
+                                )
+                                SyncedLyricsView(
+                                    lyrics = currentLyrics,
+                                    positionMs = positionMs,
+                                    autoScroll = lyricsAutoScroll,
+                                    reducedMotion = lyricsReducedMotion,
+                                    textColor = dominant.onBackground,
+                                    accentColor = dominant.accent,
+                                    modifier = Modifier.widthIn(max = 520.dp),
+                                    maxContentHeight = lyricsCap,
+                                )
+                            }
+
+                            QueueSection(
+                                playbackState = playbackState,
+                                queueExpanded = queueExpanded,
+                                dominant = dominant,
+                                onExpandedChange = { queueExpanded = it },
+                                onPlayQueueIndex = onPlayQueueIndex,
+                                onFollowArtist = onFollowArtist,
+                            )
+                            Spacer(Modifier.height(sidePad))
+                        }
+                    }
+                } else {
+                    val scrollAll = rememberScrollState()
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth()
+                            .verticalScroll(scrollAll)
+                            .padding(horizontal = sidePad),
+                    ) {
+                        Spacer(Modifier.height(16.dp))
+
+                        AlbumArt(
+                            thumbnailUrl = currentSong?.artwork,
+                            contentDescription = currentSong?.title,
+                            onClick = onPlayPause,
+                            modifier = Modifier
+                                .widthIn(max = 380.dp)
+                                .fillMaxWidth()
+                                .aspectRatio(1f)
+                                .clip(RoundedCornerShape(16.dp)),
+                        )
+
+                        Spacer(Modifier.height(24.dp))
+
+                        TrackMetadata(
+                            currentSong = currentSong,
+                            dominant = dominant,
+                            titleStyle = MaterialTheme.typography.headlineSmall,
+                            artistStyle = MaterialTheme.typography.bodyLarge,
+                            onOpenTrackMenu = onOpenTrackMenu,
+                        )
+
+                        Spacer(Modifier.height(20.dp))
+
+                        SeekSection(
+                            progress = progress,
+                            isPlaying = isPlaying,
+                            positionMs = positionMs,
+                            durationMs = durationMs,
+                            dominant = dominant,
+                            onSeek = onSeek,
+                            fillMax = true,
+                        )
+
+                        if (!currentLyrics.isNullOrBlank()) {
+                            Spacer(Modifier.height(12.dp))
+                            SyncedLyricsView(
+                                lyrics = currentLyrics,
+                                positionMs = positionMs,
+                                autoScroll = lyricsAutoScroll,
+                                reducedMotion = lyricsReducedMotion,
+                                textColor = dominant.onBackground,
+                                accentColor = dominant.accent,
+                                modifier = Modifier.widthIn(max = 480.dp),
+                            )
+                        }
+
+                        Spacer(Modifier.height(20.dp))
+
+                        TransportRow(
+                            shuffleEnabled = shuffleEnabled,
+                            repeatMode = repeatMode,
+                            isPlaying = isPlaying,
+                            currentSong = currentSong,
+                            dominant = dominant,
+                            onPlayPause = onPlayPause,
+                            onNext = onNext,
+                            onPrevious = onPrevious,
+                            onToggleShuffle = onToggleShuffle,
+                            onToggleRepeatMode = onToggleRepeatMode,
+                        )
+
+                        QueueSection(
+                            playbackState = playbackState,
+                            queueExpanded = queueExpanded,
+                            dominant = dominant,
+                            onExpandedChange = { queueExpanded = it },
+                            onPlayQueueIndex = onPlayQueueIndex,
+                            onFollowArtist = onFollowArtist,
+                        )
+
+                        Spacer(modifier = Modifier.height(sidePad + 24.dp))
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TrackMetadata(
+    currentSong: Track?,
+    dominant: DominantColors,
+    titleStyle: TextStyle,
+    artistStyle: TextStyle,
+    onOpenTrackMenu: () -> Unit = {},
+) {
+    val view = LocalView.current
+    val menuModifier = if (currentSong != null) {
+        Modifier
+            .semantics {
+                onLongClick("Track options") {
+                    onOpenTrackMenu()
+                    true
+                }
+            }
+            .pointerInput(onOpenTrackMenu, view) {
+                detectTapGestures(
+                    onLongPress = {
+                        view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                        onOpenTrackMenu()
+                    },
                 )
             }
+    } else {
+        Modifier
+    }
+    Column(
+        modifier = Modifier
+            .widthIn(max = 520.dp)
+            .then(menuModifier),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(
+            text = currentSong?.title ?: "Nothing playing",
+            style = titleStyle,
+            fontWeight = FontWeight.Bold,
+            textAlign = TextAlign.Center,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            color = dominant.onBackground,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Spacer(Modifier.height(4.dp))
+        Text(
+            text = currentSong?.artist.orEmpty(),
+            style = artistStyle,
+            color = dominant.onBackground.copy(alpha = 0.7f),
+            textAlign = TextAlign.Center,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.fillMaxWidth(),
+        )
+    }
+}
 
-            if (playbackState.queue.size > 1) {
-                Spacer(Modifier.height(16.dp))
-                androidx.compose.material3.TextButton(onClick = { queueExpanded = !queueExpanded }) {
-                    Text(
-                        if (queueExpanded) "Hide queue (${playbackState.queue.size})"
-                        else "Show queue (${playbackState.queue.size})",
-                        color = dominant.onBackground,
-                    )
-                }
-                if (queueExpanded) {
-                    LazyColumn(
-                        modifier = Modifier
-                            .widthIn(max = 480.dp)
-                            .fillMaxWidth()
-                            .heightIn(max = 220.dp),
-                        verticalArrangement = Arrangement.spacedBy(4.dp),
-                    ) {
-                        itemsIndexed(playbackState.queue, key = { _, t -> t.effectiveId }) { index, track ->
-                            val selected = index == playbackState.currentIndex
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .background(
-                                        if (selected) dominant.accent.copy(alpha = 0.25f)
-                                        else dominant.secondary.copy(alpha = 0.2f),
-                                    )
-                                    .clickable { onPlayQueueIndex(index) }
-                                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        track.title,
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-                                        color = dominant.onBackground,
-                                        maxLines = 1,
-                                    )
-                                    Text(
-                                        track.artist,
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = dominant.onBackground.copy(alpha = 0.7f),
-                                        maxLines = 1,
-                                        modifier = Modifier.clickable {
-                                            onFollowArtist(track.artist, track.artwork)
-                                        },
-                                    )
-                                }
-                            }
-                        }
+@Composable
+private fun SeekSection(
+    progress: Float,
+    isPlaying: Boolean,
+    positionMs: Long,
+    durationMs: Long,
+    dominant: DominantColors,
+    onSeek: (Float) -> Unit,
+    fillMax: Boolean,
+) {
+    val mod = if (fillMax) {
+        Modifier.widthIn(max = 480.dp).fillMaxWidth()
+    } else {
+        Modifier.widthIn(max = 420.dp).fillMaxWidth()
+    }
+    Column(modifier = mod) {
+        Seekbar(
+            progress = progress,
+            isPlaying = isPlaying,
+            style = SeekbarStyle.WAVEFORM,
+            onSeek = onSeek,
+            activeColor = dominant.accent,
+            inactiveColor = dominant.onBackground.copy(alpha = 0.3f),
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Text(
+                text = formatMs(positionMs),
+                style = MaterialTheme.typography.labelMedium,
+                color = dominant.onBackground.copy(alpha = 0.7f),
+            )
+            Text(
+                text = formatMs(durationMs),
+                style = MaterialTheme.typography.labelMedium,
+                color = dominant.onBackground.copy(alpha = 0.7f),
+            )
+        }
+    }
+}
+
+@Composable
+private fun TransportRow(
+    shuffleEnabled: Boolean,
+    repeatMode: RepeatMode,
+    isPlaying: Boolean,
+    currentSong: Track?,
+    dominant: DominantColors,
+    onPlayPause: () -> Unit,
+    onNext: () -> Unit,
+    onPrevious: () -> Unit,
+    onToggleShuffle: () -> Unit,
+    onToggleRepeatMode: () -> Unit,
+) {
+    Row(
+        modifier = Modifier.widthIn(max = 480.dp).fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceEvenly,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        ShuffleButton(
+            enabled = shuffleEnabled,
+            activeColor = dominant.accent,
+            inactiveColor = dominant.onBackground.copy(alpha = 0.5f),
+            onToggle = onToggleShuffle,
+        )
+
+        IconButton(
+            onClick = onPrevious,
+            enabled = currentSong != null,
+        ) {
+            Icon(
+                Icons.Filled.SkipPrevious,
+                contentDescription = "Previous",
+                modifier = Modifier.size(36.dp),
+                tint = dominant.onBackground,
+            )
+        }
+
+        FilledIconButton(
+            onClick = onPlayPause,
+            enabled = currentSong != null,
+            modifier = Modifier.size(72.dp),
+            colors = IconButtonDefaults.filledIconButtonColors(
+                containerColor = dominant.accent,
+                contentColor = MaterialTheme.colorScheme.onPrimary,
+            ),
+        ) {
+            Icon(
+                imageVector = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                contentDescription = if (isPlaying) "Pause" else "Play",
+                modifier = Modifier.size(40.dp),
+            )
+        }
+
+        IconButton(
+            onClick = onNext,
+            enabled = currentSong != null,
+        ) {
+            Icon(
+                Icons.Filled.SkipNext,
+                contentDescription = "Next",
+                modifier = Modifier.size(36.dp),
+                tint = dominant.onBackground,
+            )
+        }
+
+        RepeatButton(
+            mode = repeatMode,
+            activeColor = dominant.accent,
+            inactiveColor = dominant.onBackground.copy(alpha = 0.5f),
+            onToggle = onToggleRepeatMode,
+        )
+    }
+}
+
+@Composable
+private fun QueueSection(
+    playbackState: PlaybackState,
+    queueExpanded: Boolean,
+    dominant: DominantColors,
+    onExpandedChange: (Boolean) -> Unit,
+    onPlayQueueIndex: (Int) -> Unit,
+    onFollowArtist: (String, String?) -> Unit,
+) {
+    if (playbackState.queue.size <= 1) return
+
+    Spacer(Modifier.height(16.dp))
+    androidx.compose.material3.TextButton(onClick = { onExpandedChange(!queueExpanded) }) {
+        Text(
+            if (queueExpanded) "Hide queue (${playbackState.queue.size})"
+            else "Show queue (${playbackState.queue.size})",
+            color = dominant.onBackground,
+        )
+    }
+    if (queueExpanded) {
+        Column(
+            modifier = Modifier
+                .widthIn(max = 520.dp)
+                .fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            playbackState.queue.forEachIndexed { index, track ->
+                val selected = index == playbackState.currentIndex
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(
+                            if (selected) dominant.accent.copy(alpha = 0.25f)
+                            else dominant.secondary.copy(alpha = 0.2f),
+                        )
+                        .clickable { onPlayQueueIndex(index) }
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            track.title,
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                            color = dominant.onBackground,
+                            maxLines = 1,
+                        )
+                        Text(
+                            track.artist,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = dominant.onBackground.copy(alpha = 0.7f),
+                            maxLines = 1,
+                            modifier = Modifier.clickable {
+                                onFollowArtist(track.artist, track.artwork)
+                            },
+                        )
                     }
                 }
             }
@@ -359,5 +603,5 @@ private fun formatMs(ms: Long): String {
     val totalSeconds = ms / 1000
     val minutes = totalSeconds / 60
     val seconds = totalSeconds % 60
-    return String.format("%02d:%02d", minutes, seconds)
+    return String.format(Locale.US, "%02d:%02d", minutes, seconds)
 }

@@ -13,7 +13,7 @@ import androidx.compose.ui.platform.LocalContext
  * older devices so the caller picks a static palette.
  */
 @Composable
-fun DynamicColorScheme(darkTheme: Boolean): ColorScheme? {
+fun dynamicColorScheme(darkTheme: Boolean): ColorScheme? {
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return null
     val context = LocalContext.current
     return if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)

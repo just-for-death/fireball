@@ -13,6 +13,7 @@ final class NativeAudioEngine {
     private var currentIndex: Int = 0
     private var timeObserverToken: Any?
     private var endObserver: NSObjectProtocol?
+    private var itemStatusObservation: NSKeyValueObservation?
 
     var onStateUpdate: ((Int, Bool, Double, Double) -> Void)?
     var onTrackEnded: (() -> Void)?
@@ -90,12 +91,8 @@ final class NativeAudioEngine {
             onPlaybackFailed?("Invalid playback URL for \"\(track.title)\".")
             return false
         }
-        let settings = settingsProvider?() ?? FireballSettings()
-        let playURL = StreamPlaybackCache.localPlaybackURL(remoteURL: remote, settings: settings) ?? remote
-        player.replaceCurrentItem(with: AVPlayerItem(url: playURL))
-        if settings.streamCacheEnabled, playURL.isFileURL == false {
-            Task { await StreamPlaybackCache.prefetch(remoteURL: remote, settings: settings) }
-        }
+        player.replaceCurrentItem(with: AVPlayerItem(url: remote))
+        observeItemFailure(player.currentItem)
         observeEndOfCurrentItem()
         player.pause()
         installTimeObserverIfNeeded()
@@ -108,6 +105,35 @@ final class NativeAudioEngine {
         player.play()
         refreshNowPlaying()
         return true
+    }
+
+    private func observeItemFailure(_ item: AVPlayerItem?) {
+        itemStatusObservation?.invalidate()
+        itemStatusObservation = nil
+        guard let item else { return }
+        itemStatusObservation = item.observe(\.status, options: [.new]) { [weak self] observed, _ in
+            guard let self else { return }
+            guard observed.status == .failed else { return }
+            let msg = observed.error?.localizedDescription ?? "Playback failed"
+            Task { @MainActor in
+                self.onPlaybackFailed?(msg)
+                self.refreshNowPlaying()
+            }
+        }
+    }
+
+    /// Updates the logical queue (next/previous ordering) without reloading the current AV item when the playing track is unchanged.
+    func applyQueueMutation(_ tracks: [Track], currentIndex: Int) {
+        guard tracks.indices.contains(currentIndex) else { return }
+        let oldId = queue.indices.contains(self.currentIndex) ? queue[self.currentIndex].effectiveId : nil
+        let newId = tracks[currentIndex].effectiveId
+        queue = tracks
+        self.currentIndex = currentIndex
+        if oldId == newId, player.currentItem != nil {
+            refreshNowPlaying()
+            return
+        }
+        _ = loadCurrentTrackAndPlay()
     }
 
     private func observeEndOfCurrentItem() {
@@ -315,6 +341,7 @@ final class NativeAudioEngine {
     }
 
     deinit {
+        itemStatusObservation?.invalidate()
         if let token = timeObserverToken {
             player.removeTimeObserver(token)
         }

@@ -1,5 +1,7 @@
 package com.fireball.nativeapp.player
 
+import android.app.NotificationChannel
+import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
@@ -18,7 +20,8 @@ import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 import androidx.media3.session.SessionResult
 import com.fireball.nativeapp.MainActivity
-import android.net.Uri
+import com.fireball.nativeapp.R
+import androidx.core.net.toUri
 import com.fireball.nativeapp.core.data.PlaybackPreferences
 
 import androidx.media3.datasource.cache.SimpleCache
@@ -29,6 +32,11 @@ import androidx.media3.datasource.cache.CacheDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 
+private object PlaybackNotification {
+    /** Must match DefaultMediaNotificationProvider channel id wiring. */
+    const val CHANNEL_ID = "fireball_media_playback"
+}
+
 @UnstableApi
 class NativePlaybackService : MediaSessionService() {
     private var mediaSession: MediaSession? = null
@@ -38,8 +46,24 @@ class NativePlaybackService : MediaSessionService() {
 
     override fun onCreate() {
         super.onCreate()
-        setMediaNotificationProvider(DefaultMediaNotificationProvider.Builder(this).build())
+        ensurePlaybackNotificationChannel()
+        setMediaNotificationProvider(
+            DefaultMediaNotificationProvider.Builder(this)
+                .setChannelId(PlaybackNotification.CHANNEL_ID)
+                .build(),
+        )
         buildPlayerAndSession()
+    }
+
+    private fun ensurePlaybackNotificationChannel() {
+        val mgr = getSystemService(NotificationManager::class.java) ?: return
+        if (mgr.getNotificationChannel(PlaybackNotification.CHANNEL_ID) != null) return
+        val channel = NotificationChannel(
+            PlaybackNotification.CHANNEL_ID,
+            getString(R.string.playback_notification_channel),
+            NotificationManager.IMPORTANCE_LOW,
+        )
+        mgr.createNotificationChannel(channel)
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? = mediaSession
@@ -138,6 +162,7 @@ class NativePlaybackService : MediaSessionService() {
             .setSessionActivity(sessionActivityIntent())
             .setCallback(
                 object : MediaSession.Callback {
+                    @Suppress("DEPRECATION") // Migrate via player/MediaSession command availability APIs when refactoring session controls.
                     override fun onPlayerCommandRequest(
                         session: MediaSession,
                         controller: MediaSession.ControllerInfo,
@@ -218,7 +243,7 @@ class NativePlaybackService : MediaSessionService() {
                 .setArtist(artist)
                 .apply {
                     if (!artworkUrl.isNullOrBlank()) {
-                        setArtworkUri(Uri.parse(artworkUrl))
+                        setArtworkUri(artworkUrl.toUri())
                     }
                 }
                 .build()
