@@ -99,7 +99,7 @@ public struct NowPlayingScreen: View {
             )
         }
         .onPreferenceChange(PlayerContainerWidthKey.self) { containerWidth = $0 }
-        .onChange(of: track.effectiveId) { _, _ in
+        .onChange(of: track.effectiveId) { _ in
             showLyricsInArtSlot = false
         }
         .dynamicTheme(artworkUrl: track.artwork, settings: settings)
@@ -427,7 +427,7 @@ public struct NowPlayingScreen: View {
 
             if queueExpanded {
                 VStack(spacing: 8) {
-                    ForEach(Array(queue.enumerated()), id: \.element.effectiveId) { index, item in
+                    ForEach(Array(queue.enumerated()), id: \.offset) { index, item in
                         let selected = index == (currentIndex ?? -1)
                         ZStack {
                             HStack {

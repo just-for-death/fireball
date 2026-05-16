@@ -280,6 +280,7 @@ fun NowPlayingScreen(
                                     accentColor = dominant.accent,
                                     modifier = Modifier.widthIn(max = 520.dp),
                                     maxContentHeight = lyricsCap,
+                                    onSeekToMs = onSeekToLyricMs,
                                 )
                             }
 

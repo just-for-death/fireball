@@ -12,6 +12,7 @@ struct ArtistCatalogScreen: View {
     enum Tab: Hashable {
         case songs
         case albums
+        case playlists
     }
 
     @State private var selectedTab: Tab = .songs
@@ -49,6 +50,8 @@ struct ArtistCatalogScreen: View {
                                 trackList(browse.songs)
                             case .albums:
                                 albumsBody(browse)
+                            case .playlists:
+                                playlistsBody(browse)
                             }
                         }
                         .padding(.bottom, 32)
@@ -65,7 +68,7 @@ struct ArtistCatalogScreen: View {
                     ToolbarItem(placement: .primaryAction) {
                         Button(matchedFollowedArtist == nil ? "Follow" : "Unfollow") {
                             if let existing = matchedFollowedArtist {
-                                viewModel.unfollowArtist(existing.artistId)
+                                viewModel.unfollowArtist(artistId: existing.artistId)
                             } else if let browse = browseResult {
                                 viewModel.followArtist(browse.displayName, artwork: browse.artworkUrl)
                             }
@@ -144,9 +147,45 @@ struct ArtistCatalogScreen: View {
         Picker("Section", selection: $selectedTab) {
             Text("Songs").tag(Tab.songs)
             Text("Albums").tag(Tab.albums)
+            Text("Playlists").tag(Tab.playlists)
         }
         .pickerStyle(.segmented)
         .padding(.horizontal)
+    }
+
+    private func playlistsBody(_ browse: ArtistBrowseResult) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            if browse.playlistsContainingArtist.isEmpty {
+                Text("No playlists in your library include this artist yet.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity)
+                    .padding()
+            }
+            ForEach(browse.playlistsContainingArtist, id: \.id) { playlist in
+                Button {
+                    guard let first = playlist.videos.first else { return }
+                    viewModel.play(track: first, source: playlist.videos)
+                } label: {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(playlist.title)
+                                .font(.headline)
+                                .foregroundStyle(.primary)
+                                .lineLimit(1)
+                            Text("\(playlist.videos.count) tracks")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                    }
+                    .padding(12)
+                    .background(Color.secondary.opacity(0.12), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .padding(.horizontal)
+            }
+        }
     }
 
     @ViewBuilder

@@ -61,6 +61,7 @@ final class MainViewModel: ObservableObject {
     @Published var shuffled = false
     @Published var repeatMode: RepeatMode = .off
     @Published var sleepTimerEnd: Date? = nil
+    @Published var sleepTimerPresetMinutes: Int? = nil
     @Published var sleepAfterCurrent = false
     @Published var positionSeconds: Double = 0
     @Published var durationSeconds: Double = 0
@@ -626,17 +627,37 @@ final class MainViewModel: ObservableObject {
     func requestArtistDetail(artistDisplayName: String) {
         let trimmed = artistDisplayName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
-        let followed = library.artists.first(where: { $0.name.caseInsensitiveCompare(trimmed) == .orderedSame })
+        let split = ArtistNameParser.splitArtists(trimmed)
+        let display = split.first ?? trimmed
+        let followed = split.compactMap { name in
+            library.artists.first { $0.name.caseInsensitiveCompare(name) == .orderedSame }
+        }.first
         let appleId = followed.flatMap { Int($0.artistId.trimmingCharacters(in: .whitespacesAndNewlines)) }
         artistDetailLookupTask?.cancel()
         artistDetailLookupTask = nil
-        navigateArtistDetailInternal(appleArtistId: appleId, fallback: trimmed)
+        navigateArtistDetailInternal(appleArtistId: appleId, fallback: display)
     }
 
     func isArtistFollowed(artistName: String) -> Bool {
         let trimmed = artistName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return false }
         return library.artists.contains { $0.name.caseInsensitiveCompare(trimmed) == .orderedSame }
+    }
+
+    func isAnyArtistFollowed(_ displayLine: String) -> Bool {
+        ArtistNameParser.splitArtists(displayLine).contains { isArtistFollowed(artistName: $0) }
+    }
+
+    func primaryArtistName(_ displayLine: String) -> String {
+        ArtistNameParser.splitArtists(displayLine).first
+            ?? displayLine.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    func unfollowFirstFollowedArtistFromDisplayLine(_ displayLine: String) {
+        guard let name = ArtistNameParser.splitArtists(displayLine).first(where: { isArtistFollowed(artistName: $0) }) else {
+            return
+        }
+        unfollowArtistByName(name)
     }
 
     func unfollowArtistByName(_ artistName: String) {
@@ -831,13 +852,26 @@ final class MainViewModel: ObservableObject {
     }
 
     func setSleepTimer(minutes: Int?) {
+        sleepTimerPresetMinutes = minutes
         sleepTimerEnd = minutes.map { Date().addingTimeInterval(Double($0 * 60)) }
         sleepAfterCurrent = false
     }
 
     func setSleepAfterCurrent(_ enabled: Bool) {
         sleepAfterCurrent = enabled
-        if enabled { sleepTimerEnd = nil }
+        if enabled {
+            sleepTimerEnd = nil
+            sleepTimerPresetMinutes = nil
+        }
+    }
+
+    func signOutInvidious() {
+        updateSettings { settings in
+            settings.invidiousSid = nil
+            settings.invidiousUsername = nil
+        }
+        invidiousPlaylists = []
+        integrationStatus = "Invidious: signed out"
     }
 
     func webDavPullMerge() async {
@@ -942,13 +976,6 @@ final class MainViewModel: ObservableObject {
                 durationSeconds,
                 audioEngine.lastReportedDurationSeconds
             )
-            if sleepAfterCurrent,
-               isPlaying,
-               effectiveDuration > 0,
-               positionSeconds >= effectiveDuration - 1 {
-                togglePlayPause()
-                setSleepAfterCurrent(false)
-            }
             await maybeScrobbleCurrent()
             await maybeAppendAIQueue()
             if isPlaying, currentIndex != nil {

@@ -423,12 +423,16 @@ class MainViewModel(
     fun requestArtistDetail(artistDisplayName: String) {
         val trimmed = artistDisplayName.trim()
         if (trimmed.isEmpty()) return
+        val split = com.fireball.nativeapp.core.model.ArtistNameParser.splitArtists(trimmed)
+        val display = split.firstOrNull() ?: trimmed
         val followed =
-            _uiState.value.library.artists.firstOrNull { it.name.equals(trimmed, ignoreCase = true) }
+            split.firstNotNullOfOrNull { name ->
+                _uiState.value.library.artists.firstOrNull { it.name.equals(name, ignoreCase = true) }
+            }
         val appleId = followed?.artistId?.toIntOrNull()
         artistDetailLookupJob?.cancel()
         artistDetailLookupJob = null
-        navigateArtistDetailInternal(appleId, trimmed)
+        navigateArtistDetailInternal(appleId, display)
     }
 
     fun requestArtistDetail(appleArtistId: Int?, fallbackDisplayName: String) {
@@ -891,8 +895,15 @@ class MainViewModel(
         playerManager.updateQueueTracks(fullyResolved, currentIdx)
 
         val items = playable.map { t -> toMediaItem(t) }
-        val anchorId = anchor.effectiveId
-        val exoStart = playable.indexOfFirst { it.effectiveId == anchorId }.let { if (it < 0) 0 else it }
+        val currentId = playbackState.value.currentTrack?.effectiveId
+        val exoStart =
+            when {
+                !currentId.isNullOrBlank() ->
+                    playable.indexOfFirst { it.effectiveId == currentId }.takeIf { it >= 0 }
+                else -> null
+            }
+                ?: playable.indexOfFirst { it.effectiveId == anchor.effectiveId }.takeIf { it >= 0 }
+                ?: currentIdx.coerceIn(0, playable.lastIndex)
 
         exoMediaItems = items
         engineHandoffMutex.withLock {
@@ -952,6 +963,8 @@ class MainViewModel(
                 playbackController.setShuffle(false)
                 if (exoIdx >= 0) {
                     playbackController.seekToMediaIndex(exoIdx)
+                } else if (playbackState.value.queue.size > 1) {
+                    resyncEntireExoQueueFromLogicalState(preservePlaybackPosition = true)
                 } else {
                     exoMediaItems = listOf(item)
                     playbackController.playQueue(listOf(item), 0)
@@ -1013,7 +1026,7 @@ class MainViewModel(
         when (decision) {
             PlaybackAdvanceDecision.RestartCurrent -> playbackController.seekTo(0L)
             is PlaybackAdvanceDecision.JumpToIndex -> openQueueIndex(decision.index)
-            PlaybackAdvanceDecision.StopPlayback -> playerManager.syncFromEngine(isPlaying = false)
+            PlaybackAdvanceDecision.StopPlayback -> pausePlaybackForSleep()
             PlaybackAdvanceDecision.NoOp -> Unit
         }
     }
@@ -1053,6 +1066,21 @@ class MainViewModel(
         val trimmed = artistName.trim()
         if (trimmed.isEmpty()) return false
         return _uiState.value.library.artists.any { it.name.equals(trimmed, ignoreCase = true) }
+    }
+
+    fun isAnyArtistFollowed(displayLine: String): Boolean =
+        com.fireball.nativeapp.core.model.ArtistNameParser.splitArtists(displayLine)
+            .any { isArtistFollowed(it) }
+
+    fun primaryArtistName(displayLine: String): String =
+        com.fireball.nativeapp.core.model.ArtistNameParser.splitArtists(displayLine)
+            .firstOrNull()
+            ?: displayLine.trim()
+
+    fun unfollowFirstFollowedArtistFromDisplayLine(displayLine: String) {
+        com.fireball.nativeapp.core.model.ArtistNameParser.splitArtists(displayLine)
+            .firstOrNull { isArtistFollowed(it) }
+            ?.let { unfollowArtistByName(it) }
     }
 
     fun unfollowArtistByName(artistName: String) {

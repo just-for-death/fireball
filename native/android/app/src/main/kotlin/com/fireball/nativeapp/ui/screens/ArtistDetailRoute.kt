@@ -71,7 +71,7 @@ fun ArtistDetailRoute(
     var browse by remember { mutableStateOf<ArtistBrowseResult?>(null) }
     var loading by remember { mutableStateOf(true) }
     var tab by remember { mutableIntStateOf(0) }
-    val titles = listOf("Songs", "Albums")
+    val titles = listOf("Songs", "Albums", "Playlists")
 
     LaunchedEffect(parsedKey, encodedName, library.artists.size, library.playlists.size) {
         loading = true
@@ -234,7 +234,7 @@ fun ArtistDetailRoute(
                                 )
                             }
                         }
-                        else -> {
+                        1 -> {
                             items(b.albums, key = { it.id }) { album ->
                                 Row(
                                     Modifier
@@ -265,6 +265,48 @@ fun ArtistDetailRoute(
                                     }
                                 }
                                 HorizontalDivider()
+                            }
+                        }
+                        else -> {
+                            if (b.playlistsContainingArtist.isEmpty()) {
+                                item(key = "no_playlists") {
+                                    Text(
+                                        text = "No playlists in your library include this artist yet.",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.padding(vertical = 12.dp),
+                                    )
+                                }
+                            } else {
+                                items(b.playlistsContainingArtist, key = { it.id }) { playlist ->
+                                    Row(
+                                        Modifier
+                                            .fillMaxWidth()
+                                            .combinedClickable(
+                                                onClick = {
+                                                    playlist.videos.firstOrNull()?.let { first ->
+                                                        viewModel.play(first, playlist.videos)
+                                                    }
+                                                },
+                                            )
+                                            .padding(vertical = 8.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        Column(Modifier.weight(1f)) {
+                                            Text(
+                                                playlist.title,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                            )
+                                            Text(
+                                                "${playlist.videos.size} tracks",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            )
+                                        }
+                                    }
+                                    HorizontalDivider()
+                                }
                             }
                         }
                     }

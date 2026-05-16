@@ -19,6 +19,8 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -1436,6 +1438,7 @@ fun SettingsScreen(
     onInvidiousSyncPlaylist: (String) -> Unit,
     onInvidiousPushPlaylist: (String, String?) -> Unit,
     onInvidiousSignOut: () -> Unit,
+    onFetchInvidiousPlaylists: () -> Unit = {},
     invidiousPlaylists: List<Pair<String, String>>,
     onGoogleDriveBackup: (String) -> Unit,
     onValidateLastFm: () -> Unit,
@@ -1491,7 +1494,8 @@ fun SettingsScreen(
             onInvidiousSyncPlaylist = onInvidiousSyncPlaylist,
             onInvidiousPushPlaylist = onInvidiousPushPlaylist,
             onInvidiousSignOut = onInvidiousSignOut,
-            invidiousPlaylists = invidiousPlaylists
+            onRefreshInvidiousPlaylists = onFetchInvidiousPlaylists,
+            invidiousPlaylists = invidiousPlaylists,
         )
 
         SettingsPage.Sync -> SettingsSync(
@@ -1846,18 +1850,33 @@ private fun SettingsPlayback(
                         onCheckedChange = onSetSleepAfterCurrent,
                     )
                     ThinDivider()
-                    ListItem(
-                        headlineContent = { Text("Sleep timer", fontWeight = FontWeight.Medium) },
-                        supportingContent = { Text("Set or clear sleep timer") },
-                        leadingContent = { LeadingIconBox(Icons.Default.Tune) },
-                        trailingContent = {
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Button(onClick = { onSetSleepTimer(15) }) { Text("15m") }
-                                Button(onClick = { onSetSleepTimer(null) }) { Text("Clear") }
-                            }
-                        },
-                        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                    Text(
+                        text = "Sleep timer",
+                        style = MaterialTheme.typography.labelLarge,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                     )
+                    Row(
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState())
+                                .padding(horizontal = 16.dp, vertical = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        listOf(15, 30, 45, 60).forEach { mins ->
+                            FilterChip(
+                                selected = playbackState.sleepTimerPresetMinutes == mins,
+                                onClick = { onSetSleepTimer(mins) },
+                                label = { Text("${mins}m") },
+                            )
+                        }
+                        FilterChip(
+                            selected = playbackState.sleepTimerEndEpochMs == null &&
+                                !playbackState.sleepAfterCurrent,
+                            onClick = { onSetSleepTimer(null) },
+                            label = { Text("Clear") },
+                        )
+                    }
                 }
                 Spacer(modifier = Modifier.height(24.dp))
             }
@@ -2261,8 +2280,14 @@ private fun SettingsIntegrations(
     onInvidiousSyncPlaylist: (String) -> Unit,
     onInvidiousPushPlaylist: (String, String?) -> Unit,
     onInvidiousSignOut: () -> Unit,
-    invidiousPlaylists: List<Pair<String, String>>
+    onRefreshInvidiousPlaylists: () -> Unit,
+    invidiousPlaylists: List<Pair<String, String>>,
 ) {
+    LaunchedEffect(settings.invidiousSid) {
+        if (!settings.invidiousSid.isNullOrBlank()) {
+            onRefreshInvidiousPlaylists()
+        }
+    }
     var invidiousUser by remember(settings.invidiousUsername) {
         mutableStateOf(settings.invidiousUsername.orEmpty())
     }

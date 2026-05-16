@@ -24,3 +24,5 @@ echo "==> Fireball native Android $VERSION ($BUILD_NUM)"
 APK_DIR="app/build/outputs/apk/release"
 echo "==> APK:"
 ls -la "$APK_DIR"/*.apk 2>/dev/null || true
+
+"$ROOT/scripts/package_native_release_dist.sh"
