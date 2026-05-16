@@ -6,6 +6,18 @@ struct HomeScreen: View {
     let positionSeconds: Double
     let durationSeconds: Double
     let currentLyrics: String?
+    var homeCountries: [String] = []
+    var chartCountryCode: String = "us"
+    var trendingTracks: [Track] = []
+    var trendingLoading: Bool = false
+    var onSelectChartCountry: (String) -> Void = { _ in }
+    var lbRecentTracks: [Track] = []
+    var lbTopTracks: [Track] = []
+    var lbTopRange: String = "month"
+    var lbHomeLoading: Bool = false
+    var onSelectLbTopRange: (String) -> Void = { _ in }
+    var onFollowArtist: (String, String?) -> Void = { _, _ in }
+    var onRefreshHome: () async -> Void = {}
     let onPlay: (Track, [Track]) -> Void
     let onPlayPause: () -> Void
     let onPrevious: () -> Void
@@ -17,7 +29,145 @@ struct HomeScreen: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
-                // Recently Played Carousel
+                if !homeCountries.isEmpty {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Top Charts")
+                            .font(.title3)
+                            .fontWeight(.semibold)
+                            .padding(.horizontal)
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 8) {
+                                ForEach(homeCountries, id: \.self) { code in
+                                    let name = HomeCountries.all.first(where: {
+                                        $0.code.caseInsensitiveCompare(code) == .orderedSame
+                                    })?.name ?? code
+                                    let selected = code.caseInsensitiveCompare(chartCountryCode) == .orderedSame
+                                    Button {
+                                        onSelectChartCountry(code)
+                                    } label: {
+                                        Text(name)
+                                            .font(.caption)
+                                            .padding(.horizontal, 12)
+                                            .padding(.vertical, 6)
+                                            .background(
+                                                selected
+                                                    ? dominantColors.primary.opacity(0.35)
+                                                    : dominantColors.secondary.opacity(0.5),
+                                                in: Capsule()
+                                            )
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
+                            .padding(.horizontal)
+                        }
+                    }
+                }
+
+                if trendingLoading && trendingTracks.isEmpty {
+                    ProgressView()
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                } else if !trendingTracks.isEmpty {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Trending")
+                            .font(.title2)
+                            .fontWeight(.bold)
+                            .padding(.horizontal)
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 16) {
+                                ForEach(Array(trendingTracks.enumerated()), id: \.element.effectiveId) { index, track in
+                                    SuvFadeSlideIn.staggered(index: index) {
+                                    Button {
+                                        onPlay(track, trendingTracks)
+                                    } label: {
+                                        VStack(alignment: .leading) {
+                                            AsyncImage(url: URL(string: track.artwork ?? "")) { phase in
+                                                if let image = phase.image {
+                                                    image.resizable().aspectRatio(contentMode: .fill)
+                                                } else {
+                                                    Rectangle().fill(dominantColors.secondary)
+                                                }
+                                            }
+                                            .frame(width: 140, height: 140)
+                                            .clipShape(RoundedRectangle(cornerRadius: 16))
+                                            Text(track.title)
+                                                .font(.headline)
+                                                .foregroundColor(dominantColors.onBackground)
+                                                .lineLimit(1)
+                                            Text(track.artist)
+                                                .font(.caption)
+                                                .foregroundColor(dominantColors.onBackground.opacity(0.7))
+                                                .lineLimit(1)
+                                        }
+                                        .frame(width: 140)
+                                    }
+                                    }
+                                }
+                            }
+                            .padding(.horizontal)
+                        }
+                    }
+                }
+
+                if !lbRecentTracks.isEmpty {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("ListenBrainz — Recent")
+                            .font(.title2)
+                            .fontWeight(.bold)
+                            .padding(.horizontal)
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 16) {
+                                ForEach(lbRecentTracks, id: \.effectiveId) { track in
+                                    HomeTrackCard(track: track, onPlay: { onPlay(track, lbRecentTracks) }, onFollowArtist: { onFollowArtist(track.artist, track.artwork) })
+                                }
+                            }
+                            .padding(.horizontal)
+                        }
+                    }
+                }
+
+                if !lbTopTracks.isEmpty || lbHomeLoading {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("ListenBrainz — Top")
+                            .font(.title2)
+                            .fontWeight(.bold)
+                            .padding(.horizontal)
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 8) {
+                                ForEach(["week", "month", "year", "all_time"], id: \.self) { range in
+                                    let label = range == "all_time" ? "All time" : range.capitalized
+                                    Button(label) {
+                                        onSelectLbTopRange(range)
+                                    }
+                                    .font(.caption)
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 6)
+                                    .background(
+                                        lbTopRange == range
+                                            ? dominantColors.primary.opacity(0.35)
+                                            : dominantColors.secondary.opacity(0.5),
+                                        in: Capsule()
+                                    )
+                                }
+                            }
+                            .padding(.horizontal)
+                        }
+                        if lbHomeLoading && lbTopTracks.isEmpty {
+                            ProgressView().frame(maxWidth: .infinity).padding()
+                        } else {
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                HStack(spacing: 16) {
+                                    ForEach(lbTopTracks, id: \.effectiveId) { track in
+                                        HomeTrackCard(track: track, onPlay: { onPlay(track, lbTopTracks) }, onFollowArtist: { onFollowArtist(track.artist, track.artwork) })
+                                    }
+                                }
+                                .padding(.horizontal)
+                            }
+                        }
+                    }
+                }
+
                 if !library.history.isEmpty {
                     VStack(alignment: .leading, spacing: 12) {
                         Text("Recently Played")
@@ -141,7 +291,38 @@ struct HomeScreen: View {
             }
             .padding(.top)
         }
+        .refreshable { await onRefreshHome() }
         .background(dominantColors.primary.ignoresSafeArea())
+    }
+}
+
+private struct HomeTrackCard: View {
+    let track: Track
+    let onPlay: () -> Void
+    let onFollowArtist: () -> Void
+    @Environment(\.dominantColors) var dominantColors
+
+    var body: some View {
+        Button(action: onPlay) {
+            VStack(alignment: .leading) {
+                AsyncImage(url: URL(string: track.artwork ?? "")) { phase in
+                    if let image = phase.image {
+                        image.resizable().aspectRatio(contentMode: .fill)
+                    } else {
+                        Rectangle().fill(dominantColors.secondary)
+                    }
+                }
+                .frame(width: 140, height: 140)
+                .clipShape(RoundedRectangle(cornerRadius: 16))
+                Text(track.title).font(.headline).foregroundColor(dominantColors.onBackground).lineLimit(1)
+                Button(track.artist, action: onFollowArtist)
+                    .font(.caption)
+                    .foregroundColor(dominantColors.onBackground.opacity(0.7))
+                    .lineLimit(1)
+            }
+            .frame(width: 140)
+        }
+        .buttonStyle(.plain)
     }
 }
 
@@ -221,6 +402,7 @@ struct LibraryScreen: View {
     let isFavorite: (Track) -> Bool
     let onPlay: (Track, [Track]) -> Void
     let onFavorite: (Track) -> Void
+    var onUnfollowArtist: (String) -> Void = { _ in }
 
     var body: some View {
         Group {
@@ -243,6 +425,45 @@ struct LibraryScreen: View {
                                     .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12))
                                 }
                                 .disabled(pl.videos.isEmpty)
+                                .padding(.horizontal)
+                            }
+                        }
+                    }
+                    if !library.history.isEmpty {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("History").font(.headline).padding(.horizontal)
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                HStack(spacing: 12) {
+                                    ForEach(library.history.prefix(20), id: \.effectiveId) { track in
+                                        Button {
+                                            onPlay(track, library.history)
+                                        } label: {
+                                            VStack(alignment: .leading, spacing: 4) {
+                                                Text(track.title).lineLimit(1)
+                                                Text(track.artist).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                                            }
+                                            .frame(width: 140, alignment: .leading)
+                                            .padding(10)
+                                            .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12))
+                                        }
+                                    }
+                                }
+                                .padding(.horizontal)
+                            }
+                        }
+                    }
+                    if !library.artists.isEmpty {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Followed artists").font(.headline).padding(.horizontal)
+                            ForEach(library.artists, id: \.artistId) { artist in
+                                HStack {
+                                    Text(artist.name).lineLimit(1)
+                                    Spacer()
+                                    Button("Unfollow") { onUnfollowArtist(artist.artistId) }
+                                        .font(.caption)
+                                }
+                                .padding(10)
+                                .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12))
                                 .padding(.horizontal)
                             }
                         }
@@ -328,6 +549,18 @@ struct LibraryScreen: View {
                             }
                         }
                     }
+                    if !library.artists.isEmpty {
+                        Section("Followed artists") {
+                            ForEach(library.artists, id: \.artistId) { artist in
+                                HStack {
+                                    Text(artist.name)
+                                    Spacer()
+                                    Button("Unfollow") { onUnfollowArtist(artist.artistId) }
+                                        .font(.caption)
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -382,10 +615,25 @@ struct SettingsScreen: View {
                     get: { settings.highQuality },
                     set: { value in onUpdateSettings { $0.highQuality = value } }
                 ))
-                Toggle("Enable Stream Cache", isOn: .init(
+                Toggle("Cache search results", isOn: .init(
                     get: { settings.cacheEnabled },
                     set: { value in onUpdateSettings { $0.cacheEnabled = value } }
                 ))
+                TextField("Search cache max entries (0 = auto)", text: .init(
+                    get: { settings.searchCacheMaxEntries > 0 ? "\(settings.searchCacheMaxEntries)" : "" },
+                    set: { value in
+                        let n = Int(value) ?? 0
+                        onUpdateSettings { $0.searchCacheMaxEntries = n }
+                    }
+                ))
+                .keyboardType(.numberPad)
+                Toggle("Cache streams on disk", isOn: .init(
+                    get: { settings.streamCacheEnabled },
+                    set: { value in onUpdateSettings { $0.streamCacheEnabled = value } }
+                ))
+                Text("Caches HTTP streams under the app cache directory (size follows GB limit below).")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                 Picker("Queue mode at end", selection: .init(
                     get: { settings.queueMode },
                     set: { value in onUpdateSettings { $0.queueMode = value } }
@@ -394,10 +642,11 @@ struct SettingsScreen: View {
                     Text("Repeat queue").tag("repeat")
                     Text("AI append").tag("ai")
                 }
-                TextField("Local cache limit (GB)", text: .init(
+                TextField("Stream disk cache size GB", text: .init(
                     get: { "\(settings.localMusicCacheLimit)" },
                     set: { value in if let parsed = Int(value) { onUpdateSettings { $0.localMusicCacheLimit = parsed } } }
                 ))
+                .keyboardType(.numberPad)
             }
             Section("General") {
                 Toggle("Offline Mode", isOn: .init(
@@ -424,6 +673,23 @@ struct SettingsScreen: View {
                     get: { settings.speakSongDetailsEnabled },
                     set: { value in onUpdateSettings { $0.speakSongDetailsEnabled = value } }
                 ))
+                Toggle("Collapse iPad sidebar", isOn: .init(
+                    get: { settings.ipadSidebarCollapsed },
+                    set: { value in onUpdateSettings { $0.ipadSidebarCollapsed = value } }
+                ))
+                Text("Home chart regions")
+                    .font(.headline)
+                ForEach(HomeCountries.all, id: \.code) { entry in
+                    let selected = settings.homeCountries.contains(entry.code)
+                    Toggle(entry.name, isOn: .init(
+                        get: { selected },
+                        set: { on in
+                            var codes = Set(settings.homeCountries)
+                            if on { codes.insert(entry.code) } else { codes.remove(entry.code) }
+                            onUpdateSettings { $0.homeCountries = Array(codes).sorted() }
+                        }
+                    ))
+                }
             }
             Section("Appearance") {
                 Picker("Theme mode", selection: .init(
@@ -447,6 +713,22 @@ struct SettingsScreen: View {
                 Toggle("Use Dynamic Color", isOn: .init(
                     get: { settings.useDynamicColorWhenAvailable },
                     set: { value in onUpdateSettings { $0.useDynamicColorWhenAvailable = value } }
+                ))
+                TextField("Accent seed (ARGB hex)", text: .init(
+                    get: {
+                        guard let seed = settings.accentSeedColor else { return "" }
+                        return String(format: "%08X", UInt32(bitPattern: seed))
+                    },
+                    set: { raw in
+                        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+                            .replacingOccurrences(of: "0x", with: "")
+                            .replacingOccurrences(of: "#", with: "")
+                        if trimmed.isEmpty {
+                            onUpdateSettings { $0.accentSeedColor = nil }
+                        } else if let value = UInt32(trimmed, radix: 16) {
+                            onUpdateSettings { $0.accentSeedColor = Int32(bitPattern: value) }
+                        }
+                    }
                 ))
                 Toggle("Auto-scroll lyrics", isOn: .init(
                     get: { settings.lyricsAutoScroll },
@@ -521,6 +803,18 @@ struct SettingsScreen: View {
                     get: { settings.invidiousAutoPush },
                     set: { value in onUpdateSettings { $0.invidiousAutoPush = value } }
                 ))
+                TextField("Invidious favorites playlist ID", text: .init(
+                    get: { settings.invidiousPlaylistMappings["favorites"] ?? "" },
+                    set: { value in
+                        onUpdateSettings { s in
+                            var map = s.invidiousPlaylistMappings
+                            let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+                            if trimmed.isEmpty { map.removeValue(forKey: "favorites") }
+                            else { map["favorites"] = trimmed }
+                            s.invidiousPlaylistMappings = map
+                        }
+                    }
+                ))
                 TextField("Invidious playlist mappings (localId:remoteId,csv)", text: .init(
                     get: { settings.invidiousPlaylistMappings.map { "\($0.key):\($0.value)" }.sorted().joined(separator: ",") },
                     set: { value in
@@ -567,6 +861,42 @@ struct SettingsScreen: View {
                     get: { settings.listenBrainzUsername },
                     set: { value in onUpdateSettings { $0.listenBrainzUsername = value } }
                 ))
+                Toggle("Enable scrobbling", isOn: .init(
+                    get: { settings.scrobbleEnabled },
+                    set: { value in onUpdateSettings { $0.scrobbleEnabled = value } }
+                ))
+                Text(
+                    "Scrobble when either threshold is reached first. Tracks shorter than \(settings.listenBrainzScrobbleMinTrackSeconds)s are skipped."
+                )
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                Text("At \(settings.listenBrainzScrobblePercent)% of track")
+                Slider(
+                    value: Binding(
+                        get: { Double(min(95, max(5, settings.listenBrainzScrobblePercent))) },
+                        set: { v in onUpdateSettings { $0.listenBrainzScrobblePercent = Int(v.rounded()) } }
+                    ),
+                    in: 5...95,
+                    step: 1
+                )
+                Text("Or after \(settings.listenBrainzScrobbleMaxSeconds)s")
+                Slider(
+                    value: Binding(
+                        get: { Double(min(240, max(10, settings.listenBrainzScrobbleMaxSeconds))) },
+                        set: { v in onUpdateSettings { $0.listenBrainzScrobbleMaxSeconds = Int(v.rounded()) } }
+                    ),
+                    in: 10...240,
+                    step: 1
+                )
+                Text("Minimum track length: \(settings.listenBrainzScrobbleMinTrackSeconds)s")
+                Slider(
+                    value: Binding(
+                        get: { Double(min(120, max(15, settings.listenBrainzScrobbleMinTrackSeconds))) },
+                        set: { v in onUpdateSettings { $0.listenBrainzScrobbleMinTrackSeconds = Int(v.rounded()) } }
+                    ),
+                    in: 15...120,
+                    step: 1
+                )
                 Toggle("Analytics events", isOn: .init(
                     get: { settings.analytics },
                     set: { value in onUpdateSettings { $0.analytics = value } }
@@ -591,24 +921,6 @@ struct SettingsScreen: View {
                 if !settings.lastFmSessionKey.isEmpty {
                     Text("Last.fm session active").font(.caption).foregroundStyle(.secondary)
                 }
-                TextField("Scrobble at % of track", text: .init(
-                    get: { "\(settings.listenBrainzScrobblePercent)" },
-                    set: { value in
-                        if let n = Int(value), (1...100).contains(n) {
-                            onUpdateSettings { $0.listenBrainzScrobblePercent = n }
-                        }
-                    }
-                ))
-                .keyboardType(.numberPad)
-                TextField("Scrobble max seconds", text: .init(
-                    get: { "\(settings.listenBrainzScrobbleMaxSeconds)" },
-                    set: { value in
-                        if let n = Int(value), n > 0 {
-                            onUpdateSettings { $0.listenBrainzScrobbleMaxSeconds = n }
-                        }
-                    }
-                ))
-                .keyboardType(.numberPad)
                 Toggle("Enable AI queue", isOn: .init(
                     get: { settings.ollamaEnabled },
                     set: { value in onUpdateSettings { $0.ollamaEnabled = value } }
@@ -675,10 +987,13 @@ struct SettingsScreen: View {
                 Button("WebDAV Push", action: onWebDavPush)
             }
             Section("Remote, Notifications, LBDL") {
-                Toggle("Remote server enabled", isOn: .init(
+                Toggle("Remote control (client)", isOn: .init(
                     get: { settings.remoteServerEnabled },
                     set: { value in onUpdateSettings { $0.remoteServerEnabled = value } }
                 ))
+                Text("Sends commands to another Fireball device on the LAN. iOS does not host an inbound server (unlike Flutter desktop).")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                 TextField("Remote host", text: .init(
                     get: { settings.remoteHostIp },
                     set: { value in onUpdateSettings { $0.remoteHostIp = value } }

@@ -1,17 +1,55 @@
 package com.fireball.nativeapp.core.data.integrations
 
+import com.fireball.nativeapp.core.data.ListenBrainzFeedParser
+import com.fireball.nativeapp.core.model.Track
 import io.ktor.client.HttpClient
+import io.ktor.client.request.get
 import io.ktor.client.request.header
+import io.ktor.client.request.parameter
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.client.request.url
+import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
 import io.ktor.http.contentType
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import java.net.URLEncoder
 
 class ListenBrainzClient(private val httpClient: HttpClient) {
+    suspend fun recentListens(username: String, token: String, count: Int = 8): List<Track> {
+        if (username.isBlank() || token.isBlank()) return emptyList()
+        val user = URLEncoder.encode(username, Charsets.UTF_8.name())
+        return runCatching {
+            val body = httpClient.get("https://api.listenbrainz.org/1/user/$user/listens") {
+                parameter("count", count)
+                header("Authorization", "Token $token")
+            }.bodyAsText()
+            ListenBrainzFeedParser.parseRecentListens(body)
+        }.getOrDefault(emptyList())
+    }
+
+    suspend fun topRecordings(
+        username: String,
+        token: String,
+        range: String = "month",
+        count: Int = 10,
+    ): List<Track> {
+        if (username.isBlank() || token.isBlank()) return emptyList()
+        val user = URLEncoder.encode(username, Charsets.UTF_8.name())
+        return runCatching {
+            val body = httpClient.get(
+                "https://api.listenbrainz.org/1/stats/user/$user/recordings",
+            ) {
+                parameter("count", count)
+                parameter("range", range)
+                header("Authorization", "Token $token")
+            }.bodyAsText()
+            ListenBrainzFeedParser.parseTopRecordings(body)
+        }.getOrDefault(emptyList())
+    }
+
     suspend fun submitPlayingNow(token: String, title: String, artist: String) {
         submit(
             token = token,

@@ -1,10 +1,12 @@
 package com.fireball.nativeapp.player
 
 import android.app.PendingIntent
+import android.content.Context
 import android.content.Intent
 import android.util.Log
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
+import androidx.media3.common.util.UnstableApi
 import androidx.media3.common.util.Util
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
@@ -27,6 +29,7 @@ import androidx.media3.datasource.cache.CacheDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 
+@UnstableApi
 class NativePlaybackService : MediaSessionService() {
     private var mediaSession: MediaSession? = null
     private var player: ExoPlayer? = null
@@ -36,14 +39,61 @@ class NativePlaybackService : MediaSessionService() {
     override fun onCreate() {
         super.onCreate()
         setMediaNotificationProvider(DefaultMediaNotificationProvider.Builder(this).build())
+        buildPlayerAndSession()
+    }
 
+    override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? = mediaSession
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action == ACTION_RECONFIGURE_CACHE) {
+            reconfigureStreamCache()
+        }
+        return super.onStartCommand(intent, flags, startId)
+    }
+
+    private fun reconfigureStreamCache() {
+        val oldPlayer = player ?: return
+        val items = buildList {
+            for (i in 0 until oldPlayer.mediaItemCount) {
+                add(oldPlayer.getMediaItemAt(i))
+            }
+        }
+        val index = oldPlayer.currentMediaItemIndex.coerceAtLeast(0)
+        val positionMs = oldPlayer.currentPosition.coerceAtLeast(0L)
+        val playWhenReady = oldPlayer.playWhenReady
+
+        mediaSession?.let { session ->
+            removeSession(session)
+            session.release()
+        }
+        oldPlayer.release()
+        simpleCache?.release()
+        simpleCache = null
+        databaseProvider?.close()
+        databaseProvider = null
+        mediaSession = null
+        player = null
+
+        buildPlayerAndSession()
+
+        val newPlayer = player ?: return
+        if (items.isNotEmpty()) {
+            val safeIndex = index.coerceIn(0, items.lastIndex)
+            newPlayer.setMediaItems(items, safeIndex, positionMs)
+            newPlayer.prepare()
+            newPlayer.playWhenReady = playWhenReady
+        }
+        reconfigureListener?.invoke()
+    }
+
+    private fun buildPlayerAndSession() {
         PlaybackPreferences.load(this)
 
         val httpDataSourceFactory = DefaultHttpDataSource.Factory()
             .setUserAgent(STREAM_USER_AGENT)
             .setAllowCrossProtocolRedirects(true)
 
-        val playbackDataSourceFactory: DataSource.Factory = if (PlaybackPreferences.cacheEnabled) {
+        val playbackDataSourceFactory: DataSource.Factory = if (PlaybackPreferences.streamCacheEnabled) {
             val mediaCacheDir = java.io.File(cacheDir, "media_cache")
             val evictor = LeastRecentlyUsedCacheEvictor(PlaybackPreferences.cacheLimitBytes)
             val dbProvider = StandaloneDatabaseProvider(this)
@@ -63,22 +113,27 @@ class NativePlaybackService : MediaSessionService() {
 
         player = ExoPlayer.Builder(this)
             .setMediaSourceFactory(mediaSourceFactory)
+            .setWakeMode(C.WAKE_MODE_LOCAL)
             .build().apply {
-            setAudioAttributes(
-                AudioAttributes.Builder()
-                    .setUsage(C.USAGE_MEDIA)
-                    .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
-                    .build(),
-                true
-            )
-            setHandleAudioBecomingNoisy(true)
-            repeatMode = Player.REPEAT_MODE_OFF
-            addListener(object : Player.Listener {
-                override fun onPlayerError(error: PlaybackException) {
-                    Log.e(TAG, "ExoPlayer error: ${error.errorCodeName} cause=${error.cause?.message}", error)
-                }
-            })
-        }
+                setAudioAttributes(
+                    AudioAttributes.Builder()
+                        .setUsage(C.USAGE_MEDIA)
+                        .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
+                        .build(),
+                    true,
+                )
+                setHandleAudioBecomingNoisy(true)
+                repeatMode = Player.REPEAT_MODE_OFF
+                addListener(object : Player.Listener {
+                    override fun onPlayerError(error: PlaybackException) {
+                        Log.e(TAG, "ExoPlayer error: ${error.errorCodeName} cause=${error.cause?.message}", error)
+                    }
+
+                    override fun onIsPlayingChanged(isPlaying: Boolean) {
+                        PlaybackEngineBridge.onIsPlayingChanged?.invoke(isPlaying)
+                    }
+                })
+            }
         mediaSession = MediaSession.Builder(this, player!!)
             .setSessionActivity(sessionActivityIntent())
             .setCallback(
@@ -102,14 +157,11 @@ class NativePlaybackService : MediaSessionService() {
                         }
                         return super.onPlayerCommandRequest(session, controller, playerCommand)
                     }
-                }
+                },
             )
             .build()
-        // Required so MediaController can bind to this session; without it playback commands may not reach ExoPlayer.
         addSession(mediaSession!!)
     }
-
-    override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? = mediaSession
 
     override fun onDestroy() {
         mediaSession?.let { session ->
@@ -138,6 +190,17 @@ class NativePlaybackService : MediaSessionService() {
 
     companion object {
         private const val TAG = "FireballPlayback"
+        const val ACTION_RECONFIGURE_CACHE = "com.fireball.nativeapp.action.RECONFIGURE_CACHE"
+
+        @Volatile
+        var reconfigureListener: (() -> Unit)? = null
+
+        fun requestReconfigureStreamCache(context: Context) {
+            val intent = Intent(context, NativePlaybackService::class.java).apply {
+                action = ACTION_RECONFIGURE_CACHE
+            }
+            context.startService(intent)
+        }
 
         /** Match OkHttp UA in [com.fireball.nativeapp.MainActivity] for CDN / Invidious proxy compatibility. */
         const val STREAM_USER_AGENT =

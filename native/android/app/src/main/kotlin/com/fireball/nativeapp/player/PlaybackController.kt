@@ -68,6 +68,7 @@ class PlaybackController(private val context: Context) {
 
     private data class PendingPlay(val items: List<MediaItem>, val startIndex: Int)
     private val pendingPlay = AtomicReference<PendingPlay?>(null)
+    private var pendingToggleOnConnect = false
 
     private fun ensurePlaybackServiceStarted() {
         val intent = Intent(context, NativePlaybackService::class.java)
@@ -93,6 +94,7 @@ class PlaybackController(private val context: Context) {
                 onConnected?.invoke()
             } catch (t: Throwable) {
                 controller = null
+                pendingToggleOnConnect = false
                 scope.launch {
                     onConnectFailed?.invoke(
                         t.message ?: "Could not connect to the playback service"
@@ -135,6 +137,22 @@ class PlaybackController(private val context: Context) {
         }
     }
 
+    /** Appends items to the Exo timeline without restarting the current track. */
+    fun appendMediaItems(items: List<MediaItem>) {
+        if (items.isEmpty()) return
+        val c = controller ?: run {
+            val last = pendingPlay.get()
+            if (last != null) {
+                pendingPlay.set(
+                    PendingPlay(last.items + items, last.startIndex)
+                )
+            }
+            return
+        }
+        c.addMediaItems(items)
+        pushControllerState(c)
+    }
+
     private fun applyPlayQueue(items: List<MediaItem>, startIndex: Int, startPositionMs: Long, autoPlay: Boolean) {
         val c = controller ?: run {
             pendingPlay.set(PendingPlay(items, startIndex.coerceIn(0, items.lastIndex)))
@@ -163,13 +181,27 @@ class PlaybackController(private val context: Context) {
     }
 
     fun togglePlayPause(): Boolean {
-        val c = controller ?: run {
-            connect()
+        val c = controller
+        if (c == null) {
+            if (!pendingToggleOnConnect) {
+                pendingToggleOnConnect = true
+                connect {
+                    pendingToggleOnConnect = false
+                    togglePlayPause()
+                }
+            }
             return false
         }
         if (c.isPlaying) c.pause() else c.play()
         pushControllerState(c)
         return true
+    }
+
+    fun pause() {
+        controller?.let { c ->
+            c.pause()
+            pushControllerState(c)
+        }
     }
 
     fun next() {

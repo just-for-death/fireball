@@ -1,4 +1,15 @@
 import SwiftUI
+import UIKit
+
+private extension UIColor {
+    convenience init(argb: UInt32) {
+        let a = CGFloat((argb >> 24) & 0xFF) / 255
+        let r = CGFloat((argb >> 16) & 0xFF) / 255
+        let g = CGFloat((argb >> 8) & 0xFF) / 255
+        let b = CGFloat(argb & 0xFF) / 255
+        self.init(red: r, green: g, blue: b, alpha: a)
+    }
+}
 
 /// Static palettes aligned with Android [flexSchemeToAppTheme].
 enum FlexTheme {
@@ -16,6 +27,18 @@ enum FlexTheme {
         default:
             return isDark ? defaultDark : defaultLight
         }
+    }
+
+    static func withAccentSeed(_ base: DominantColors, seedArgb: Int) -> DominantColors {
+        let uiColor = UIColor(argb: UInt32(bitPattern: seedArgb))
+        let accent = Color(uiColor)
+        return DominantColors(
+            primary: base.primary,
+            secondary: base.secondary,
+            tertiary: base.tertiary,
+            accent: accent,
+            onBackground: base.onBackground
+        )
     }
 
     static func isDark(themeMode: String, systemDark: Bool) -> Bool {

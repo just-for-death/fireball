@@ -54,6 +54,28 @@ final class ListenBrainzClient {
     private let session: URLSession
     init(session: URLSession = .shared) { self.session = session }
 
+    func recentListens(username: String, token: String, count: Int = 8) async -> [Track] {
+        guard !username.isEmpty, !token.isEmpty,
+              let enc = username.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed),
+              let url = URL(string: "https://api.listenbrainz.org/1/user/\(enc)/listens?count=\(count)")
+        else { return [] }
+        var request = URLRequest(url: url)
+        request.setValue("Token \(token)", forHTTPHeaderField: "Authorization")
+        guard let (data, _) = try? await session.data(for: request) else { return [] }
+        return ListenBrainzFeedParser.parseRecentListens(data)
+    }
+
+    func topRecordings(username: String, token: String, range: String = "month", count: Int = 10) async -> [Track] {
+        guard !username.isEmpty, !token.isEmpty,
+              let enc = username.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed),
+              let url = URL(string: "https://api.listenbrainz.org/1/stats/user/\(enc)/recordings?count=\(count)&range=\(range)")
+        else { return [] }
+        var request = URLRequest(url: url)
+        request.setValue("Token \(token)", forHTTPHeaderField: "Authorization")
+        guard let (data, _) = try? await session.data(for: request) else { return [] }
+        return ListenBrainzFeedParser.parseTopRecordings(data)
+    }
+
     func submitPlayingNow(token: String, title: String, artist: String) async {
         await submit(token: token, listenType: "playing_now", title: title, artist: artist, listenedAt: nil)
     }
@@ -96,7 +118,10 @@ final class WebDavSyncClient {
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         applyBasicAuth(to: &request, username: username, password: password)
-        guard let data = try? await session.data(for: request).0 else { return nil }
+        guard let (data, response) = try? await session.data(for: request),
+              let http = response as? HTTPURLResponse,
+              (200...299).contains(http.statusCode)
+        else { return nil }
         return String(data: data, encoding: .utf8)
     }
 
@@ -107,7 +132,10 @@ final class WebDavSyncClient {
         request.httpBody = json.data(using: .utf8)
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         applyBasicAuth(to: &request, username: username, password: password)
-        return (try? await session.data(for: request)) != nil
+        guard let (_, response) = try? await session.data(for: request),
+              let http = response as? HTTPURLResponse
+        else { return false }
+        return (200...299).contains(http.statusCode)
     }
 
     private func normalizedPath(baseURL: String) -> String {

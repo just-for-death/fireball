@@ -182,15 +182,19 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-        registerReceiver(bluetoothReceiver, IntentFilter(BluetoothA2dp.ACTION_CONNECTION_STATE_CHANGED))
+        val filter = IntentFilter(BluetoothA2dp.ACTION_CONNECTION_STATE_CHANGED)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(bluetoothReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            @Suppress("DEPRECATION")
+            registerReceiver(bluetoothReceiver, filter)
+        }
     }
 
+    private var ttsInitRetried = false
+
     private fun setupSongAnnounceTts(viewModel: MainViewModel) {
-        textToSpeech = TextToSpeech(this) { status ->
-            if (status == TextToSpeech.SUCCESS) {
-                textToSpeech?.language = Locale.getDefault()
-            }
-        }
+        initTextToSpeech(preferGoogleEngine = true)
 
         ttsCollectorJob?.cancel()
         ttsCollectorJob = lifecycleScope.launch {
@@ -209,14 +213,36 @@ class MainActivity : ComponentActivity() {
                 if (track.effectiveId == lastSpokenId) return@collectLatest
                 lastSpokenId = track.effectiveId
 
+                val tts = textToSpeech ?: return@collectLatest
                 val toSpeak = "${track.title} by ${track.artist}"
-                textToSpeech?.speak(
+                tts.speak(
                     toSpeak,
                     TextToSpeech.QUEUE_FLUSH,
                     null,
                     "track_${track.effectiveId}"
                 )
             }
+        }
+    }
+
+    private fun initTextToSpeech(preferGoogleEngine: Boolean) {
+        textToSpeech?.shutdown()
+        val listener: (Int) -> Unit = { status ->
+            if (status == TextToSpeech.SUCCESS) {
+                textToSpeech?.language = Locale.getDefault()
+            } else {
+                textToSpeech?.shutdown()
+                textToSpeech = null
+                if (preferGoogleEngine && !ttsInitRetried) {
+                    ttsInitRetried = true
+                    initTextToSpeech(preferGoogleEngine = false)
+                }
+            }
+        }
+        textToSpeech = if (preferGoogleEngine) {
+            TextToSpeech(this, listener, GOOGLE_TTS_ENGINE)
+        } else {
+            TextToSpeech(this, listener)
         }
     }
 
@@ -234,5 +260,9 @@ class MainActivity : ComponentActivity() {
         textToSpeech?.shutdown()
         textToSpeech = null
         super.onDestroy()
+    }
+
+    private companion object {
+        const val GOOGLE_TTS_ENGINE = "com.google.android.tts"
     }
 }

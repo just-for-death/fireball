@@ -29,11 +29,13 @@ private struct RootShellView: View {
     @EnvironmentObject private var viewModel: MainViewModel
     @State private var selectedTab: RootTab = .home
     @State private var isPlayerOpen = false
+    @State private var splitVisibility: NavigationSplitViewVisibility = .automatic
 
     var body: some View {
+        PremiumBackground {
         Group {
             if horizontalSizeClass == .regular {
-                NavigationSplitView {
+                NavigationSplitView(columnVisibility: $splitVisibility) {
                     List(RootTab.allCases, selection: $selectedTab) { tab in
                         Label(tab.rawValue.capitalized, systemImage: icon(for: tab))
                     }
@@ -86,7 +88,7 @@ private struct RootShellView: View {
             artworkUrl: viewModel.currentTrack?.artwork,
             settings: viewModel.library.settings
         )
-        .fullScreenCover(isPresented: $isPlayerOpen) {
+        .fullScreenCover(isPresented: $isPlayerOpen, onDismiss: { isPlayerOpen = false }) {
             if let track = viewModel.currentTrack {
                 NowPlayingScreen(
                     track: track,
@@ -104,6 +106,10 @@ private struct RootShellView: View {
                         let d = viewModel.durationSeconds
                         if d > 0 { viewModel.seekTo(seconds: ratio * d) }
                     },
+                    queue: viewModel.queue,
+                    currentIndex: viewModel.currentIndex,
+                    onPlayQueueIndex: viewModel.playQueueIndex,
+                    onFollowArtist: viewModel.followArtist,
                     onClose: { isPlayerOpen = false }
                 )
             }
@@ -112,6 +118,16 @@ private struct RootShellView: View {
             if let tab = RootTab(rawValue: viewModel.library.settings.startTab.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()) {
                 selectedTab = tab
             }
+            splitVisibility = viewModel.library.settings.ipadSidebarCollapsed ? .detailOnly : .doubleColumn
+        }
+        .onChange(of: viewModel.library.settings.startTab) { newValue in
+            if let tab = RootTab(rawValue: newValue.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()) {
+                selectedTab = tab
+            }
+        }
+        .onChange(of: viewModel.library.settings.ipadSidebarCollapsed) { collapsed in
+            splitVisibility = collapsed ? .detailOnly : .doubleColumn
+        }
         }
     }
 
@@ -125,6 +141,18 @@ private struct RootShellView: View {
                 positionSeconds: viewModel.positionSeconds,
                 durationSeconds: viewModel.durationSeconds,
                 currentLyrics: viewModel.currentLyrics,
+                homeCountries: HomeCountries.visibleCodes(saved: viewModel.library.settings.homeCountries),
+                chartCountryCode: viewModel.chartCountryCode,
+                trendingTracks: viewModel.trendingTracks,
+                trendingLoading: viewModel.trendingLoading,
+                onSelectChartCountry: viewModel.selectChartCountry,
+                lbRecentTracks: viewModel.lbRecentTracks,
+                lbTopTracks: viewModel.lbTopTracks,
+                lbTopRange: viewModel.lbTopRange,
+                lbHomeLoading: viewModel.lbHomeLoading,
+                onSelectLbTopRange: viewModel.selectLbTopRange,
+                onFollowArtist: viewModel.followArtist,
+                onRefreshHome: { await viewModel.refreshHome() },
                 onPlay: viewModel.play,
                 onPlayPause: viewModel.togglePlayPause,
                 onPrevious: viewModel.previous,
@@ -149,7 +177,8 @@ private struct RootShellView: View {
                 useGrid: viewModel.library.settings.libraryUseGrid,
                 isFavorite: viewModel.isFavorite,
                 onPlay: viewModel.play,
-                onFavorite: viewModel.toggleFavorite
+                onFavorite: viewModel.toggleFavorite,
+                onUnfollowArtist: viewModel.unfollowArtist
             )
         case .settings:
             SettingsScreen(

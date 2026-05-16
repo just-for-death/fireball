@@ -51,7 +51,14 @@ data class MainUiState(
     val error: String? = null,
     val currentLyrics: String? = null,
     val integrationStatus: String? = null,
-    val invidiousPlaylists: List<Pair<String, String>> = emptyList()
+    val invidiousPlaylists: List<Pair<String, String>> = emptyList(),
+    val chartCountryCode: String = "us",
+    val trendingTracks: List<Track> = emptyList(),
+    val trendingLoading: Boolean = false,
+    val lbRecentTracks: List<Track> = emptyList(),
+    val lbTopTracks: List<Track> = emptyList(),
+    val lbTopRange: String = "month",
+    val lbHomeLoading: Boolean = false,
 )
 
 class MainViewModel(
@@ -105,10 +112,15 @@ class MainViewModel(
     /** Exo timeline (subset of logical queue with resolved URLs). */
     private var exoMediaItems: List<MediaItem> = emptyList()
 
+    /** Invalidates in-flight [expandExoQueueInBackground] after a new [play]. */
+    private var playGeneration: Int = 0
+
     private val resolveSemaphore = Semaphore(4)
 
     /** Avoid duplicate history/lyrics when the same Exo media id is reported twice. */
     private var lastStartedMediaId: String? = null
+
+    private var advanceAfterTrackJob: kotlinx.coroutines.Job? = null
 
     init {
         playbackController.onPlaybackError = { msg ->
@@ -118,31 +130,51 @@ class MainViewModel(
             _uiState.update { it.copy(error = msg) }
         }
         playbackController.onPlaybackEnded = {
-            viewModelScope.launch { advanceAfterTrackFinished() }
+            val st = playbackState.value
+            if (!(st.shuffled && exoMediaItems.size > 1)) {
+                scheduleAdvanceAfterTrackFinished()
+            }
         }
         playbackController.onActiveMediaIdChanged = { mediaId ->
-            playerManager.setCurrentIndexByMediaId(mediaId)
-            if (!mediaId.isNullOrBlank() && mediaId != lastStartedMediaId) {
-                lastStartedMediaId = mediaId
-                val track = playbackState.value.currentTrack
-                if (track != null) {
-                    val settings = _uiState.value.library.settings
-                    viewModelScope.launch {
-                        refreshSponsorForTrack(track, settings)
-                        onTrackStarted(track, settings)
+            val st = playbackState.value
+            val expectedId = st.currentTrack?.effectiveId
+            val shuffleLinearSkip = st.shuffled && exoMediaItems.size > 1 &&
+                !expectedId.isNullOrBlank() && !mediaId.isNullOrBlank() && mediaId != expectedId
+            if (shuffleLinearSkip) {
+                viewModelScope.launch {
+                    val exoIdx = exoMediaItems.indexOfFirst { it.mediaId == expectedId }
+                    if (exoIdx >= 0) playbackController.seekToMediaIndex(exoIdx)
+                    scheduleAdvanceAfterTrackFinished()
+                }
+            } else {
+                playerManager.setCurrentIndexByMediaId(mediaId)
+                persistPlaybackSessionDebounced()
+                if (!mediaId.isNullOrBlank() && mediaId != lastStartedMediaId) {
+                    lastStartedMediaId = mediaId
+                    val track = playbackState.value.currentTrack
+                    if (track != null) {
+                        val settings = _uiState.value.library.settings
+                        viewModelScope.launch {
+                            refreshSponsorForTrack(track, settings)
+                            onTrackStarted(track, settings)
+                        }
                     }
                 }
             }
         }
         playbackController.connect()
+        com.fireball.nativeapp.player.NativePlaybackService.reconfigureListener = {
+            playbackController.release()
+            playbackController.connect()
+        }
         PlaybackCommandBridge.onSkipToNext = {
             viewModelScope.launch { userPressedNext() }
         }
         PlaybackCommandBridge.onSkipToPrevious = {
-            viewModelScope.launch {
-                val idx = playbackState.value.currentIndex.coerceAtLeast(0)
-                openQueueIndex((idx - 1).coerceAtLeast(0))
-            }
+            viewModelScope.launch { userPressedPrevious() }
+        }
+        com.fireball.nativeapp.player.PlaybackEngineBridge.onIsPlayingChanged = { playing ->
+            playerManager.syncFromEngine(isPlaying = playing)
         }
         viewModelScope.launch {
             var lastIndex = -1
@@ -167,9 +199,7 @@ class MainViewModel(
                 val sleepAt = playbackState.value.sleepTimerEndEpochMs
                 if (sleepAt != null && System.currentTimeMillis() >= sleepAt) {
                     playerManager.setSleepTimer(null)
-                    if (playbackState.value.isPlaying) {
-                        togglePlayPause()
-                    }
+                    pausePlaybackForSleep()
                 }
                 val state = playbackState.value
                 if (state.sleepAfterCurrent &&
@@ -177,12 +207,15 @@ class MainViewModel(
                     state.durationMs > 0 &&
                     state.positionMs >= state.durationMs - 1000
                 ) {
-                    togglePlayPause()
+                    pausePlaybackForSleep()
                     playerManager.setSleepAfterCurrent(false)
                 }
                 maybeScrobbleCurrent(state)
                 maybeAppendAiQueue(state)
                 maybeSkipSponsor(state)
+                if (state.isPlaying && state.currentIndex >= 0) {
+                    persistPlaybackSessionDebounced()
+                }
                 delay(1000)
             }
         }
@@ -204,6 +237,95 @@ class MainViewModel(
                 bootstrapRestoredPlayback()
             }
             fetchInvidiousPlaylists()
+            val chartCodes = HomeCountries.visibleCodes(lib.settings.homeCountries)
+            val initialChart = chartCodes.firstOrNull()?.lowercase() ?: "us"
+            _uiState.update { it.copy(chartCountryCode = initialChart) }
+            refreshHome()
+            checkGotifyNewReleases()
+        }
+    }
+
+    fun refreshHome() {
+        refreshHomeCharts()
+        refreshListenBrainzHome()
+    }
+
+    fun selectLbTopRange(range: String) {
+        val normalized = range.trim().lowercase()
+        if (normalized.isBlank() || normalized == _uiState.value.lbTopRange) return
+        _uiState.update { it.copy(lbTopRange = normalized) }
+        refreshListenBrainzHome(topOnly = true)
+    }
+
+    private fun refreshListenBrainzHome(topOnly: Boolean = false) {
+        viewModelScope.launch {
+            val settings = _uiState.value.library.settings
+            val lbReady = settings.listenBrainzEnabled &&
+                settings.listenBrainzUsername.isNotBlank() &&
+                settings.listenBrainzToken.isNotBlank()
+            if (!lbReady) {
+                _uiState.update { it.copy(lbRecentTracks = emptyList(), lbTopTracks = emptyList(), lbHomeLoading = false) }
+                return@launch
+            }
+            _uiState.update { it.copy(lbHomeLoading = true) }
+            val recent = if (topOnly) {
+                _uiState.value.lbRecentTracks
+            } else {
+                integrations.listenBrainzRecent(settings, count = 8)
+            }
+            val top = integrations.listenBrainzTop(settings, range = _uiState.value.lbTopRange, count = 10)
+            _uiState.update {
+                it.copy(lbRecentTracks = recent, lbTopTracks = top, lbHomeLoading = false)
+            }
+        }
+    }
+
+    fun followArtist(artistName: String, artwork: String? = null) {
+        if (artistName.isBlank()) return
+        viewModelScope.launch {
+            val artist = repository.resolveArtistForFollow(artistName, artwork)
+            val library = _uiState.value.library
+            if (library.artists.any { it.artistId == artist.artistId }) return@launch
+            persist(library.copy(artists = library.artists + artist))
+        }
+    }
+
+    fun unfollowArtist(artistId: String) {
+        if (artistId.isBlank()) return
+        val library = _uiState.value.library
+        if (library.artists.none { it.artistId == artistId }) return
+        persist(library.copy(artists = library.artists.filterNot { it.artistId == artistId }))
+    }
+
+    fun playQueueIndex(index: Int) {
+        viewModelScope.launch { openQueueIndex(index) }
+    }
+
+    fun selectChartCountry(code: String) {
+        val normalized = code.trim().lowercase()
+        if (normalized.isBlank() || normalized == _uiState.value.chartCountryCode) return
+        _uiState.update { it.copy(chartCountryCode = normalized) }
+        refreshHomeCharts(normalized)
+    }
+
+    fun refreshHomeCharts(countryCode: String? = null) {
+        val cc = countryCode?.trim()?.lowercase()
+            ?: _uiState.value.chartCountryCode
+        viewModelScope.launch {
+            _uiState.update { it.copy(trendingLoading = true) }
+            val tracks = repository.fetchTopSongs(cc, limit = 20)
+            _uiState.update { it.copy(trendingTracks = tracks, trendingLoading = false) }
+        }
+    }
+
+    private fun checkGotifyNewReleases() {
+        viewModelScope.launch {
+            val snapshot = _uiState.value.library
+            val updated = repository.checkGotifyNewReleases(snapshot) { title, message ->
+                integrations.gotify(snapshot.settings, title, message)
+            } ?: return@launch
+            repository.saveLibrary(updated)
+            _uiState.update { it.copy(library = updated) }
         }
     }
 
@@ -224,6 +346,7 @@ class MainViewModel(
             exoMediaItems = listOf(item)
             engineHandoffMutex.withLock {
                 playbackController.prepareQueue(listOf(item), 0)
+                playbackController.setRepeatMode(playbackState.value.repeatMode)
             }
             playerManager.syncFromEngine(isPlaying = false)
         }
@@ -287,6 +410,7 @@ class MainViewModel(
 
     fun play(track: Track, source: List<Track>) {
         val settings = _uiState.value.library.settings
+        val generation = ++playGeneration
         activePlayJob?.cancel()
         activePlayJob = viewModelScope.launch {
             _uiState.update { it.copy(isPlaybackLoading = true, error = null) }
@@ -334,7 +458,7 @@ class MainViewModel(
 
                 expandQueueJob?.cancel()
                 expandQueueJob = viewModelScope.launch {
-                    expandExoQueueInBackground(logicalQueue, resolvedTrack, settings)
+                    expandExoQueueInBackground(logicalQueue, resolvedTrack, settings, generation)
                 }
             } catch (e: CancellationException) {
                 throw e
@@ -392,11 +516,15 @@ class MainViewModel(
     private suspend fun expandExoQueueInBackground(
         logicalQueue: List<Track>,
         anchor: Track,
-        settings: FireballSettings
+        settings: FireballSettings,
+        generation: Int,
     ) {
+        if (generation != playGeneration) return
         if (logicalQueue.size <= 1) return
+        if (playbackState.value.shuffled) return
 
         val fullyResolved = resolveQueueTracksParallel(logicalQueue, settings)
+        if (generation != playGeneration) return
         val playable = fullyResolved.filter { !it.url.isNullOrBlank() }
         if (playable.isEmpty()) return
 
@@ -409,6 +537,7 @@ class MainViewModel(
 
         exoMediaItems = items
         engineHandoffMutex.withLock {
+            if (generation != playGeneration) return@withLock
             playbackController.setRepeatMode(playbackState.value.repeatMode)
             playbackController.setShuffle(false)
             playbackController.replaceMediaItems(items, exoStart, preservePosition = true)
@@ -449,6 +578,7 @@ class MainViewModel(
             }
 
             playerManager.setCurrentIndex(index)
+            persistPlaybackSessionDebounced()
             lastStartedMediaId = null
 
             val item = toMediaItem(track)
@@ -468,6 +598,14 @@ class MainViewModel(
             lastStartedMediaId = track.effectiveId
         } finally {
             _uiState.update { it.copy(isPlaybackLoading = false) }
+        }
+    }
+
+    private fun scheduleAdvanceAfterTrackFinished() {
+        advanceAfterTrackJob?.cancel()
+        advanceAfterTrackJob = viewModelScope.launch {
+            kotlinx.coroutines.delay(80)
+            advanceAfterTrackFinished()
         }
     }
 
@@ -501,7 +639,16 @@ class MainViewModel(
             openQueueIndex(idx + 1)
         } else if (st.repeatMode == RepeatMode.ALL) {
             openQueueIndex(0)
+        } else if (_uiState.value.library.settings.queueMode.trim().lowercase() == "repeat") {
+            openQueueIndex(0)
         }
+    }
+
+    private fun pausePlaybackForSleep() {
+        if (playbackController.isConnected) {
+            playbackController.pause()
+        }
+        playerManager.syncFromEngine(isPlaying = false)
     }
 
     fun toggleFavorite(track: Track) {
@@ -523,13 +670,31 @@ class MainViewModel(
         val updated = transform(previous)
         PlaybackPreferences.save(appContext, updated)
         persist(_uiState.value.library.copy(settings = updated))
-        if (previous.cacheEnabled != updated.cacheEnabled ||
+        if (previous.streamCacheEnabled != updated.streamCacheEnabled ||
             previous.localMusicCacheLimit != updated.localMusicCacheLimit
         ) {
-            playbackController.release()
-            appContext.stopService(Intent(appContext, NativePlaybackService::class.java))
-            playbackController.connect()
+            com.fireball.nativeapp.player.NativePlaybackService.requestReconfigureStreamCache(appContext)
         }
+        val lbChanged = previous.listenBrainzEnabled != updated.listenBrainzEnabled ||
+            previous.listenBrainzToken != updated.listenBrainzToken ||
+            previous.listenBrainzUsername != updated.listenBrainzUsername
+        if (lbChanged) {
+            refreshListenBrainzHome()
+        }
+        if (previous.homeCountries != updated.homeCountries) {
+            val visible = HomeCountries.visibleCodes(updated.homeCountries)
+            val current = _uiState.value.chartCountryCode
+            if (visible.none { it.equals(current, ignoreCase = true) }) {
+                val next = visible.firstOrNull()?.lowercase() ?: "us"
+                _uiState.update { it.copy(chartCountryCode = next) }
+                refreshHomeCharts(next)
+            }
+        }
+    }
+
+    fun signOutInvidious() {
+        updateSettings { it.copy(invidiousSid = null, invidiousUsername = null) }
+        _uiState.update { it.copy(invidiousPlaylists = emptyList()) }
     }
 
     fun validateLastFmKey(onResult: (Boolean) -> Unit) {
@@ -577,10 +742,25 @@ class MainViewModel(
             playbackController.seekTo(0L)
             return
         }
-        viewModelScope.launch {
-            val idx = playbackState.value.currentIndex.coerceAtLeast(0)
-            openQueueIndex((idx - 1).coerceAtLeast(0))
+        viewModelScope.launch { userPressedPrevious() }
+    }
+
+    private suspend fun userPressedPrevious() {
+        val st = playbackState.value
+        val idx = st.currentIndex
+        if (idx < 0) return
+        if (st.positionMs > 3_000L) {
+            playbackController.seekTo(0L)
+            return
         }
+        if (st.shuffled && st.queue.size > 1) {
+            val choices = st.queue.indices.filter { it != idx }
+            if (choices.isNotEmpty()) {
+                openQueueIndex(choices[Random.nextInt(choices.size)])
+                return
+            }
+        }
+        openQueueIndex((idx - 1).coerceAtLeast(0))
     }
 
     fun seekTo(positionMs: Long) {
@@ -598,6 +778,15 @@ class MainViewModel(
     }
     fun setSleepTimer(minutes: Int?) = playerManager.setSleepTimer(minutes)
     fun sleepAfterCurrent(enabled: Boolean) = playerManager.setSleepAfterCurrent(enabled)
+
+    private var lastPlaybackPersistAtMs: Long = 0L
+
+    private fun persistPlaybackSessionDebounced() {
+        val now = System.currentTimeMillis()
+        if (now - lastPlaybackPersistAtMs < 2_000L) return
+        lastPlaybackPersistAtMs = now
+        persist(_uiState.value.library)
+    }
 
     private fun persist(library: LibrarySnapshot) {
         val ps = playbackState.value
@@ -646,6 +835,7 @@ class MainViewModel(
     private fun maybeScrobbleCurrent(state: PlaybackState) {
         val track = state.currentTrack ?: return
         val settings = _uiState.value.library.settings
+        if (!settings.scrobbleEnabled) return
         if (settings.offlineModeEnabled || settings.privacyModeEnabled) return
         val lbEnabled = settings.listenBrainzEnabled && settings.listenBrainzToken.isNotBlank()
         val lastFmEnabled = settings.lastFmApiKey.isNotBlank() &&
@@ -653,12 +843,16 @@ class MainViewModel(
             settings.lastFmSessionKey.isNotBlank()
         if (!lbEnabled && !lastFmEnabled) return
         if (!state.isPlaying) return
-        if (state.durationMs <= 0) return
-
-        val thresholdByPercent = (state.durationMs * settings.listenBrainzScrobblePercent / 100.0).toLong()
-        val thresholdByMaxSeconds = settings.listenBrainzScrobbleMaxSeconds * 1000L
-        val thresholdMs = minOf(thresholdByPercent, thresholdByMaxSeconds).coerceAtLeast(1_000L)
-        if (state.positionMs < thresholdMs) return
+        if (!com.fireball.nativeapp.core.model.ScrobbleRules.shouldScrobble(
+                positionMs = state.positionMs,
+                durationMs = state.durationMs,
+                percent = settings.listenBrainzScrobblePercent,
+                maxSeconds = settings.listenBrainzScrobbleMaxSeconds,
+                minTrackSeconds = settings.listenBrainzScrobbleMinTrackSeconds,
+            )
+        ) {
+            return
+        }
 
         if (!scrobbledTrackIds.add(track.effectiveId)) return
         val listenedAt = System.currentTimeMillis() / 1000L
@@ -677,12 +871,13 @@ class MainViewModel(
 
     private fun maybeAppendAiQueue(state: PlaybackState) {
         val current = state.currentTrack ?: return
-        val atTail = state.currentIndex >= 0 && state.currentIndex >= state.queue.lastIndex - 1
+        val atTail = state.currentIndex >= 0 && state.currentIndex == state.queue.lastIndex
         if (!atTail) return
         val settings = _uiState.value.library.settings
         if (settings.offlineModeEnabled || settings.privacyModeEnabled) return
         if (settings.queueMode.trim().lowercase() != "ai") return
         if (!settings.ollamaEnabled) return
+        if (settings.ollamaUrl.isBlank() || settings.ollamaModel.isBlank()) return
         if (!aiQueueExpandedForTrackIds.add(current.effectiveId)) return
 
         viewModelScope.launch {
@@ -698,7 +893,24 @@ class MainViewModel(
             }
             playerManager.appendToQueue(generatedTracks)
             persistAiQueue(generatedTracks)
-            resyncEntireExoQueueFromLogicalState()
+            appendResolvedTracksToExo(generatedTracks, settings)
+        }
+    }
+
+    private suspend fun appendResolvedTracksToExo(tracks: List<Track>, settings: FireballSettings) {
+        if (tracks.isEmpty()) return
+        val resolved = resolveQueueTracksParallel(tracks, settings)
+        val playable = resolved.filter { !it.url.isNullOrBlank() }
+        if (playable.isEmpty()) {
+            if (resolved.any { it.url.isNullOrBlank() }) {
+                resyncEntireExoQueueFromLogicalState()
+            }
+            return
+        }
+        val items = playable.map { toMediaItem(it) }
+        engineHandoffMutex.withLock {
+            playbackController.appendMediaItems(items)
+            exoMediaItems = exoMediaItems + items
         }
     }
 
@@ -801,6 +1013,8 @@ class MainViewModel(
     override fun onCleared() {
         activePlayJob?.cancel()
         expandQueueJob?.cancel()
+        PlaybackCommandBridge.onSkipToNext = null
+        PlaybackCommandBridge.onSkipToPrevious = null
         playbackController.release()
         super.onCleared()
     }

@@ -45,6 +45,13 @@ final class MainViewModel: ObservableObject {
     @Published var integrationStatus: String? = nil
     @Published var error: String? = nil
     @Published var invidiousPlaylists: [(id: String, title: String)] = []
+    @Published var chartCountryCode = "us"
+    @Published var trendingTracks: [Track] = []
+    @Published var trendingLoading = false
+    @Published var lbRecentTracks: [Track] = []
+    @Published var lbTopTracks: [Track] = []
+    @Published var lbTopRange = "month"
+    @Published var lbHomeLoading = false
 
     private let repository: FireballRepository
     private let listenBrainz = ListenBrainzClient()
@@ -60,6 +67,7 @@ final class MainViewModel: ObservableObject {
     private let audioEngine = NativeAudioEngine()
     private let lyricsAi: LyricsAndAIService
     private var scrobbledTrackIds = Set<String>()
+    private var lastLibraryPersistAt = Date.distantPast
     private var aiQueueExpandedForTrackIds = Set<String>()
     private var sponsorSegmentsForVideo: [SponsorSegment] = []
     private var sponsorSegmentsVideoId: String?
@@ -70,6 +78,9 @@ final class MainViewModel: ObservableObject {
         self.repository = repository
         self.library = repository.loadLibrary()
         self.lyricsAi = LyricsAndAIService(api: FireballAPIClient())
+        audioEngine.bindSettings { [weak self] in
+            self?.library.settings ?? FireballSettings()
+        }
         audioEngine.onStateUpdate = { [weak self] currentIndex, isPlaying, position, duration in
             guard let self else { return }
             self.currentIndex = currentIndex >= 0 ? currentIndex : self.currentIndex
@@ -87,9 +98,8 @@ final class MainViewModel: ObservableObject {
                 return
             }
             if self.repeatMode == .one {
-                if let idx = self.currentIndex {
-                    self.audioEngine.playQueue(self.queue, startIndex: idx)
-                }
+                self.isPlaying = true
+                self.audioEngine.seek(to: 0)
                 return
             }
             Task { await self.advanceAfterTrackFinished() }
@@ -98,6 +108,8 @@ final class MainViewModel: ObservableObject {
             guard let self else { return }
             if interrupted {
                 self.isPlaying = false
+            } else {
+                self.isPlaying = self.audioEngine.isPlaybackActive
             }
         }
         audioEngine.onRemoteNext = { [weak self] in
@@ -121,6 +133,105 @@ final class MainViewModel: ObservableObject {
         )
         bootstrapEngineFromRestoredSession()
         Task { await sleepTimerLoop() }
+        let chartCodes = HomeCountries.visibleCodes(saved: library.settings.homeCountries)
+        chartCountryCode = chartCodes.first?.lowercased() ?? "us"
+        Task {
+            await refreshHome()
+            await checkGotifyNewReleases()
+        }
+    }
+
+    func refreshHome() async {
+        await refreshHomeCharts()
+        await refreshListenBrainzHome()
+    }
+
+    func selectLbTopRange(_ range: String) {
+        let normalized = range.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !normalized.isEmpty, normalized != lbTopRange else { return }
+        lbTopRange = normalized
+        Task { await refreshListenBrainzHome(topOnly: true) }
+    }
+
+    private func refreshListenBrainzHome(topOnly: Bool = false) async {
+        let settings = library.settings
+        let ready = settings.listenBrainzEnabled &&
+            !settings.listenBrainzUsername.isEmpty &&
+            !settings.listenBrainzToken.isEmpty
+        guard ready else {
+            lbRecentTracks = []
+            lbTopTracks = []
+            lbHomeLoading = false
+            return
+        }
+        lbHomeLoading = true
+        let recent: [Track]
+        if topOnly {
+            recent = lbRecentTracks
+        } else {
+            recent = await listenBrainz.recentListens(
+                username: settings.listenBrainzUsername,
+                token: settings.listenBrainzToken,
+                count: 8
+            )
+        }
+        let top = await listenBrainz.topRecordings(
+            username: settings.listenBrainzUsername,
+            token: settings.listenBrainzToken,
+            range: lbTopRange,
+            count: 10
+        )
+        lbRecentTracks = recent
+        lbTopTracks = top
+        lbHomeLoading = false
+    }
+
+    func followArtist(name: String, artwork: String? = nil) {
+        guard !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        Task {
+            let artist = await repository.resolveArtistForFollow(artistName: name, fallbackArtwork: artwork)
+            if library.artists.contains(where: { $0.artistId == artist.artistId }) { return }
+            library.artists.append(artist)
+            persist()
+        }
+    }
+
+    func unfollowArtist(artistId: String) {
+        guard !artistId.isEmpty else { return }
+        library.artists.removeAll { $0.artistId == artistId }
+        persist()
+    }
+
+    func playQueueIndex(_ index: Int) {
+        Task { await openQueueIndex(index) }
+    }
+
+    func selectChartCountry(_ code: String) {
+        let normalized = code.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !normalized.isEmpty, normalized != chartCountryCode else { return }
+        chartCountryCode = normalized
+        Task { await refreshHomeCharts(countryCode: normalized) }
+    }
+
+    func refreshHomeCharts(countryCode: String? = nil) async {
+        let cc = countryCode ?? chartCountryCode
+        trendingLoading = true
+        trendingTracks = await repository.fetchTopSongs(countryCode: cc, limit: 20)
+        trendingLoading = false
+    }
+
+    private func checkGotifyNewReleases() async {
+        guard let updated = await repository.checkGotifyNewReleases(snapshot: library, onNotify: { [weak self] title, message in
+            guard let self else { return false }
+            return await self.gotify.send(
+                url: self.library.settings.gotifyUrl,
+                token: self.library.settings.gotifyToken,
+                title: title,
+                message: message
+            )
+        }) else { return }
+        library = updated
+        repository.saveLibrary(updated)
     }
 
     private func bootstrapEngineFromRestoredSession() {
@@ -195,20 +306,14 @@ final class MainViewModel: ObservableObject {
             let queue = source.map { $0.effectiveId == track.effectiveId ? resolvedTrack : $0 }
             let idx = max(0, queue.firstIndex(where: { $0.effectiveId == track.effectiveId }) ?? 0)
 
-            self.queue = queue
-            currentIndex = idx
-            savePlaybackSession()
-
             let offline = settings.offlineModeEnabled
             let privacy = settings.privacyModeEnabled
 
-            if !privacy {
-                addHistory(resolvedTrack)
-            }
-
             guard let url = resolvedTrack.url, !url.isEmpty else {
+                guard !Task.isCancelled else { return }
                 error = "Could not get a stream for this track. Invidious, public mirrors, and direct YouTube (InnerTube) were tried. Set a custom Invidious instance or check your network."
                 isPlaying = false
+                audioEngine.pausePlayback()
                 if !offline {
                     currentLyrics = await lyricsAi.fetchLyrics(track: resolvedTrack, settings: settings)
                 } else {
@@ -218,6 +323,15 @@ final class MainViewModel: ObservableObject {
             }
 
             guard !Task.isCancelled else { return }
+            self.queue = queue
+            currentIndex = idx
+            savePlaybackSession()
+            isPlaying = true
+
+            if !privacy {
+                addHistory(resolvedTrack)
+            }
+
             audioEngine.playQueue(queue, startIndex: idx)
             await loadSponsorSegmentsAfterPlay(for: resolvedTrack)
 
@@ -283,6 +397,19 @@ final class MainViewModel: ObservableObject {
         persist()
         if previous.dynamicIslandEnabled && !settings.dynamicIslandEnabled {
             NowPlayingLiveActivityManager.end()
+        }
+        let lbChanged = previous.listenBrainzEnabled != settings.listenBrainzEnabled ||
+            previous.listenBrainzToken != settings.listenBrainzToken ||
+            previous.listenBrainzUsername != settings.listenBrainzUsername
+        if lbChanged {
+            Task { await refreshListenBrainzHome() }
+        }
+        if previous.homeCountries != settings.homeCountries {
+            let visible = HomeCountries.visibleCodes(saved: settings.homeCountries)
+            if !visible.contains(where: { $0.caseInsensitiveCompare(chartCountryCode) == .orderedSame }) {
+                chartCountryCode = visible.first?.lowercased() ?? "us"
+                Task { await refreshHomeCharts(countryCode: chartCountryCode) }
+            }
         }
     }
 
@@ -367,6 +494,16 @@ final class MainViewModel: ObservableObject {
 
     private func persist() {
         savePlaybackSession()
+        lastLibraryPersistAt = Date()
+        repository.saveLibrary(library)
+        scheduleWebDavLivePushIfNeeded()
+    }
+
+    private func persistPlaybackSessionDebounced() {
+        savePlaybackSession()
+        let now = Date()
+        guard now.timeIntervalSince(lastLibraryPersistAt) >= 3 else { return }
+        lastLibraryPersistAt = now
         repository.saveLibrary(library)
         scheduleWebDavLivePushIfNeeded()
     }
@@ -403,6 +540,9 @@ final class MainViewModel: ObservableObject {
             }
             await maybeScrobbleCurrent()
             await maybeAppendAIQueue()
+            if isPlaying, currentIndex != nil {
+                persistPlaybackSessionDebounced()
+            }
             try? await Task.sleep(nanoseconds: 1_000_000_000)
         }
     }
@@ -410,6 +550,7 @@ final class MainViewModel: ObservableObject {
     private func maybeScrobbleCurrent() async {
         guard let track = currentTrack else { return }
         let settings = library.settings
+        guard settings.scrobbleEnabled else { return }
         if settings.offlineModeEnabled || settings.privacyModeEnabled { return }
         let lbReady = settings.listenBrainzEnabled && !settings.listenBrainzToken.isEmpty
         let lastFmReady = !settings.lastFmApiKey.isEmpty &&
@@ -417,12 +558,13 @@ final class MainViewModel: ObservableObject {
             !settings.lastFmSessionKey.isEmpty
         guard lbReady || lastFmReady else { return }
         guard isPlaying else { return }
-        guard durationSeconds > 0 else { return }
-
-        let thresholdByPercent = durationSeconds * Double(settings.listenBrainzScrobblePercent) / 100.0
-        let thresholdByMax = Double(settings.listenBrainzScrobbleMaxSeconds)
-        let threshold = max(1, min(thresholdByPercent, thresholdByMax))
-        guard positionSeconds >= threshold else { return }
+        guard ScrobbleRules.shouldScrobble(
+            positionSeconds: positionSeconds,
+            durationSeconds: durationSeconds,
+            percent: settings.listenBrainzScrobblePercent,
+            maxSeconds: settings.listenBrainzScrobbleMaxSeconds,
+            minTrackSeconds: settings.listenBrainzScrobbleMinTrackSeconds
+        ) else { return }
         guard scrobbledTrackIds.insert(track.effectiveId).inserted else { return }
 
         let listenedAt = Int64(Date().timeIntervalSince1970)
@@ -450,11 +592,14 @@ final class MainViewModel: ObservableObject {
 
     private func maybeAppendAIQueue() async {
         guard let track = currentTrack, let idx = currentIndex else { return }
-        let atTail = idx >= queue.count - 2
+        let atTail = idx == queue.count - 1
         guard atTail else { return }
         let mode = library.settings.queueMode.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard mode == "ai" else { return }
         guard library.settings.ollamaEnabled else { return }
+        guard !library.settings.ollamaUrl.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              !library.settings.ollamaModel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        else { return }
         if library.settings.offlineModeEnabled || library.settings.privacyModeEnabled { return }
         guard aiQueueExpandedForTrackIds.insert(track.effectiveId).inserted else { return }
 
@@ -477,9 +622,6 @@ final class MainViewModel: ObservableObject {
         queue.append(contentsOf: generated)
         savePlaybackSession()
         persistAIQueue(generated)
-        if isPlaying, let idx = currentIndex {
-            audioEngine.playQueue(queue, startIndex: idx)
-        }
     }
 
     private func persistAIQueue(_ generated: [Track]) {
@@ -643,13 +785,14 @@ final class MainViewModel: ObservableObject {
         guard let u = track.url, !u.isEmpty else {
             error = "No stream URL for this track in the queue."
             isPlaying = false
+            audioEngine.pausePlayback()
             return
         }
         error = nil
-        currentIndex = index
         scrobbledTrackIds.removeAll()
+        guard audioEngine.playQueue(q, startIndex: index) else { return }
+        currentIndex = index
         isPlaying = true
-        audioEngine.playQueue(q, startIndex: index)
         savePlaybackSession()
         persist()
         let settings = library.settings
@@ -727,6 +870,18 @@ final class MainViewModel: ObservableObject {
     private func advanceAfterTrackFinished() async {
         guard let idx = currentIndex else { return }
         let mode = library.settings.queueMode.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if repeatMode == .one {
+            isPlaying = true
+            audioEngine.seek(to: 0)
+            return
+        }
+        if shuffled, queue.count > 1 {
+            let choices = queue.indices.filter { $0 != idx }
+            if let next = choices.randomElement() {
+                await openQueueIndex(next)
+                return
+            }
+        }
         if idx + 1 < queue.count {
             await openQueueIndex(idx + 1)
         } else if repeatMode == .all {
@@ -735,6 +890,7 @@ final class MainViewModel: ObservableObject {
             await openQueueIndex(0)
         } else {
             isPlaying = false
+            audioEngine.pausePlayback()
         }
     }
 
@@ -742,13 +898,15 @@ final class MainViewModel: ObservableObject {
         guard let idx = currentIndex else { return }
         if repeatMode == .one {
             isPlaying = true
-            audioEngine.playQueue(queue, startIndex: idx)
+            audioEngine.seek(to: 0)
             return
         }
         if shuffled, queue.count > 1 {
-            let r = Int.random(in: 0..<queue.count)
-            await openQueueIndex(r)
-            return
+            let choices = queue.indices.filter { $0 != idx }
+            if let next = choices.randomElement() {
+                await openQueueIndex(next)
+                return
+            }
         }
         if idx + 1 < queue.count {
             await openQueueIndex(idx + 1)
@@ -759,6 +917,17 @@ final class MainViewModel: ObservableObject {
 
     private func userPressedPrevious() async {
         guard let idx = currentIndex else { return }
+        if positionSeconds > 3 {
+            audioEngine.seek(to: 0)
+            return
+        }
+        if shuffled, queue.count > 1 {
+            let choices = queue.indices.filter { $0 != idx }
+            if let pick = choices.randomElement() {
+                await openQueueIndex(pick)
+                return
+            }
+        }
         await openQueueIndex(max(0, idx - 1))
     }
 

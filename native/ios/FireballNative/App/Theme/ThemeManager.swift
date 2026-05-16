@@ -50,7 +50,11 @@ public struct DynamicThemeViewModifier: ViewModifier {
         if settings.useDynamicColorWhenAvailable {
             themeManager.updateColors(from: artworkUrl, isDark: isDark)
         } else {
-            themeManager.colors = FlexTheme.colors(for: settings.flexScheme, isDark: isDark)
+            var colors = FlexTheme.colors(for: settings.flexScheme, isDark: isDark)
+            if let seed = settings.accentSeedColor {
+                colors = FlexTheme.withAccentSeed(colors, seedArgb: seed)
+            }
+            themeManager.colors = colors
         }
     }
 }

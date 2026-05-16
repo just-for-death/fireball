@@ -2,8 +2,10 @@ package com.fireball.nativeapp.data
 
 import com.fireball.nativeapp.core.data.FireballApiClient
 import com.fireball.nativeapp.core.data.InvidiousInstanceProvider
+import com.fireball.nativeapp.core.data.ItunesFeedParser
 import com.fireball.nativeapp.core.data.LibraryStore
 import com.fireball.nativeapp.core.data.YoutubeDirectStreamResolver
+import com.fireball.nativeapp.core.model.Artist
 import com.fireball.nativeapp.core.model.FireballSettings
 import com.fireball.nativeapp.core.model.LibrarySnapshot
 import com.fireball.nativeapp.core.model.Track
@@ -31,6 +33,83 @@ class FireballRepository(
 
     suspend fun saveLibrary(snapshot: LibrarySnapshot) = withContext(Dispatchers.IO) {
         store.save(snapshot)
+    }
+
+    suspend fun resolveArtistForFollow(artistName: String, fallbackArtwork: String? = null): Artist =
+        withContext(Dispatchers.IO) {
+            var artistId = artistName
+            var name = artistName
+            var artwork = fallbackArtwork
+            val found = runCatching { api.itunesFindArtist(artistName) }.getOrNull()
+            if (found != null) {
+                artistId = found["artistId"]?.jsonPrimitive?.content ?: artistName
+                name = found["artistName"]?.jsonPrimitive?.content ?: artistName
+                if (artwork.isNullOrBlank()) {
+                    val idNum = artistId.toIntOrNull()
+                    if (idNum != null) {
+                        val albums = api.itunesArtistAlbums(idNum, limit = 1)
+                        artwork = albums.firstOrNull()
+                            ?.get("artworkUrl100")?.jsonPrimitive?.content
+                            ?.replace("100x100", "600x600")
+                    }
+                }
+            }
+            Artist(artistId = artistId, name = name, artwork = artwork)
+        }
+
+    suspend fun fetchTopSongs(countryCode: String, limit: Int = 20): List<Track> = withContext(Dispatchers.IO) {
+        if (countryCode.isBlank()) return@withContext emptyList()
+        runCatching {
+            val feed = api.itunesTopSongs(countryCode, limit)
+            ItunesFeedParser.topChartsFromFeed(ItunesFeedParser.feedEntries(feed)).map { entry ->
+                Track(
+                    id = entry.id,
+                    title = entry.title,
+                    artist = entry.artist,
+                    artwork = entry.artwork,
+                    /** No iTunes preview — full tracks resolve via Invidious / on-device YouTube. */
+                    url = null,
+                )
+            }
+        }.getOrDefault(emptyList())
+    }
+
+    /**
+     * Notifies via [onNotify] when a followed artist has a new iTunes album (Flutter parity).
+     * Returns an updated snapshot when artist metadata changed.
+     */
+    suspend fun checkGotifyNewReleases(
+        snapshot: LibrarySnapshot,
+        onNotify: suspend (title: String, message: String) -> Boolean,
+    ): LibrarySnapshot? = withContext(Dispatchers.IO) {
+        val settings = snapshot.settings
+        if (!settings.gotifyEnabled ||
+            settings.gotifyUrl.isBlank() ||
+            settings.gotifyToken.isBlank()
+        ) {
+            return@withContext null
+        }
+
+        var artistsChanged = false
+        val updated = snapshot.artists.map { artist ->
+            val artistIdNum = artist.artistId.toIntOrNull() ?: return@map artist
+            val albums = runCatching { api.itunesArtistAlbums(artistIdNum, limit = 1) }.getOrDefault(emptyList())
+            val latest = albums.firstOrNull() ?: return@map artist
+            val releaseId = latest["collectionId"]?.jsonPrimitive?.content ?: return@map artist
+            val releaseName = latest["collectionName"]?.jsonPrimitive?.content ?: "New Release"
+            if (releaseId == artist.latestReleaseId) return@map artist
+
+            if (artist.latestReleaseId != null) {
+                onNotify(
+                    "New Release from ${artist.name}",
+                    "$releaseName is out now!",
+                )
+            }
+            artistsChanged = true
+            artist.copy(latestReleaseId = releaseId)
+        }
+
+        if (!artistsChanged) null else snapshot.copy(artists = updated)
     }
 
     suspend fun searchTracks(query: String, settings: FireballSettings): List<Track> {
@@ -280,7 +359,12 @@ class FireballRepository(
 
     private fun isItunesPreviewUrl(url: String?): Boolean {
         if (url.isNullOrBlank()) return false
-        return url.contains("apple.com") || url.contains("itunes") || url.contains("mzstatic.com")
+        val u = url.lowercase()
+        // Do not treat mzstatic artwork CDNs as "preview streams" — only block Apple audio previews.
+        return u.contains("itunes.apple.com") ||
+            u.contains("audio-ssl.itunes.apple.com") ||
+            u.contains("audio.itunes.apple.com") ||
+            (u.contains("apple.com") && (u.contains(".m4a") || u.contains("/preview")))
     }
 
     private suspend fun resolveLocalDownloadedMatches(
@@ -319,10 +403,16 @@ class FireballRepository(
         return null
     }
 
+    private fun searchCacheLimit(settings: FireballSettings): Int {
+        val explicit = settings.searchCacheMaxEntries
+        if (explicit > 0) return explicit.coerceIn(10, 500)
+        return settings.localMusicCacheLimit.coerceIn(1, 20) * 10
+    }
+
     private fun cacheSearch(key: String, tracks: List<Track>, settings: FireballSettings) {
         if (!settings.cacheEnabled || key.isBlank() || tracks.isEmpty()) return
         searchCache[key] = tracks
-        val limit = settings.localMusicCacheLimit.coerceIn(1, 20) * 10
+        val limit = searchCacheLimit(settings)
         if (searchCache.size > limit) {
             val firstKey = searchCache.keys.firstOrNull()
             if (firstKey != null) searchCache.remove(firstKey)
