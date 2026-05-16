@@ -41,13 +41,13 @@ public struct DynamicThemeViewModifier: ViewModifier {
     public func body(content: Content) -> some View {
         content
             .environment(\.dominantColors, themeManager.colors)
-            .onChange(of: artworkUrl) { _ in applyTheme() }
-            .onChange(of: colorScheme) { _ in applyTheme() }
-            .onChange(of: settings.useDynamicColorWhenAvailable) { _ in applyTheme() }
-            .onChange(of: settings.flexScheme) { _ in applyTheme() }
-            .onChange(of: settings.themeMode) { _ in applyTheme() }
-            .onChange(of: settings.appearanceColorSource) { _ in applyTheme() }
-            .onChange(of: settings.accentSeedColor) { _ in applyTheme() }
+            .onChange(of: artworkUrl) { _, _ in applyTheme() }
+            .onChange(of: colorScheme) { _, _ in applyTheme() }
+            .onChange(of: settings.useDynamicColorWhenAvailable) { _, _ in applyTheme() }
+            .onChange(of: settings.flexScheme) { _, _ in applyTheme() }
+            .onChange(of: settings.themeMode) { _, _ in applyTheme() }
+            .onChange(of: settings.appearanceColorSource) { _, _ in applyTheme() }
+            .onChange(of: settings.accentSeedColor) { _, _ in applyTheme() }
             .onAppear { applyTheme() }
     }
 

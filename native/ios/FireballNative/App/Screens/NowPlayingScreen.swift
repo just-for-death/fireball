@@ -99,7 +99,7 @@ public struct NowPlayingScreen: View {
             )
         }
         .onPreferenceChange(PlayerContainerWidthKey.self) { containerWidth = $0 }
-        .onChange(of: track.effectiveId) { _ in
+        .onChange(of: track.effectiveId) { _, _ in
             showLyricsInArtSlot = false
         }
         .dynamicTheme(artworkUrl: track.artwork, settings: settings)
@@ -575,7 +575,7 @@ private struct SyncedLyricsPanel: View {
             }
             .frame(maxHeight: panelMaxHeight)
             .padding(.horizontal, reducedMotion ? 10 : 16)
-            .onChange(of: activeIndex) { idx in
+            .onChange(of: activeIndex) { _, idx in
                 guard autoScroll, !reducedMotion, idx >= 0 else { return }
                 withAnimation(.easeInOut(duration: 0.32)) {
                     proxy.scrollTo(idx, anchor: .center)

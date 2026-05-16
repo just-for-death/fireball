@@ -17,7 +17,7 @@ let youTubeKitProducts: [Target.Dependency] = [
 let package = Package(
     name: "FireballNative",
     platforms: [
-        .iOS(.v15),
+        .iOS(.v17),
         .macOS(.v13),
     ],
     products: [
