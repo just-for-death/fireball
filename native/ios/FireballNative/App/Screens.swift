@@ -1215,6 +1215,9 @@ struct SettingsScreen: View {
                     get: { settings.alwaysShowLyricsPanel },
                     set: { value in onUpdateSettings { $0.alwaysShowLyricsPanel = value } }
                 ))
+                Text("When lyrics load, they replace album art on Now Playing. This toggle adds an extra lyrics strip below the seek bar.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                 TextField("Start tab", text: .init(
                     get: { settings.startTab },
                     set: { value in onUpdateSettings { $0.startTab = value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() } }

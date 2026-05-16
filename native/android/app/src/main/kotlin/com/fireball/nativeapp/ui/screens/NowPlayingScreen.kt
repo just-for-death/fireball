@@ -43,7 +43,7 @@ import androidx.compose.material.icons.filled.RepeatOne
 import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
-import androidx.compose.material3.AlertDialog
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -65,6 +65,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.fireball.nativeapp.core.model.Track
 import com.fireball.nativeapp.player.PlaybackState
@@ -107,9 +108,9 @@ fun NowPlayingScreen(
     appearanceChrome: String = "music",
 ) {
     var queueExpanded by remember { mutableStateOf(false) }
-    var lyricsOverlay by remember { mutableStateOf(false) }
     var trackMenuExpanded by remember { mutableStateOf(false) }
     val currentSong = playbackState.currentTrack
+    val showLyricsInArtSlot = !currentLyrics.isNullOrBlank()
     val isPlaying = playbackState.isPlaying
     val positionMs = playbackState.positionMs
     val durationMs = playbackState.durationMs
@@ -123,29 +124,6 @@ fun NowPlayingScreen(
             else -> remember(isDark) { defaultDominantColors(isDark) }
         }
     val progress = if (durationMs > 0) positionMs.toFloat() / durationMs.toFloat() else 0f
-
-    if (lyricsOverlay && !currentLyrics.isNullOrBlank()) {
-        val overlayCap = if (lyricsReducedMotion) 240.dp else 420.dp
-        AlertDialog(
-            onDismissRequest = { lyricsOverlay = false },
-            confirmButton = {
-                TextButton(onClick = { lyricsOverlay = false }) { Text("Close") }
-            },
-            title = { Text("Lyrics") },
-            text = {
-                SyncedLyricsView(
-                    lyrics = currentLyrics,
-                    positionMs = positionMs,
-                    autoScroll = lyricsAutoScroll,
-                    reducedMotion = lyricsReducedMotion,
-                    textColor = MaterialTheme.colorScheme.onSurface,
-                    accentColor = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.fillMaxWidth(),
-                    maxContentHeight = overlayCap,
-                )
-            },
-        )
-    }
 
     Box(modifier = Modifier.fillMaxSize()) {
         Box(
@@ -273,19 +251,22 @@ fun NowPlayingScreen(
                             horizontalAlignment = Alignment.CenterHorizontally,
                         ) {
                             Spacer(Modifier.height(8.dp))
-                            AlbumArt(
+                            ArtworkOrLyricsSlot(
                                 thumbnailUrl = currentSong?.artwork,
-                                contentDescription = currentSong?.title,
-                                onClick = onPlayPause,
-                                onLongClick =
-                                    currentLyrics.takeUnless { it.isNullOrBlank() }?.let {
-                                        { lyricsOverlay = true }
-                                    },
-                                modifier = Modifier
-                                    .widthIn(max = 420.dp)
-                                    .fillMaxWidth()
-                                    .aspectRatio(1f)
-                                    .clip(RoundedCornerShape(20.dp)),
+                                title = currentSong?.title,
+                                lyrics = if (showLyricsInArtSlot) currentLyrics else null,
+                                positionMs = positionMs,
+                                lyricsAutoScroll = lyricsAutoScroll,
+                                lyricsReducedMotion = lyricsReducedMotion,
+                                dominant = dominant,
+                                cornerRadius = 20.dp,
+                                lyricsMaxHeight = if (lyricsReducedMotion) 320.dp else 420.dp,
+                                onPlayPause = onPlayPause,
+                                onOpenTrackMenu = onOpenTrackMenu,
+                                modifier =
+                                    Modifier
+                                        .widthIn(max = 420.dp)
+                                        .fillMaxWidth(),
                             )
                             Spacer(Modifier.height(24.dp))
                             TrackMetadata(
@@ -376,19 +357,22 @@ fun NowPlayingScreen(
                     ) {
                         Spacer(Modifier.height(16.dp))
 
-                        AlbumArt(
+                        ArtworkOrLyricsSlot(
                             thumbnailUrl = currentSong?.artwork,
-                            contentDescription = currentSong?.title,
-                            onClick = onPlayPause,
-                            onLongClick =
-                                currentLyrics.takeUnless { it.isNullOrBlank() }?.let {
-                                    { lyricsOverlay = true }
-                                },
-                            modifier = Modifier
-                                .widthIn(max = 380.dp)
-                                .fillMaxWidth()
-                                .aspectRatio(1f)
-                                .clip(RoundedCornerShape(16.dp)),
+                            title = currentSong?.title,
+                            lyrics = if (showLyricsInArtSlot) currentLyrics else null,
+                            positionMs = positionMs,
+                            lyricsAutoScroll = lyricsAutoScroll,
+                            lyricsReducedMotion = lyricsReducedMotion,
+                            dominant = dominant,
+                            cornerRadius = 16.dp,
+                            lyricsMaxHeight = if (lyricsReducedMotion) 300.dp else 380.dp,
+                            onPlayPause = onPlayPause,
+                            onOpenTrackMenu = onOpenTrackMenu,
+                            modifier =
+                                Modifier
+                                    .widthIn(max = 380.dp)
+                                    .fillMaxWidth(),
                         )
 
                         Spacer(Modifier.height(24.dp))
@@ -418,16 +402,23 @@ fun NowPlayingScreen(
                             fillMax = true,
                         )
 
-                        if (pinnedLyricsPanel && !currentLyrics.isNullOrBlank()) {
+                        if (pinnedLyricsPanel && showLyricsInArtSlot) {
                             Spacer(Modifier.height(12.dp))
+                            Text(
+                                text = "Lyrics (expanded)",
+                                style = MaterialTheme.typography.labelLarge,
+                                color = dominant.onBackground.copy(alpha = 0.55f),
+                            )
+                            Spacer(Modifier.height(8.dp))
                             SyncedLyricsView(
-                                lyrics = currentLyrics,
+                                lyrics = currentLyrics!!,
                                 positionMs = positionMs,
                                 autoScroll = lyricsAutoScroll,
                                 reducedMotion = lyricsReducedMotion,
                                 textColor = dominant.onBackground,
                                 accentColor = dominant.accent,
                                 modifier = Modifier.widthIn(max = 480.dp),
+                                maxContentHeight = if (lyricsReducedMotion) 120.dp else 160.dp,
                             )
                         }
 
@@ -461,6 +452,61 @@ fun NowPlayingScreen(
                 }
             }
         }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun ArtworkOrLyricsSlot(
+    thumbnailUrl: String?,
+    title: String?,
+    lyrics: String?,
+    positionMs: Long,
+    lyricsAutoScroll: Boolean,
+    lyricsReducedMotion: Boolean,
+    dominant: DominantColors,
+    cornerRadius: Dp,
+    lyricsMaxHeight: Dp,
+    onPlayPause: () -> Unit,
+    onOpenTrackMenu: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val shape = RoundedCornerShape(cornerRadius)
+    if (!lyrics.isNullOrBlank()) {
+        Box(
+            modifier =
+                modifier
+                    .aspectRatio(1f)
+                    .clip(shape)
+                    .background(dominant.secondary.copy(alpha = 0.55f))
+                    .combinedClickable(
+                        onClick = onPlayPause,
+                        onLongClick = onOpenTrackMenu,
+                    )
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+        ) {
+            SyncedLyricsView(
+                lyrics = lyrics,
+                positionMs = positionMs,
+                autoScroll = lyricsAutoScroll,
+                reducedMotion = lyricsReducedMotion,
+                textColor = dominant.onBackground,
+                accentColor = dominant.accent,
+                modifier = Modifier.fillMaxSize(),
+                maxContentHeight = lyricsMaxHeight,
+            )
+        }
+    } else {
+        AlbumArt(
+            thumbnailUrl = thumbnailUrl,
+            contentDescription = title,
+            onClick = onPlayPause,
+            onLongClick = onOpenTrackMenu,
+            modifier =
+                modifier
+                    .aspectRatio(1f)
+                    .clip(shape),
+        )
     }
 }
 

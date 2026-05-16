@@ -66,7 +66,11 @@ class PlaybackController(private val context: Context) {
         }
     }
 
-    private data class PendingPlay(val items: List<MediaItem>, val startIndex: Int)
+    private data class PendingPlay(
+        val items: List<MediaItem>,
+        val startIndex: Int,
+        val autoPlay: Boolean = true,
+    )
     private val pendingPlay = AtomicReference<PendingPlay?>(null)
     private var pendingToggleOnConnect = false
 
@@ -89,7 +93,12 @@ class PlaybackController(private val context: Context) {
                 controller?.addListener(engineEventsListener)
                 startPolling()
                 pendingPlay.getAndSet(null)?.let { pending ->
-                    applyPlayQueue(pending.items, pending.startIndex, startPositionMs = 0L)
+                    applyPlayQueue(
+                        pending.items,
+                        pending.startIndex,
+                        startPositionMs = 0L,
+                        autoPlay = pending.autoPlay,
+                    )
                 }
                 onConnected?.invoke()
             } catch (t: Throwable) {
@@ -164,7 +173,13 @@ class PlaybackController(private val context: Context) {
 
     private fun applyPlayQueue(items: List<MediaItem>, startIndex: Int, startPositionMs: Long, autoPlay: Boolean) {
         val c = controller ?: run {
-            pendingPlay.set(PendingPlay(items, startIndex.coerceIn(0, items.lastIndex)))
+            pendingPlay.set(
+                PendingPlay(
+                    items = items,
+                    startIndex = startIndex.coerceIn(0, items.lastIndex),
+                    autoPlay = autoPlay,
+                ),
+            )
             return
         }
         val safeIndex = startIndex.coerceIn(0, items.lastIndex)

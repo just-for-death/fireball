@@ -2061,7 +2061,7 @@ private fun SettingsAppearance(
                     SettingsSwitchRow(
                         icon = Icons.Default.Lyrics,
                         title = "Always show lyrics panel",
-                        subtitle = "Pinned synced lyrics under transports on Now Playing",
+                        subtitle = "Extra lyrics strip below seek when lyrics replace artwork",
                         checked = settings.alwaysShowLyricsPanel,
                         onCheckedChange = { onSettingsChange(settings.copy(alwaysShowLyricsPanel = it)) },
                     )

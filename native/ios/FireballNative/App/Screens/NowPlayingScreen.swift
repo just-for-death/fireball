@@ -50,8 +50,6 @@ public struct NowPlayingScreen: View {
     @State private var dragOffset: CGSize = .zero
     @State private var queueExpanded = false
     @State private var containerWidth: CGFloat = 0
-    @State private var lyricsOverlayPresented = false
-
     /// Two-column layout on iPad regular width when the column is actually wide enough (Stage Manager friendly).
     private var splitLayoutEnabled: Bool {
         let w = containerWidth > 1 ? containerWidth : (horizontalSizeClass == .regular ? 900 : 390)
@@ -108,10 +106,6 @@ public struct NowPlayingScreen: View {
         .onPreferenceChange(PlayerContainerWidthKey.self) { containerWidth = $0 }
         .dynamicTheme(artworkUrl: track.artwork, settings: settings)
         .safeAreaInset(edge: .bottom) { Color.clear.frame(height: 8) }
-        .sheet(isPresented: $lyricsOverlayPresented) {
-            lyricsOverlaySheet
-                .presentationDragIndicator(.visible)
-        }
     }
 
     private var playerDragHandle: some View {
@@ -187,33 +181,14 @@ public struct NowPlayingScreen: View {
         return !s.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
-    private func albumArtView(maxSquare: CGFloat) -> some View {
-        ZStack {
-            AsyncImage(url: URL(string: track.artwork ?? "")) { phase in
-                if let image = phase.image {
-                    image.resizable().aspectRatio(contentMode: .fill)
-                } else {
-                    Rectangle().fill(dominantColors.tertiary)
-                }
-            }
-            TapOrLongPressHostingView(
-                onTap: onPlayPause,
-                onLongPress: {
-                    if hasLyricsToShow { lyricsOverlayPresented = true }
-                }
-            )
-        }
-        .frame(width: maxSquare, height: maxSquare)
-        .clipShape(RoundedRectangle(cornerRadius: splitLayoutEnabled ? 28 : 22, style: .continuous))
-        .shadow(color: Color.black.opacity(0.33), radius: splitLayoutEnabled ? 28 : 18, x: 0, y: 14)
-        .contentShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-    }
-
-    @ViewBuilder
-    private var lyricsOverlaySheet: some View {
-        NavigationStack {
-            Group {
-                if let lyrics = currentLyrics, hasLyricsToShow {
+    private func artworkOrLyricsView(maxSquare: CGFloat) -> some View {
+        let corner: CGFloat = splitLayoutEnabled ? 28 : 22
+        let lyricsCap = splitLayoutEnabled ? 360 : maxSquare - 24
+        return Group {
+            if hasLyricsToShow, let lyrics = currentLyrics {
+                ZStack {
+                    RoundedRectangle(cornerRadius: corner, style: .continuous)
+                        .fill(dominantColors.secondary.opacity(0.55))
                     SyncedLyricsPanel(
                         lyrics: lyrics,
                         positionMs: Int64(positionSeconds * 1000),
@@ -221,22 +196,29 @@ public struct NowPlayingScreen: View {
                         reducedMotion: lyricsReducedMotion,
                         textColor: dominantColors.onBackground,
                         accentColor: dominantColors.accent,
-                        panelMaxHeight: lyricsReducedMotion ? 420 : 640
+                        panelMaxHeight: lyricsCap
                     )
                     .padding(.horizontal, 16)
-                    .padding(.vertical, 8)
+                    .padding(.vertical, 12)
+                    TapOrLongPressHostingView(onTap: onPlayPause, onLongPress: onOpenTrackMenu)
                 }
-            }
-            .frame(maxWidth: .infinity)
-            .navigationTitle("Lyrics")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Close") { lyricsOverlayPresented = false }
+            } else {
+                ZStack {
+                    AsyncImage(url: URL(string: track.artwork ?? "")) { phase in
+                        if let image = phase.image {
+                            image.resizable().aspectRatio(contentMode: .fill)
+                        } else {
+                            Rectangle().fill(dominantColors.secondary)
+                        }
+                    }
+                    TapOrLongPressHostingView(onTap: onPlayPause, onLongPress: onOpenTrackMenu)
                 }
             }
         }
-        .presentationDetents([.medium, .large])
+        .frame(width: maxSquare, height: maxSquare)
+        .clipShape(RoundedRectangle(cornerRadius: corner, style: .continuous))
+        .shadow(color: Color.black.opacity(0.33), radius: splitLayoutEnabled ? 28 : 18, x: 0, y: 14)
+        .contentShape(RoundedRectangle(cornerRadius: corner, style: .continuous))
     }
 
     private var phoneArtSquare: CGFloat { 336 }
@@ -250,18 +232,24 @@ public struct NowPlayingScreen: View {
                 .multilineTextAlignment(.center)
                 .lineLimit(2)
                 .minimumScaleFactor(0.76)
+                .overlay {
+                    TapOrLongPressHostingView(onTap: {}, onLongPress: onOpenTrackMenu)
+                }
 
-            Text(track.artist)
-                .font(.title3)
-                .foregroundStyle(dominantColors.onBackground.opacity(0.74))
-                .lineLimit(1)
-                .minimumScaleFactor(0.82)
+            Button {
+                onOpenArtist(track.artist, track.artwork)
+            } label: {
+                Text(track.artist)
+                    .font(.title3)
+                    .foregroundStyle(dominantColors.onBackground.opacity(0.74))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.82)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Open artist \(track.artist)")
         }
         .padding(.horizontal, splitLayoutEnabled ? 12 : 32)
         .frame(maxWidth: splitLayoutEnabled ? 440 : nil)
-        .overlay {
-            TapOrLongPressHostingView(onTap: {}, onLongPress: onOpenTrackMenu)
-        }
     }
 
     private var seekBlock: some View {
@@ -330,7 +318,7 @@ public struct NowPlayingScreen: View {
                 VStack(spacing: 24) {
                     HStack {
                         Spacer(minLength: 0)
-                        albumArtView(maxSquare: phoneArtSquare)
+                        artworkOrLyricsView(maxSquare: phoneArtSquare)
                         Spacer(minLength: 0)
                     }
 
@@ -338,7 +326,10 @@ public struct NowPlayingScreen: View {
 
                     seekBlock
 
-                    if pinnedLyricsPanel, let lyrics = currentLyrics, !lyrics.isEmpty {
+                    if pinnedLyricsPanel, hasLyricsToShow, let lyrics = currentLyrics {
+                        Text("Lyrics (expanded)")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(dominantColors.onBackground.opacity(0.54))
                         SyncedLyricsPanel(
                             lyrics: lyrics,
                             positionMs: Int64(positionSeconds * 1000),
@@ -368,7 +359,7 @@ public struct NowPlayingScreen: View {
             HStack(alignment: .top, spacing: 28) {
                 ScrollView {
                     VStack(spacing: 22) {
-                        albumArtView(maxSquare: 360)
+                        artworkOrLyricsView(maxSquare: 360)
                             .padding(.top, 4)
 
                         titleStack

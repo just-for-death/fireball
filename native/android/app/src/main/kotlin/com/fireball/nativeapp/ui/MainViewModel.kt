@@ -174,7 +174,7 @@ class MainViewModel(
                 if (!mediaId.isNullOrBlank() && mediaId != lastStartedMediaId) {
                     lastStartedMediaId = mediaId
                     val track = playbackState.value.currentTrack
-                    if (track != null) {
+                    if (track != null && playbackController.state.value.isPlaying) {
                         val settings = _uiState.value.library.settings
                         viewModelScope.launch {
                             refreshSponsorForTrack(track, settings)
@@ -399,6 +399,7 @@ class MainViewModel(
             engineHandoffMutex.withLock {
                 playbackController.prepareQueue(listOf(item), 0)
                 playbackController.setRepeatMode(playbackState.value.repeatMode)
+                playbackController.pause()
             }
             playerManager.syncFromEngine(isPlaying = false)
         }
@@ -422,16 +423,9 @@ class MainViewModel(
         val followed =
             _uiState.value.library.artists.firstOrNull { it.name.equals(trimmed, ignoreCase = true) }
         val appleId = followed?.artistId?.toIntOrNull()
-        if (appleId != null) {
-            navigateArtistDetailInternal(appleId, trimmed)
-            return
-        }
         artistDetailLookupJob?.cancel()
-        artistDetailLookupJob =
-            viewModelScope.launch {
-                val browse = browseArtistPage(artistAppleId = null, fallbackName = trimmed)
-                navigateArtistDetailInternal(browse?.artistAppleId, browse?.displayName ?: trimmed)
-            }
+        artistDetailLookupJob = null
+        navigateArtistDetailInternal(appleId, trimmed)
     }
 
     fun requestArtistDetail(appleArtistId: Int?, fallbackDisplayName: String) {
@@ -1033,6 +1027,23 @@ class MainViewModel(
         if (!exists) {
             autoPushFavoriteTrack(track)
         }
+    }
+
+    fun isArtistFollowed(artistName: String): Boolean {
+        val trimmed = artistName.trim()
+        if (trimmed.isEmpty()) return false
+        return _uiState.value.library.artists.any { it.name.equals(trimmed, ignoreCase = true) }
+    }
+
+    fun unfollowArtistByName(artistName: String) {
+        val trimmed = artistName.trim()
+        if (trimmed.isEmpty()) return
+        val id =
+            _uiState.value.library.artists
+                .firstOrNull { it.name.equals(trimmed, ignoreCase = true) }
+                ?.artistId
+                ?: return
+        unfollowArtist(id)
     }
 
     fun isFavorite(track: Track): Boolean =

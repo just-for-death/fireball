@@ -613,20 +613,24 @@ final class MainViewModel: ObservableObject {
     func requestArtistDetail(artistDisplayName: String) {
         let trimmed = artistDisplayName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
-        if let followed = library.artists.first(where: { $0.name.caseInsensitiveCompare(trimmed) == .orderedSame }),
-           let appleId = Int(followed.artistId.trimmingCharacters(in: .whitespacesAndNewlines)) {
-            navigateArtistDetailInternal(appleArtistId: appleId, fallback: trimmed)
-            return
-        }
+        let followed = library.artists.first(where: { $0.name.caseInsensitiveCompare(trimmed) == .orderedSame })
+        let appleId = followed.flatMap { Int($0.artistId.trimmingCharacters(in: .whitespacesAndNewlines)) }
         artistDetailLookupTask?.cancel()
-        artistDetailLookupTask = Task {
-            let browse = await repository.browseArtist(library: library, artistAppleId: nil, artistName: trimmed)
-            guard !Task.isCancelled else { return }
-            navigateArtistDetailInternal(
-                appleArtistId: browse?.artistAppleId,
-                fallback: browse?.displayName ?? trimmed
-            )
-        }
+        artistDetailLookupTask = nil
+        navigateArtistDetailInternal(appleArtistId: appleId, fallback: trimmed)
+    }
+
+    func isArtistFollowed(artistName: String) -> Bool {
+        let trimmed = artistName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return false }
+        return library.artists.contains { $0.name.caseInsensitiveCompare(trimmed) == .orderedSame }
+    }
+
+    func unfollowArtistByName(_ artistName: String) {
+        let trimmed = artistName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        guard let id = library.artists.first(where: { $0.name.caseInsensitiveCompare(trimmed) == .orderedSame })?.artistId else { return }
+        unfollowArtist(artistId: id)
     }
 
     func requestArtistDetail(appleArtistId: Int?, fallbackDisplayName: String) {

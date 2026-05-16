@@ -155,6 +155,15 @@ struct ArtistCatalogScreen: View {
                 .font(.title2.bold())
                 .multilineTextAlignment(.center)
 
+            Button(matchedFollowedArtist == nil ? "Follow artist" : "Unfollow artist") {
+                if let existing = matchedFollowedArtist {
+                    viewModel.unfollowArtist(artistId: existing.artistId)
+                } else {
+                    viewModel.followArtist(browse.displayName, artwork: browse.artworkUrl)
+                }
+            }
+            .buttonStyle(.bordered)
+
             Button("Play top songs") {
                 guard let first = browse.songs.first else { return }
                 viewModel.play(track: first, source: browse.songs)
