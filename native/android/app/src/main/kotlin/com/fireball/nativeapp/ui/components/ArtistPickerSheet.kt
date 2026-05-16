@@ -86,26 +86,33 @@ fun ArtistPickerSheet(
             if (loading && thumbnails.isEmpty()) {
                 CircularProgressIndicator(modifier = Modifier.padding(24.dp))
             } else {
-                context.names.forEachIndexed { index, name ->
-                    SuvFadeSlideIn(delayMs = MotionTokens.DurationShort3 * index.coerceAtMost(6)) {
-                        ActionSheetRowWithAvatar(
-                            imageUrl = thumbnails[name] ?: context.fallbackArtwork,
-                            label = name,
-                            onClick = {
-                                onSelect(name)
-                                onDismiss()
-                            },
-                        )
+                ActionSheetRowGroup {
+                    context.names.forEachIndexed { index, name ->
+                        SuvFadeSlideIn(
+                            modifier = Modifier.fillMaxWidth(),
+                            delayMs = MotionTokens.DurationShort3 * index.coerceAtMost(6),
+                        ) {
+                            ActionSheetRowWithAvatar(
+                                imageUrl = thumbnails[name] ?: context.fallbackArtwork,
+                                label = name,
+                                onClick = {
+                                    onSelect(name)
+                                    onDismiss()
+                                },
+                            )
+                        }
                     }
                 }
             }
-            Spacer(Modifier.height(8.dp))
-            SuvFadeSlideIn(delayMs = MotionTokens.DurationShort3 * 2) {
-                ActionSheetRow(
-                    icon = Icons.Default.Close,
-                    label = "Cancel",
-                    onClick = onDismiss,
-                )
+            Spacer(Modifier.height(ActionSheetSectionSpacing))
+            ActionSheetRowGroup {
+                SuvFadeSlideIn(modifier = Modifier.fillMaxWidth(), delayMs = MotionTokens.DurationShort3 * 2) {
+                    ActionSheetRow(
+                        icon = Icons.Default.Close,
+                        label = "Cancel",
+                        onClick = onDismiss,
+                    )
+                }
             }
         }
     }

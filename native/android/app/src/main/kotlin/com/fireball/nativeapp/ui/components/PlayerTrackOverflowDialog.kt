@@ -1,7 +1,6 @@
 package com.fireball.nativeapp.ui.components
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -24,7 +23,6 @@ import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
@@ -131,18 +129,20 @@ fun PlayerTrackOverflowDialog(
                 }
             }
             Spacer(Modifier.height(16.dp))
-            SuvFadeSlideIn(delayMs = 0) {
-                ActionSheetRow(Icons.Default.SkipNext, "Play next", onPlayNext)
-            }
-            SuvFadeSlideIn(delayMs = MotionTokens.DurationShort3) {
-                ActionSheetRow(Icons.AutoMirrored.Filled.QueueMusic, "Add to queue", onAddToQueue)
-            }
-            SuvFadeSlideIn(delayMs = MotionTokens.DurationShort3 * 2) {
-                ActionSheetRow(
-                    if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                    if (isFavorite) "Remove from favorites" else "Add to favorites",
-                    onToggleFavorite,
-                )
+            ActionSheetRowGroup {
+                SuvFadeSlideIn(modifier = Modifier.fillMaxWidth(), delayMs = 0) {
+                    ActionSheetRow(Icons.Default.SkipNext, "Play next", onPlayNext)
+                }
+                SuvFadeSlideIn(modifier = Modifier.fillMaxWidth(), delayMs = MotionTokens.DurationShort3) {
+                    ActionSheetRow(Icons.AutoMirrored.Filled.QueueMusic, "Add to queue", onAddToQueue)
+                }
+                SuvFadeSlideIn(modifier = Modifier.fillMaxWidth(), delayMs = MotionTokens.DurationShort3 * 2) {
+                    ActionSheetRow(
+                        if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                        if (isFavorite) "Remove from favorites" else "Add to favorites",
+                        onToggleFavorite,
+                    )
+                }
             }
             ActionSheetDivider()
             ActionSheetSectionLabel("Sleep")
@@ -154,77 +154,74 @@ fun PlayerTrackOverflowDialog(
                     modifier = Modifier.padding(start = 4.dp, bottom = 6.dp),
                 )
             }
-            SuvFadeSlideIn(delayMs = MotionTokens.DurationShort3 * 3) {
-                ActionSheetChipRow(
-                    labels = listOf("15m", "30m", "45m", "60m", "Clear"),
-                    selectedLabel = null,
-                    onSelect = { label ->
-                        when (label) {
-                            "15m" -> onSetSleepTimer(15)
-                            "30m" -> onSetSleepTimer(30)
-                            "45m" -> onSetSleepTimer(45)
-                            "60m" -> onSetSleepTimer(60)
-                            "Clear" -> onSetSleepTimer(null)
-                        }
-                    },
-                )
-            }
-            Spacer(Modifier.height(8.dp))
-            Row(
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 4.dp, vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween,
-            ) {
-                Column(Modifier.weight(1f)) {
-                    Text("Sleep after current track", style = MaterialTheme.typography.bodyLarge)
-                    Text(
-                        "Pause when this song ends",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+            ActionSheetRowGroup {
+                SuvFadeSlideIn(modifier = Modifier.fillMaxWidth(), delayMs = MotionTokens.DurationShort3 * 3) {
+                    ActionSheetChipRow(
+                        labels = listOf("15m", "30m", "45m", "60m", "Clear"),
+                        selectedLabel = null,
+                        onSelect = { label ->
+                            when (label) {
+                                "15m" -> onSetSleepTimer(15)
+                                "30m" -> onSetSleepTimer(30)
+                                "45m" -> onSetSleepTimer(45)
+                                "60m" -> onSetSleepTimer(60)
+                                "Clear" -> onSetSleepTimer(null)
+                            }
+                        },
                     )
                 }
-                Switch(
-                    checked = sleepAfterCurrent,
-                    onCheckedChange = onSetSleepAfterCurrent,
-                )
+                SuvFadeSlideIn(modifier = Modifier.fillMaxWidth(), delayMs = MotionTokens.DurationShort3 * 4) {
+                    ActionSheetToggleRow(
+                        title = "Sleep after current track",
+                        subtitle = "Pause when this song ends",
+                        checked = sleepAfterCurrent,
+                        onCheckedChange = onSetSleepAfterCurrent,
+                    )
+                }
             }
             ActionSheetDivider()
-            SuvFadeSlideIn(delayMs = MotionTokens.DurationShort3 * 4) {
-                ActionSheetRowWithAvatar(
-                    imageUrl = artistImageUrl ?: track.artwork,
-                    label = "View artist catalog",
-                    onClick = onSeeArtist,
-                )
-            }
-            SuvFadeSlideIn(delayMs = MotionTokens.DurationShort3 * 5) {
-                ActionSheetRow(
-                    Icons.Default.PersonAdd,
-                    if (isArtistFollowed) "Unfollow artist" else "Follow artist",
-                    if (isArtistFollowed) onUnfollowArtist else onFollowArtist,
-                )
+            ActionSheetRowGroup {
+                SuvFadeSlideIn(modifier = Modifier.fillMaxWidth(), delayMs = MotionTokens.DurationShort3 * 5) {
+                    ActionSheetRowWithAvatar(
+                        imageUrl = artistImageUrl ?: track.artwork,
+                        label = "View artist catalog",
+                        onClick = onSeeArtist,
+                    )
+                }
+                SuvFadeSlideIn(modifier = Modifier.fillMaxWidth(), delayMs = MotionTokens.DurationShort3 * 6) {
+                    ActionSheetRow(
+                        Icons.Default.PersonAdd,
+                        if (isArtistFollowed) "Unfollow artist" else "Follow artist",
+                        if (isArtistFollowed) onUnfollowArtist else onFollowArtist,
+                    )
+                }
             }
             if (playlists.isNotEmpty()) {
                 ActionSheetDivider()
                 ActionSheetSectionLabel("Add to playlist")
-                playlists.forEachIndexed { index, pl ->
-                    val alreadyInPlaylist = pl.videos.any { it.effectiveId == track.effectiveId }
-                    SuvFadeSlideIn(delayMs = MotionTokens.DurationShort3 * (6 + index.coerceAtMost(4))) {
-                        ActionSheetRow(
-                            Icons.AutoMirrored.Filled.PlaylistAdd,
-                            pl.title,
-                            onClick = { if (!alreadyInPlaylist) onAddToPlaylist(pl.id) },
-                            enabled = !alreadyInPlaylist,
-                            subtitle = if (alreadyInPlaylist) "Already in playlist" else null,
-                        )
+                ActionSheetRowGroup {
+                    playlists.forEachIndexed { index, pl ->
+                        val alreadyInPlaylist = pl.videos.any { it.effectiveId == track.effectiveId }
+                        SuvFadeSlideIn(
+                            modifier = Modifier.fillMaxWidth(),
+                            delayMs = MotionTokens.DurationShort3 * (7 + index.coerceAtMost(4)),
+                        ) {
+                            ActionSheetRow(
+                                Icons.AutoMirrored.Filled.PlaylistAdd,
+                                pl.title,
+                                onClick = { if (!alreadyInPlaylist) onAddToPlaylist(pl.id) },
+                                enabled = !alreadyInPlaylist,
+                                subtitle = if (alreadyInPlaylist) "Already in playlist" else null,
+                            )
+                        }
                     }
                 }
             }
-            Spacer(Modifier.height(12.dp))
-            SuvFadeSlideIn(delayMs = MotionTokens.DurationShort3 * 2) {
-                ActionSheetRow(Icons.Default.Close, "Done", onDismiss)
+            Spacer(Modifier.height(ActionSheetSectionSpacing))
+            ActionSheetRowGroup {
+                SuvFadeSlideIn(modifier = Modifier.fillMaxWidth(), delayMs = MotionTokens.DurationShort3 * 2) {
+                    ActionSheetRow(Icons.Default.Close, "Done", onDismiss)
+                }
             }
         }
     }
