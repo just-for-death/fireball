@@ -1,12 +1,14 @@
 # Codemagic CI/CD — Fireball 6.0 native (Kotlin + Swift)
-# Marketing version: FIREBALL_VERSION (6.0.0). Build number: CM_BUILD_NUMBER.
+# Marketing version: FIREBALL_VERSION (6.0.0). Build number: CM_BUILD_NUMBER (default 600).
 #
 # Docs: https://docs.codemagic.io/yaml-quick-start/yaml-getting-started/
 #
-# Workflows:
-#   fireball-android-release  — release APK from native/android
-#   fireball-native-ios       — XcodeGen + build (simulator or device destination)
-#   fireball-ios-unsigned-ipa — unsigned .ipa for sideloading (macOS only; sign locally)
+# Workflows (pick one in the Codemagic UI):
+#   fireball-android-release   — signed release APK → dist/Fireball-6.0.0-android.apk
+#   fireball-ios-release-ipa   — unsigned .ipa for GitHub / sideload (sign locally or AltStore)
+#   fireball-native-ios        — simulator smoke build (optional QA)
+#
+# GitHub Releases: upload dist/Fireball-* and dist/SHA256SUMS.txt for tag v6.0.0
 
 workflows:
   fireball-android-release:
@@ -20,35 +22,18 @@ workflows:
     scripts:
       - name: Build release APK
         script: |
-          set -e
+          set -euo pipefail
           export FIREBALL_VERSION="${FIREBALL_VERSION:-6.0.0}"
           export FIREBALL_BUILD_NUMBER="${CM_BUILD_NUMBER:-600}"
+          chmod +x scripts/build_native_apk.sh scripts/package_native_release_dist.sh
           ./scripts/build_native_apk.sh
     artifacts:
+      - dist/Fireball-*-android.apk
+      - dist/SHA256SUMS.txt
       - native/android/app/build/outputs/apk/release/*.apk
 
-  fireball-native-ios:
-    name: Fireball 6.0 Native iOS (Swift)
-    max_build_duration: 60
-    instance_type: mac_mini_m2
-    environment:
-      xcode: latest
-      vars:
-        FIREBALL_VERSION: "6.0.0"
-    scripts:
-      - name: Build native Fireball iOS app
-        script: |
-          set -e
-          export FIREBALL_VERSION="${FIREBALL_VERSION:-6.0.0}"
-          export FIREBALL_BUILD_NUMBER="${CM_BUILD_NUMBER:-600}"
-          cd native/ios
-          chmod +x scripts/build-ios-codemagic.sh
-          ./scripts/build-ios-codemagic.sh "generic/platform=iOS Simulator"
-    artifacts:
-      - native/ios/build/DerivedData/**/*.app
-
-  fireball-ios-unsigned-ipa:
-    name: Fireball 6.0 iOS unsigned IPA
+  fireball-ios-release-ipa:
+    name: Fireball 6.0 iOS IPA (unsigned)
     max_build_duration: 90
     instance_type: mac_mini_m2
     environment:
@@ -56,11 +41,76 @@ workflows:
       vars:
         FIREBALL_VERSION: "6.0.0"
     scripts:
+      - name: Install XcodeGen
+        script: |
+          set -euo pipefail
+          if ! command -v xcodegen >/dev/null 2>&1; then
+            brew install xcodegen
+          fi
       - name: Package unsigned IPA
         script: |
-          set -e
+          set -euo pipefail
           export FIREBALL_VERSION="${FIREBALL_VERSION:-6.0.0}"
           export FIREBALL_BUILD_NUMBER="${CM_BUILD_NUMBER:-600}"
+          mkdir -p dist
+          chmod +x scripts/build_native_unsigned_ipa.sh scripts/package_native_release_dist.sh
           ./scripts/build_native_unsigned_ipa.sh "dist/Fireball-${FIREBALL_VERSION}-ios-unsigned.ipa"
+          ./scripts/package_native_release_dist.sh
     artifacts:
       - dist/Fireball-*-ios-unsigned.ipa
+      - dist/SHA256SUMS.txt
+
+  # Legacy alias — same as fireball-ios-release-ipa
+  fireball-ios-unsigned-ipa:
+    name: Fireball 6.0 iOS unsigned IPA (alias)
+    max_build_duration: 90
+    instance_type: mac_mini_m2
+    environment:
+      xcode: latest
+      vars:
+        FIREBALL_VERSION: "6.0.0"
+    scripts:
+      - name: Install XcodeGen
+        script: |
+          set -euo pipefail
+          if ! command -v xcodegen >/dev/null 2>&1; then
+            brew install xcodegen
+          fi
+      - name: Package unsigned IPA
+        script: |
+          set -euo pipefail
+          export FIREBALL_VERSION="${FIREBALL_VERSION:-6.0.0}"
+          export FIREBALL_BUILD_NUMBER="${CM_BUILD_NUMBER:-600}"
+          mkdir -p dist
+          chmod +x scripts/build_native_unsigned_ipa.sh scripts/package_native_release_dist.sh
+          ./scripts/build_native_unsigned_ipa.sh "dist/Fireball-${FIREBALL_VERSION}-ios-unsigned.ipa"
+          ./scripts/package_native_release_dist.sh
+    artifacts:
+      - dist/Fireball-*-ios-unsigned.ipa
+      - dist/SHA256SUMS.txt
+
+  fireball-native-ios:
+    name: Fireball 6.0 Native iOS (simulator QA)
+    max_build_duration: 60
+    instance_type: mac_mini_m2
+    environment:
+      xcode: latest
+      vars:
+        FIREBALL_VERSION: "6.0.0"
+    scripts:
+      - name: Install XcodeGen
+        script: |
+          set -euo pipefail
+          if ! command -v xcodegen >/dev/null 2>&1; then
+            brew install xcodegen
+          fi
+      - name: Build for iOS Simulator
+        script: |
+          set -euo pipefail
+          export FIREBALL_VERSION="${FIREBALL_VERSION:-6.0.0}"
+          export FIREBALL_BUILD_NUMBER="${CM_BUILD_NUMBER:-600}"
+          cd native/ios
+          chmod +x scripts/build-ios-codemagic.sh
+          ./scripts/build-ios-codemagic.sh "generic/platform=iOS Simulator"
+    artifacts:
+      - native/ios/build/DerivedData/**/*.app

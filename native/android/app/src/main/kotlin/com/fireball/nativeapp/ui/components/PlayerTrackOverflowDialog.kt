@@ -52,6 +52,7 @@ fun PlayerTrackOverflowDialog(
     isArtistFollowed: Boolean,
     playlists: List<Playlist>,
     sleepTimerEndEpochMs: Long?,
+    sleepTimerPresetMinutes: Int? = null,
     sleepAfterCurrent: Boolean,
     onDismiss: () -> Unit,
     onPlayNext: () -> Unit,
@@ -85,15 +86,14 @@ fun PlayerTrackOverflowDialog(
             String.format(Locale.getDefault(), "Stops in %d:%02d", mins, secs)
         }
     val selectedSleepLabel =
-        remember(sleepTimerEndEpochMs, tickMs) {
-            val end = sleepTimerEndEpochMs ?: return@remember null
-            val remainingMin = ((end - tickMs) / 60_000).toInt()
-            if (remainingMin <= 0) return@remember null
-            when {
-                remainingMin <= 18 -> "15m"
-                remainingMin <= 33 -> "30m"
-                remainingMin <= 48 -> "45m"
-                else -> "60m"
+        remember(sleepTimerEndEpochMs, sleepTimerPresetMinutes, tickMs) {
+            if (sleepTimerEndEpochMs == null) return@remember null
+            when (sleepTimerPresetMinutes) {
+                15 -> "15m"
+                30 -> "30m"
+                45 -> "45m"
+                60 -> "60m"
+                else -> null
             }
         }
 

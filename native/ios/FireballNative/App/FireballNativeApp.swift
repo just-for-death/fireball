@@ -169,11 +169,14 @@ private struct RootShellView: View {
                         overflowDraft = nil
                     },
                     onFollowArtist: {
-                        viewModel.followArtist(draft.track.artist, artwork: draft.track.artwork)
+                        viewModel.followArtist(
+                            name: viewModel.primaryArtistName(draft.track.artist),
+                            artwork: draft.track.artwork
+                        )
                         overflowDraft = nil
                     },
                     onUnfollowArtist: {
-                        viewModel.unfollowArtistByName(draft.track.artist)
+                        viewModel.unfollowFirstFollowedArtistFromDisplayLine(draft.track.artist)
                         overflowDraft = nil
                     }
                 )
@@ -360,6 +363,7 @@ private struct RootShellView: View {
                 onInvidiousRefreshPlaylists: { Task { await viewModel.refreshInvidiousPlaylists() } },
                 onInvidiousSyncPlaylist: viewModel.invidiousSyncPlaylist,
                 onInvidiousPushPlaylist: viewModel.invidiousPushPlaylist,
+                onInvidiousSignOut: viewModel.signOutInvidious,
                 onGoogleDriveBackup: { token in
                     Task { _ = await viewModel.backupToGoogleDrive(accessToken: token) }
                 },

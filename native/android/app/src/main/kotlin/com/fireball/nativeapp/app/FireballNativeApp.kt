@@ -540,6 +540,7 @@ fun FireballNativeApp(viewModel: MainViewModel) {
                                 onInvidiousSyncPlaylist = viewModel::invidiousSyncPlaylist,
                                 onInvidiousPushPlaylist = viewModel::invidiousPushPlaylist,
                                 onInvidiousSignOut = viewModel::signOutInvidious,
+                                onFetchInvidiousPlaylists = viewModel::fetchInvidiousPlaylists,
                                 invidiousPlaylists = uiState.invidiousPlaylists,
                                 onGoogleDriveBackup = viewModel::backupToGoogleDrive,
                                 onValidateLastFm = {
@@ -611,9 +612,10 @@ fun FireballNativeApp(viewModel: MainViewModel) {
                 PlayerTrackOverflowDialog(
                     track = t,
                     isFavorite = viewModel.isFavorite(t),
-                    isArtistFollowed = viewModel.isArtistFollowed(t.artist),
+                    isArtistFollowed = viewModel.isAnyArtistFollowed(t.artist),
                     playlists = viewModel.userPlaylistsForPicker(),
                     sleepTimerEndEpochMs = playback.sleepTimerEndEpochMs,
+                    sleepTimerPresetMinutes = playback.sleepTimerPresetMinutes,
                     sleepAfterCurrent = playback.sleepAfterCurrent,
                     onDismiss = { overflowTrack = null },
                     onPlayNext = {
@@ -632,15 +634,15 @@ fun FireballNativeApp(viewModel: MainViewModel) {
                         viewModel.addTrackToPlaylist(t, id)
                     },
                     onSeeArtist = {
-                        viewModel.requestArtistDetail(t.artist)
+                        openArtistFromDisplayLine(t.artist, t.artwork)
                         overflowTrack = null
                     },
                     onFollowArtist = {
-                        viewModel.followArtist(t.artist, t.artwork)
+                        viewModel.followArtist(viewModel.primaryArtistName(t.artist), t.artwork)
                         overflowTrack = null
                     },
                     onUnfollowArtist = {
-                        viewModel.unfollowArtistByName(t.artist)
+                        viewModel.unfollowFirstFollowedArtistFromDisplayLine(t.artist)
                         overflowTrack = null
                     },
                     onSetSleepTimer = viewModel::setSleepTimer,

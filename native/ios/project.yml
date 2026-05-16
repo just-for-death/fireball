@@ -4,7 +4,7 @@ name: FireballNative
 options:
   bundleIdPrefix: com.fireball
   deploymentTarget:
-    iOS: "15.0"
+    iOS: "16.1"
   createIntermediateGroups: true
 packages:
   YouTubeKit:

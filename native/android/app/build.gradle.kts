@@ -38,6 +38,13 @@ android {
         }
     }
 
+    /** Debug-signed release APK for GitHub sideload (no Play upload keystore in repo). */
+    buildTypes {
+        release {
+            signingConfig = signingConfigs.getByName("debug")
+        }
+    }
+
     lint {
         disable += setOf(
             /**

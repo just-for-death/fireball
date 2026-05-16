@@ -16,7 +16,8 @@ data class PlaybackState(
     val shuffled: Boolean = false,
     val repeatMode: RepeatMode = RepeatMode.OFF,
     val sleepTimerEndEpochMs: Long? = null,
-    val sleepAfterCurrent: Boolean = false
+    val sleepTimerPresetMinutes: Int? = null,
+    val sleepAfterCurrent: Boolean = false,
 ) {
     val currentTrack: Track?
         get() = queue.getOrNull(currentIndex)
@@ -106,13 +107,20 @@ class PlayerManager {
         _state.update {
             it.copy(
                 sleepTimerEndEpochMs = minutes?.let { m -> System.currentTimeMillis() + (m * 60_000L) },
-                sleepAfterCurrent = false
+                sleepTimerPresetMinutes = minutes,
+                sleepAfterCurrent = false,
             )
         }
     }
 
     fun setSleepAfterCurrent(enabled: Boolean) {
-        _state.update { it.copy(sleepAfterCurrent = enabled, sleepTimerEndEpochMs = null) }
+        _state.update {
+            it.copy(
+                sleepAfterCurrent = enabled,
+                sleepTimerEndEpochMs = null,
+                sleepTimerPresetMinutes = null,
+            )
+        }
     }
 
     fun syncFromEngine(

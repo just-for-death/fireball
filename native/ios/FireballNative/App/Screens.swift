@@ -684,7 +684,7 @@ struct SearchScreen: View {
                                     .padding(.vertical, 8)
                                     TapOrLongPressHostingView(
                                         onTap: {
-                                            query = t.title
+                                            query = "\(t.artist) \(t.title)".trimmingCharacters(in: .whitespacesAndNewlines)
                                             Task { await onSearch() }
                                         },
                                         onLongPress: { onOverflowTrack(t) }
@@ -782,6 +782,7 @@ struct SearchScreen: View {
 
 struct PlaylistDetailScreen: View {
     let playlist: Playlist
+    var onOverflowTrack: (Track) -> Void = { _ in }
     @EnvironmentObject private var viewModel: MainViewModel
 
     private var playableSource: [Track] {
@@ -796,16 +797,23 @@ struct PlaylistDetailScreen: View {
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                List(playableSource, id: \.effectiveId) { track in
-                    Button {
-                        viewModel.playFromPlaylist(track: track, source: playableSource)
-                    } label: {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(track.title)
-                            Text(track.artist).font(.caption).foregroundStyle(.secondary)
+                List(Array(playableSource.enumerated()), id: \.offset) { _, track in
+                    ZStack {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(track.title)
+                                Text(track.artist).font(.caption).foregroundStyle(.secondary)
+                            }
+                            Spacer()
                         }
+                        TapOrLongPressHostingView(
+                            onTap: {
+                                viewModel.playFromPlaylist(track: track, source: playableSource)
+                            },
+                            onLongPress: { onOverflowTrack(track) }
+                        )
                     }
-                    .buttonStyle(.plain)
+                    .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
                 }
             }
         }
@@ -853,7 +861,12 @@ struct LibraryScreen: View {
                         VStack(alignment: .leading, spacing: 8) {
                             Text("Playlists").font(.headline).padding(.horizontal)
                             ForEach(library.playlists, id: \.id) { pl in
-                                NavigationLink(destination: PlaylistDetailScreen(playlist: pl)) {
+                                NavigationLink(
+                                    destination: PlaylistDetailScreen(
+                                        playlist: pl,
+                                        onOverflowTrack: onOverflowTrack
+                                    )
+                                ) {
                                     HStack {
                                         Text(pl.title)
                                         Spacer()
@@ -877,7 +890,7 @@ struct LibraryScreen: View {
                                             onPlay: { onPlay(track, library.history) },
                                             onOverflow: { onOverflowTrack(track) },
                                             onArtistTap: {
-                                                viewModel.requestArtistDetail(artistDisplayName: track.artist)
+                                                onOpenArtist(track.artist, track.artwork)
                                             }
                                         )
                                         .frame(width: 140)
@@ -910,7 +923,7 @@ struct LibraryScreen: View {
                                 onPlay: { onPlay(track, library.favorites) },
                                 onOverflow: { onOverflowTrack(track) },
                                 onArtistTap: {
-                                    viewModel.requestArtistDetail(artistDisplayName: track.artist)
+                                    onOpenArtist(track.artist, track.artwork)
                                 },
                                 showFavoriteButton: true,
                                 isFavorite: isFavorite(track),
@@ -925,7 +938,12 @@ struct LibraryScreen: View {
                     if !library.playlists.isEmpty {
                         Section("Playlists") {
                             ForEach(library.playlists, id: \.id) { pl in
-                                NavigationLink(destination: PlaylistDetailScreen(playlist: pl)) {
+                                NavigationLink(
+                                    destination: PlaylistDetailScreen(
+                                        playlist: pl,
+                                        onOverflowTrack: onOverflowTrack
+                                    )
+                                ) {
                                     HStack {
                                         Text(pl.title)
                                         Spacer()
@@ -947,7 +965,7 @@ struct LibraryScreen: View {
                                 onPlay: { onPlay(track, library.favorites) },
                                 onOverflow: { onOverflowTrack(track) },
                                 onArtistTap: {
-                                    viewModel.requestArtistDetail(artistDisplayName: track.artist)
+                                    onOpenArtist(track.artist, track.artwork)
                                 },
                                 showFavoriteButton: true,
                                 isFavorite: true,
@@ -1042,6 +1060,7 @@ struct SettingsScreen: View {
     let onInvidiousRefreshPlaylists: () -> Void
     let onInvidiousSyncPlaylist: (String) -> Void
     let onInvidiousPushPlaylist: (String, String?) -> Void
+    let onInvidiousSignOut: () -> Void
     let onGoogleDriveBackup: (String) -> Void
     let onValidateLastFm: () -> Void
     let onConnectLastFm: (String) -> Void
@@ -1257,6 +1276,9 @@ struct SettingsScreen: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     Button("Refresh my Invidious playlists") { onInvidiousRefreshPlaylists() }
+                    Button("Sign out of Invidious", role: .destructive) {
+                        onInvidiousSignOut()
+                    }
                 }
                 if !invidiousPlaylists.isEmpty {
                     ForEach(invidiousPlaylists, id: \.id) { pl in
@@ -1450,8 +1472,16 @@ struct SettingsScreen: View {
                 Text("Repeat: \(repeatMode.rawValue.capitalized)")
                 Button(isShuffled ? "Unshuffle" : "Shuffle", action: onToggleShuffle)
                 Button("Cycle Repeat", action: onCycleRepeat)
-                Button("Sleep 15m") { onSetSleepTimer(15) }
-                Button("Clear Sleep") { onSetSleepTimer(nil) }
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach([15, 30, 45, 60], id: \.self) { mins in
+                            Button("\(mins)m") { onSetSleepTimer(mins) }
+                                .buttonStyle(.bordered)
+                        }
+                        Button("Clear") { onSetSleepTimer(nil) }
+                            .buttonStyle(.bordered)
+                    }
+                }
                 Toggle("Sleep after current track", isOn: .init(
                     get: { sleepAfterCurrent },
                     set: onSetSleepAfterCurrent

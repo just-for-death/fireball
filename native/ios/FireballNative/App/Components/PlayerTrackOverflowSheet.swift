@@ -20,7 +20,7 @@ struct PlayerTrackOverflowSheet: View {
     }
 
     private var followLabel: String {
-        viewModel.isArtistFollowed(artistName: track.artist) ? "Unfollow artist" : "Follow artist"
+        viewModel.isAnyArtistFollowed(track.artist) ? "Unfollow artist" : "Follow artist"
     }
 
     private var playlists: [Playlist] {
@@ -38,14 +38,13 @@ struct PlayerTrackOverflowSheet: View {
     }
 
     private var selectedSleepLabel: String? {
-        guard let end = viewModel.sleepTimerEnd else { return nil }
-        let remainingMin = Int(end.timeIntervalSince(sleepTick) / 60)
-        guard remainingMin > 0 else { return nil }
-        switch remainingMin {
-        case ...18: return "15m"
-        case ...33: return "30m"
-        case ...48: return "45m"
-        default: return "60m"
+        guard viewModel.sleepTimerEnd != nil else { return nil }
+        switch viewModel.sleepTimerPresetMinutes {
+        case 15: return "15m"
+        case 30: return "30m"
+        case 45: return "45m"
+        case 60: return "60m"
+        default: return nil
         }
     }
 
@@ -116,7 +115,7 @@ struct PlayerTrackOverflowSheet: View {
                         action: onSeeArtist
                     )
                     ActionSheetRowButton(title: followLabel, systemImage: "person.badge.plus", inset: true) {
-                        if viewModel.isArtistFollowed(artistName: track.artist) {
+                        if viewModel.isAnyArtistFollowed(track.artist) {
                             onUnfollowArtist()
                         } else {
                             onFollowArtist()

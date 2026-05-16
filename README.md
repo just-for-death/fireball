@@ -89,7 +89,7 @@ cd native/ios && xcodegen generate && open FireballNative.xcodeproj
 ./scripts/qa.sh
 ```
 
-**Codemagic:** [`codemagic.yaml`](codemagic.yaml) — workflows `fireball-android-release`, `fireball-native-ios`, `fireball-ios-unsigned-ipa`.
+**Codemagic:** [`codemagic.yaml`](codemagic.yaml) — `fireball-android-release` (APK), **`fireball-ios-release-ipa`** (unsigned IPA for GitHub), `fireball-native-ios` (simulator QA).
 
 **JDK:** Use 17–21 for Android release builds. JDK 22+ can break Gradle’s Kotlin DSL.
 
