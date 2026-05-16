@@ -129,7 +129,14 @@ class PlaybackController(private val context: Context) {
         if (items.isEmpty()) return
         val c = controller
         if (c == null) {
-            pendingPlay.set(PendingPlay(items, startIndex.coerceIn(0, items.lastIndex)))
+            val resumePlaying = pendingPlay.get()?.autoPlay == true
+            pendingPlay.set(
+                PendingPlay(
+                    items = items,
+                    startIndex = startIndex.coerceIn(0, items.lastIndex),
+                    autoPlay = resumePlaying,
+                ),
+            )
             return
         }
         val position = if (preservePosition) c.currentPosition.coerceAtLeast(0L) else 0L
@@ -153,7 +160,11 @@ class PlaybackController(private val context: Context) {
             val last = pendingPlay.get()
             if (last != null) {
                 pendingPlay.set(
-                    PendingPlay(last.items + items, last.startIndex)
+                    PendingPlay(
+                        items = last.items + items,
+                        startIndex = last.startIndex,
+                        autoPlay = last.autoPlay,
+                    ),
                 )
             }
             return

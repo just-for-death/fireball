@@ -557,9 +557,16 @@ fun FireballNativeApp(viewModel: MainViewModel) {
                     onSeeArtistFromMenu = {
                         playback.currentTrack?.let { viewModel.requestArtistDetail(it.artist) }
                     },
+                    isArtistFollowed =
+                        playback.currentTrack?.let { viewModel.isArtistFollowed(it.artist) } ?: false,
                     onFollowArtistFromMenu = {
                         playback.currentTrack?.let { t ->
                             viewModel.followArtist(t.artist, t.artwork)
+                        }
+                    },
+                    onUnfollowArtistFromMenu = {
+                        playback.currentTrack?.let { t ->
+                            viewModel.unfollowArtistByName(t.artist)
                         }
                     },
                 )

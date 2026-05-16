@@ -357,6 +357,18 @@ final class MainViewModel: ObservableObject {
         guard let idx = currentIndex, !queue.isEmpty, queue.indices.contains(idx) else { return }
         audioEngine.prepareQueue(queue, startIndex: idx)
         isPlaying = false
+        let track = queue[idx]
+        let settings = library.settings
+        guard !settings.offlineModeEnabled else {
+            currentLyrics = nil
+            return
+        }
+        Task {
+            let trackId = track.effectiveId
+            let lyrics = await lyricsAi.fetchLyrics(track: track, settings: settings)
+            guard let cur = currentIndex, queue.indices.contains(cur), queue[cur].effectiveId == trackId else { return }
+            currentLyrics = lyrics
+        }
     }
 
     func isFavorite(_ track: Track) -> Bool {

@@ -43,7 +43,9 @@ public struct NowPlayingScreen: View {
     var onAddToQueue: () -> Void = {}
     var onToggleFavorite: () -> Void = {}
     var onSeeArtist: () -> Void = {}
+    var isArtistFollowed: Bool = false
     var onFollowArtistFromMenu: () -> Void = {}
+    var onUnfollowArtistFromMenu: () -> Void = {}
 
     @Environment(\.dominantColors) var dominantColors
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
@@ -147,7 +149,13 @@ public struct NowPlayingScreen: View {
                 Button("Add to queue", action: onAddToQueue)
                 Button(isFavorite ? "Remove from favorites" : "Add to favorites", action: onToggleFavorite)
                 Button("View artist catalog", action: onSeeArtist)
-                Button("Follow artist", action: onFollowArtistFromMenu)
+                Button(isArtistFollowed ? "Unfollow artist" : "Follow artist") {
+                    if isArtistFollowed {
+                        onUnfollowArtistFromMenu()
+                    } else {
+                        onFollowArtistFromMenu()
+                    }
+                }
                 Button("More options…", action: onOpenTrackMenu)
                 if #available(iOS 16.0, *) {
                     if let lyrics = currentLyrics, !lyrics.isEmpty {

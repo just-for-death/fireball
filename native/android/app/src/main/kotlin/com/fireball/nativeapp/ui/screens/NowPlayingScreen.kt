@@ -104,7 +104,9 @@ fun NowPlayingScreen(
     onAddToQueueFromMenu: () -> Unit = {},
     onToggleFavoriteFromMenu: () -> Unit = {},
     onSeeArtistFromMenu: () -> Unit = {},
+    isArtistFollowed: Boolean = false,
     onFollowArtistFromMenu: () -> Unit = {},
+    onUnfollowArtistFromMenu: () -> Unit = {},
     appearanceChrome: String = "music",
 ) {
     var queueExpanded by remember { mutableStateOf(false) }
@@ -216,10 +218,16 @@ fun NowPlayingScreen(
                                 },
                             )
                             DropdownMenuItem(
-                                text = { Text("Follow artist") },
+                                text = {
+                                    Text(if (isArtistFollowed) "Unfollow artist" else "Follow artist")
+                                },
                                 onClick = {
                                     trackMenuExpanded = false
-                                    onFollowArtistFromMenu()
+                                    if (isArtistFollowed) {
+                                        onUnfollowArtistFromMenu()
+                                    } else {
+                                        onFollowArtistFromMenu()
+                                    }
                                 },
                             )
                             DropdownMenuItem(

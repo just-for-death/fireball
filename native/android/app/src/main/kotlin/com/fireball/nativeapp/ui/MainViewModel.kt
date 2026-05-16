@@ -172,9 +172,9 @@ class MainViewModel(
                 playerManager.setCurrentIndexByMediaId(mediaId)
                 persistPlaybackSessionDebounced()
                 if (!mediaId.isNullOrBlank() && mediaId != lastStartedMediaId) {
-                    lastStartedMediaId = mediaId
                     val track = playbackState.value.currentTrack
                     if (track != null && playbackController.state.value.isPlaying) {
+                        lastStartedMediaId = mediaId
                         val settings = _uiState.value.library.settings
                         viewModelScope.launch {
                             refreshSponsorForTrack(track, settings)
@@ -197,6 +197,18 @@ class MainViewModel(
         }
         com.fireball.nativeapp.player.PlaybackEngineBridge.onIsPlayingChanged = { playing ->
             playerManager.syncFromEngine(isPlaying = playing)
+            if (playing) {
+                val track = playbackState.value.currentTrack
+                val mediaId = track?.effectiveId
+                if (track != null && !mediaId.isNullOrBlank() && mediaId != lastStartedMediaId) {
+                    lastStartedMediaId = mediaId
+                    val settings = _uiState.value.library.settings
+                    viewModelScope.launch {
+                        refreshSponsorForTrack(track, settings)
+                        onTrackStarted(track, settings)
+                    }
+                }
+            }
         }
         viewModelScope.launch {
             var lastIndex = -1
@@ -402,6 +414,16 @@ class MainViewModel(
                 playbackController.pause()
             }
             playerManager.syncFromEngine(isPlaying = false)
+            if (!settings.offlineModeEnabled) {
+                val restored = playbackState.value.currentTrack
+                if (restored != null) {
+                    val trackId = restored.effectiveId
+                    val lyrics = lyricsAndAi.fetchLyrics(restored, settings)
+                    if (playbackState.value.currentTrack?.effectiveId == trackId) {
+                        _uiState.update { it.copy(currentLyrics = lyrics) }
+                    }
+                }
+            }
         }
     }
 
