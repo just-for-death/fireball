@@ -23,6 +23,7 @@ import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
@@ -35,11 +36,11 @@ import kotlinx.coroutines.delay
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.fireball.nativeapp.core.model.Playlist
 import com.fireball.nativeapp.core.model.Track
-import com.fireball.nativeapp.ui.theme.MotionTokens
 import java.util.Locale
 import kotlin.math.max
 
@@ -83,6 +84,19 @@ fun PlayerTrackOverflowDialog(
             val secs = totalSec % 60
             String.format(Locale.getDefault(), "Stops in %d:%02d", mins, secs)
         }
+    val selectedSleepLabel =
+        remember(sleepTimerEndEpochMs, tickMs) {
+            val end = sleepTimerEndEpochMs ?: return@remember null
+            val remainingMin = ((end - tickMs) / 60_000).toInt()
+            if (remainingMin <= 0) return@remember null
+            when {
+                remainingMin <= 18 -> "15m"
+                remainingMin <= 33 -> "30m"
+                remainingMin <= 48 -> "45m"
+                else -> "60m"
+            }
+        }
+
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
@@ -93,72 +107,85 @@ fun PlayerTrackOverflowDialog(
                 .fillMaxWidth()
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp)
-                .padding(bottom = 28.dp),
+                .padding(bottom = 32.dp),
+            verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(ActionSheetSectionSpacing),
         ) {
-            Row(
+            Text(
+                text = "Track options",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.padding(bottom = 4.dp),
+            )
+
+            Surface(
                 modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
+                shape = RoundedCornerShape(16.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
             ) {
-                AlbumArt(
-                    thumbnailUrl = track.artwork,
-                    contentDescription = track.title,
+                Row(
                     modifier =
                         Modifier
-                            .size(56.dp)
-                            .clip(RoundedCornerShape(12.dp)),
-                )
-                Column(
-                    modifier =
-                        Modifier
-                            .padding(start = 14.dp)
-                            .weight(1f),
+                            .fillMaxWidth()
+                            .padding(14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text(
-                        text = track.title,
-                        style = MaterialTheme.typography.titleMedium,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
+                    AlbumArt(
+                        thumbnailUrl = track.artwork,
+                        contentDescription = track.title,
+                        modifier =
+                            Modifier
+                                .size(64.dp)
+                                .clip(RoundedCornerShape(12.dp)),
                     )
-                    Text(
-                        text = track.artist,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                    )
+                    Column(
+                        modifier =
+                            Modifier
+                                .padding(start = 14.dp)
+                                .weight(1f),
+                    ) {
+                        Text(
+                            text = track.title,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Text(
+                            text = track.artist,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
                 }
             }
-            Spacer(Modifier.height(16.dp))
-            ActionSheetRowGroup {
-                SuvFadeSlideIn(modifier = Modifier.fillMaxWidth(), delayMs = 0) {
-                    ActionSheetRow(Icons.Default.SkipNext, "Play next", onPlayNext)
-                }
-                SuvFadeSlideIn(modifier = Modifier.fillMaxWidth(), delayMs = MotionTokens.DurationShort3) {
-                    ActionSheetRow(Icons.AutoMirrored.Filled.QueueMusic, "Add to queue", onAddToQueue)
-                }
-                SuvFadeSlideIn(modifier = Modifier.fillMaxWidth(), delayMs = MotionTokens.DurationShort3 * 2) {
-                    ActionSheetRow(
-                        if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                        if (isFavorite) "Remove from favorites" else "Add to favorites",
-                        onToggleFavorite,
-                    )
-                }
-            }
-            ActionSheetDivider()
-            ActionSheetSectionLabel("Sleep")
-            if (sleepStatus != null) {
-                Text(
-                    text = sleepStatus,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(start = 4.dp, bottom = 6.dp),
+
+            ActionSheetSectionCard {
+                ActionSheetRow(Icons.Default.SkipNext, "Play next", onPlayNext, inset = true)
+                ActionSheetRow(Icons.AutoMirrored.Filled.QueueMusic, "Add to queue", onAddToQueue, inset = true)
+                ActionSheetRow(
+                    if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                    if (isFavorite) "Remove from favorites" else "Add to favorites",
+                    onToggleFavorite,
+                    inset = true,
                 )
             }
-            ActionSheetRowGroup {
-                SuvFadeSlideIn(modifier = Modifier.fillMaxWidth(), delayMs = MotionTokens.DurationShort3 * 3) {
+
+            Column(verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)) {
+                ActionSheetSectionLabel("Sleep", modifier = Modifier.padding(top = 0.dp))
+                if (sleepStatus != null) {
+                    Text(
+                        text = sleepStatus,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(start = 4.dp),
+                    )
+                }
+                ActionSheetSectionCard {
                     ActionSheetChipRow(
                         labels = listOf("15m", "30m", "45m", "60m", "Clear"),
-                        selectedLabel = null,
+                        selectedLabel = selectedSleepLabel,
                         onSelect = { label ->
                             when (label) {
                                 "15m" -> onSetSleepTimer(15)
@@ -168,61 +195,69 @@ fun PlayerTrackOverflowDialog(
                                 "Clear" -> onSetSleepTimer(null)
                             }
                         },
+                        inset = true,
                     )
-                }
-                SuvFadeSlideIn(modifier = Modifier.fillMaxWidth(), delayMs = MotionTokens.DurationShort3 * 4) {
                     ActionSheetToggleRow(
                         title = "Sleep after current track",
                         subtitle = "Pause when this song ends",
                         checked = sleepAfterCurrent,
                         onCheckedChange = onSetSleepAfterCurrent,
+                        inset = true,
                     )
                 }
             }
-            ActionSheetDivider()
-            ActionSheetRowGroup {
-                SuvFadeSlideIn(modifier = Modifier.fillMaxWidth(), delayMs = MotionTokens.DurationShort3 * 5) {
-                    ActionSheetRowWithAvatar(
-                        imageUrl = artistImageUrl ?: track.artwork,
-                        label = "View artist catalog",
-                        onClick = onSeeArtist,
-                    )
-                }
-                SuvFadeSlideIn(modifier = Modifier.fillMaxWidth(), delayMs = MotionTokens.DurationShort3 * 6) {
-                    ActionSheetRow(
-                        Icons.Default.PersonAdd,
-                        if (isArtistFollowed) "Unfollow artist" else "Follow artist",
-                        if (isArtistFollowed) onUnfollowArtist else onFollowArtist,
-                    )
-                }
+
+            ActionSheetSectionCard {
+                ActionSheetRowWithAvatar(
+                    imageUrl = artistImageUrl ?: track.artwork,
+                    label = "View artist catalog",
+                    onClick = onSeeArtist,
+                    inset = true,
+                )
+                ActionSheetRow(
+                    Icons.Default.PersonAdd,
+                    if (isArtistFollowed) "Unfollow artist" else "Follow artist",
+                    if (isArtistFollowed) onUnfollowArtist else onFollowArtist,
+                    inset = true,
+                )
             }
+
             if (playlists.isNotEmpty()) {
-                ActionSheetDivider()
-                ActionSheetSectionLabel("Add to playlist")
-                ActionSheetRowGroup {
-                    playlists.forEachIndexed { index, pl ->
-                        val alreadyInPlaylist = pl.videos.any { it.effectiveId == track.effectiveId }
-                        SuvFadeSlideIn(
-                            modifier = Modifier.fillMaxWidth(),
-                            delayMs = MotionTokens.DurationShort3 * (7 + index.coerceAtMost(4)),
-                        ) {
+                Column(verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)) {
+                    ActionSheetSectionLabel("Add to playlist", modifier = Modifier.padding(top = 0.dp))
+                    ActionSheetSectionCard {
+                        playlists.forEachIndexed { index, pl ->
+                            val alreadyInPlaylist = pl.videos.any { it.effectiveId == track.effectiveId }
                             ActionSheetRow(
                                 Icons.AutoMirrored.Filled.PlaylistAdd,
                                 pl.title,
                                 onClick = { if (!alreadyInPlaylist) onAddToPlaylist(pl.id) },
                                 enabled = !alreadyInPlaylist,
                                 subtitle = if (alreadyInPlaylist) "Already in playlist" else null,
+                                inset = true,
                             )
+                            if (index < playlists.lastIndex) {
+                                Box(
+                                    modifier =
+                                        Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 8.dp)
+                                            .height(1.dp)
+                                            .background(
+                                                MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f),
+                                            ),
+                                )
+                            }
                         }
                     }
                 }
             }
-            Spacer(Modifier.height(ActionSheetSectionSpacing))
-            ActionSheetRowGroup {
-                SuvFadeSlideIn(modifier = Modifier.fillMaxWidth(), delayMs = MotionTokens.DurationShort3 * 2) {
-                    ActionSheetRow(Icons.Default.Close, "Done", onDismiss)
-                }
-            }
+
+            ActionSheetPrimaryButton(
+                label = "Done",
+                icon = Icons.Default.Close,
+                onClick = onDismiss,
+            )
         }
     }
 }
