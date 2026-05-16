@@ -170,6 +170,10 @@ private struct RootShellView: View {
                     onFollowArtist: {
                         viewModel.followArtist(draft.track.artist, artwork: draft.track.artwork)
                         overflowDraft = nil
+                    },
+                    onUnfollowArtist: {
+                        viewModel.unfollowArtistByName(draft.track.artist)
+                        overflowDraft = nil
                     }
                 )
             }
@@ -188,6 +192,11 @@ private struct RootShellView: View {
             }
             .onChange(of: viewModel.currentTrack?.effectiveId) { trackId in
                 if trackId == nil {
+                    isPlayerOpen = false
+                }
+            }
+            .onChange(of: viewModel.artistOpenRequest?.id) { _ in
+                if viewModel.artistOpenRequest != nil {
                     isPlayerOpen = false
                 }
             }

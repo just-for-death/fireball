@@ -28,6 +28,7 @@ import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.Button
 import androidx.compose.material3.TextButton
 import com.fireball.nativeapp.core.model.FireballSettings
 import androidx.compose.runtime.Composable
@@ -197,11 +198,27 @@ fun ArtistDetailRoute(
                             )
                         }
                         Spacer(Modifier.height(12.dp))
-                        val isFollowed =
-                            library.artists.any { artist ->
+                        val matchedArtist =
+                            library.artists.firstOrNull { artist ->
                                 artist.name.equals(b.displayName, ignoreCase = true) ||
                                     (appleId != null && artist.artistId == appleId.toString())
                             }
+                        val isFollowed = matchedArtist != null
+                        Button(
+                            onClick = {
+                                if (isFollowed) {
+                                    matchedArtist?.artistId?.let { viewModel.unfollowArtist(it) }
+                                } else {
+                                    viewModel.followArtist(b.displayName, b.artworkUrl)
+                                }
+                            },
+                            modifier =
+                                Modifier
+                                    .fillMaxWidth()
+                                    .padding(bottom = 12.dp),
+                        ) {
+                            Text(if (isFollowed) "Unfollow artist" else "Follow artist")
+                        }
                         if (isFollowed) {
                             Row(
                                 modifier =

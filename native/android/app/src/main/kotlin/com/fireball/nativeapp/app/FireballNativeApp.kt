@@ -94,16 +94,6 @@ fun FireballNativeApp(viewModel: MainViewModel) {
         viewModel.consumeSearchFocusRequest()
     }
 
-    LaunchedEffect(uiState.artistOpenRequest) {
-        val req = uiState.artistOpenRequest ?: return@LaunchedEffect
-        val keyPart =
-            when (val id = req.appleId) {
-                null -> "n"
-                else -> "i$id"
-            }
-        navController.navigate("artist_detail/$keyPart/" + Uri.encode(req.fallbackName))
-        viewModel.consumeArtistOpenRequest()
-    }
     val isTablet = LocalConfiguration.current.smallestScreenWidthDp >= 700
     val startRoute = when (settings.startTab.trim().lowercase()) {
         "search", "library", "settings" -> settings.startTab.trim().lowercase()
@@ -127,6 +117,18 @@ fun FireballNativeApp(viewModel: MainViewModel) {
     }
     var isPlayerOpen by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
     var overflowTrack by remember { mutableStateOf<Track?>(null) }
+
+    LaunchedEffect(uiState.artistOpenRequest) {
+        val req = uiState.artistOpenRequest ?: return@LaunchedEffect
+        isPlayerOpen = false
+        val keyPart =
+            when (val id = req.appleId) {
+                null -> "n"
+                else -> "i$id"
+            }
+        navController.navigate("artist_detail/$keyPart/" + Uri.encode(req.fallbackName))
+        viewModel.consumeArtistOpenRequest()
+    }
 
     val items = listOf(
         RootNavItem("home", "Home", Destination.Home, { Icon(Icons.Default.Home, contentDescription = null) }),
@@ -567,6 +569,7 @@ fun FireballNativeApp(viewModel: MainViewModel) {
                 PlayerTrackOverflowDialog(
                     track = t,
                     isFavorite = viewModel.isFavorite(t),
+                    isArtistFollowed = viewModel.isArtistFollowed(t.artist),
                     playlists = viewModel.userPlaylistsForPicker(),
                     onDismiss = { overflowTrack = null },
                     onPlayNext = {
@@ -590,6 +593,11 @@ fun FireballNativeApp(viewModel: MainViewModel) {
                     },
                     onFollowArtist = {
                         viewModel.followArtist(t.artist, t.artwork)
+                        overflowTrack = null
+                    },
+                    onUnfollowArtist = {
+                        viewModel.unfollowArtistByName(t.artist)
+                        overflowTrack = null
                     },
                 )
             }
