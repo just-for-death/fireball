@@ -95,19 +95,10 @@ fun NowPlayingScreen(
     onToggleShuffle: () -> Unit,
     onToggleRepeatMode: () -> Unit,
     onPlayQueueIndex: (Int) -> Unit = {},
-    onFollowArtist: (String, String?) -> Unit = { _, _ -> },
     onOpenArtistSearch: (String, String?) -> Unit = { _, _ -> },
     onOverflowQueueTrackMenu: (Track) -> Unit = {},
     onCollapse: () -> Unit,
     onOpenTrackMenu: () -> Unit = {},
-    isCurrentTrackFavorite: Boolean = false,
-    onPlayNextFromMenu: () -> Unit = {},
-    onAddToQueueFromMenu: () -> Unit = {},
-    onToggleFavoriteFromMenu: () -> Unit = {},
-    onSeeArtistFromMenu: () -> Unit = {},
-    isArtistFollowed: Boolean = false,
-    onFollowArtistFromMenu: () -> Unit = {},
-    onUnfollowArtistFromMenu: () -> Unit = {},
     appearanceChrome: String = "music",
 ) {
     var queueExpanded by remember { mutableStateOf(false) }
@@ -269,7 +260,7 @@ fun NowPlayingScreen(
                                 .verticalScroll(scrollRight),
                         ) {
                             Spacer(Modifier.height(8.dp))
-                            if (pinnedLyricsPanel && !currentLyrics.isNullOrBlank()) {
+                            if (pinnedLyricsPanel && hasLyrics && !artSlotShowsLyrics) {
                                 Text(
                                     text = "Lyrics",
                                     style = MaterialTheme.typography.labelLarge,
@@ -359,7 +350,7 @@ fun NowPlayingScreen(
                             fillMax = true,
                         )
 
-                        if (pinnedLyricsPanel && artSlotShowsLyrics) {
+                        if (pinnedLyricsPanel && hasLyrics && !artSlotShowsLyrics) {
                             Spacer(Modifier.height(12.dp))
                             Text(
                                 text = "Lyrics (expanded)",

@@ -538,37 +538,10 @@ fun FireballNativeApp(viewModel: MainViewModel) {
                     onToggleShuffle = viewModel::toggleShuffle,
                     onToggleRepeatMode = viewModel::toggleRepeatMode,
                     onPlayQueueIndex = viewModel::playQueueIndex,
-                    onFollowArtist = viewModel::followArtist,
                     onOpenArtistSearch = { name, _ -> openArtistFromDisplayLine(name) },
                     onOverflowQueueTrackMenu = { overflowTrack = it },
                     onCollapse = { isPlayerOpen = false },
                     onOpenTrackMenu = { playback.currentTrack?.let { overflowTrack = it } },
-                    isCurrentTrackFavorite =
-                        playback.currentTrack?.let { viewModel.isFavorite(it) } ?: false,
-                    onPlayNextFromMenu = {
-                        playback.currentTrack?.let { viewModel.playTrackUpNext(it) }
-                    },
-                    onAddToQueueFromMenu = {
-                        playback.currentTrack?.let { viewModel.appendTrackToQueue(it) }
-                    },
-                    onToggleFavoriteFromMenu = {
-                        playback.currentTrack?.let { viewModel.toggleFavorite(it) }
-                    },
-                    onSeeArtistFromMenu = {
-                        playback.currentTrack?.let { viewModel.requestArtistDetail(it.artist) }
-                    },
-                    isArtistFollowed =
-                        playback.currentTrack?.let { viewModel.isArtistFollowed(it.artist) } ?: false,
-                    onFollowArtistFromMenu = {
-                        playback.currentTrack?.let { t ->
-                            viewModel.followArtist(t.artist, t.artwork)
-                        }
-                    },
-                    onUnfollowArtistFromMenu = {
-                        playback.currentTrack?.let { t ->
-                            viewModel.unfollowArtistByName(t.artist)
-                        }
-                    },
                 )
             }
 

@@ -268,7 +268,6 @@ private struct RootShellView: View {
             queue: viewModel.queue,
             currentIndex: viewModel.currentIndex,
             onPlayQueueIndex: viewModel.playQueueIndex,
-            onFollowArtist: viewModel.followArtist,
             onOpenArtist: { name, _ in
                 handleOpenArtist(name)
             },
@@ -277,20 +276,6 @@ private struct RootShellView: View {
                 if let t = viewModel.currentTrack {
                     overflowDraft = OverflowTrackDraft(track: t)
                 }
-            },
-            isFavorite: viewModel.isFavorite(track),
-            onPlayNext: { viewModel.playTrackUpNext(track) },
-            onAddToQueue: { viewModel.appendTrackToQueue(track) },
-            onToggleFavorite: { viewModel.toggleFavorite(track) },
-            onSeeArtist: {
-                handleOpenArtist(track.artist)
-            },
-            isArtistFollowed: viewModel.isArtistFollowed(artistName: track.artist),
-            onFollowArtistFromMenu: {
-                viewModel.followArtist(track.artist, artwork: track.artwork)
-            },
-            onUnfollowArtistFromMenu: {
-                viewModel.unfollowArtistByName(track.artist)
             },
             onOverflowQueueTrack: { overflowDraft = OverflowTrackDraft(track: $0) }
         )

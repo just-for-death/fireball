@@ -19,7 +19,7 @@ import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PersonAdd
-import androidx.compose.material.icons.filled.QueueMusic
+import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
@@ -103,7 +103,7 @@ fun PlayerTrackOverflowDialog(
                 ActionSheetRow(Icons.Default.SkipNext, "Play next", onPlayNext)
             }
             SuvFadeSlideIn(delayMs = MotionTokens.DurationShort3) {
-                ActionSheetRow(Icons.Default.QueueMusic, "Add to queue", onAddToQueue)
+                ActionSheetRow(Icons.AutoMirrored.Filled.QueueMusic, "Add to queue", onAddToQueue)
             }
             SuvFadeSlideIn(delayMs = MotionTokens.DurationShort3 * 2) {
                 ActionSheetRow(

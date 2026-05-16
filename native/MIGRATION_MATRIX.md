@@ -105,14 +105,14 @@
 - [x] Follow artist (iTunes resolve) + Gotify release tracking
 - [x] Follow-artist new releases — dual channel optional Gotify push + optional on-device local notifications (`notifyArtistReleasesOnDevice`; Android periodic WorkManager + POST_NOTIFICATIONS; iOS foreground refresh + authorization on toggle)
 - [x] Appearance chrome source persisted as `appearanceColorSource` (`music` \| `scheme` \| Material You mapped on Android); album-art dynamic colors gated to `music` mode where applicable
-- [x] Now Playing lyrics: replace artwork when loaded; optional extra strip via `alwaysShowLyricsPanel` (Android + iOS)
+- [x] Now Playing lyrics: **long-press artwork** toggles lyrics in art slot; optional extra strip via `alwaysShowLyricsPanel` when art shows cover (Android + iOS)
 - [x] Now Playing queue panel + Invidious favorites auto-push playlist ID setting
 
 ## Native parity checklist (Android + iOS)
 
 - [x] Search suggestions while typing (debounced, offline + remote)
 - [x] Post-search **Songs / Albums** segmented results (iTunes album search)
-- [x] **Artist catalog** screen: iTunes songs + albums; **Playlists** = local library playlists containing artist
+- [x] **Artist catalog** screen: iTunes songs + albums (no Playlists tab; use Library for playlist browse)
 - [x] **Navigate to artist** when name/id known (`requestArtistDetail`); Search prefill as fallback only
 - [x] **Playlist detail** navigation (no autoplay on open); Play / Play next / Add to queue
 - [x] Mini-player **Close** clears playback session + queue
@@ -122,7 +122,7 @@
 - [x] Overflow sheet stays open for non-current queue tracks (no auto-dismiss on track change)
 - [x] **Appearance** `appearanceColorSource`: Android `material_you` \| `music` \| `scheme`; iOS `music` \| `scheme` (`material_you` → scheme)
 - [x] Now Playing **⋮ menu**: play next, queue, favorite, view artist, follow, full overflow sheet
-- [x] Lyrics: **in artwork slot** when available; **`alwaysShowLyricsPanel`** adds secondary strip below seek
+- [x] Lyrics: **long-press artwork** to show/hide in art slot; **`alwaysShowLyricsPanel`** adds secondary strip when art shows cover (not while lyrics fill the slot)
 - [x] Session restore: **no autoplay** on cold start; lyrics prefetch for restored track (Android + iOS)
 - [x] Artist from Now Playing: **immediate** catalog navigation; Follow/Unfollow on artist page + overflow sheet
 - [x] Followed-artist **release alerts**: optional Gotify + optional device notifications; Android WorkManager ~15h; iOS foreground + optional `BGAppRefresh`
