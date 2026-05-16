@@ -50,11 +50,9 @@ enum YoutubeDirectStreamResolver {
     }
 
     #if canImport(YouTubeKit)
-    private static let extractionMethods: [ExtractionMethod] = [.local, .remote]
-
     private static func pickAudioUrlWithYouTubeKit(videoId: String, highQuality: Bool) async -> String? {
         do {
-            let youtube = YouTube(videoID: videoId, methods: extractionMethods)
+            let youtube = YouTube(videoID: videoId, methods: [.local, .remote])
             let audioStreams = try await youtube.streams.filterAudioOnly()
             let stream = highQuality
                 ? audioStreams.highestAudioBitrateStream()

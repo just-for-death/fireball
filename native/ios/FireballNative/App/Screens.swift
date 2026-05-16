@@ -856,6 +856,45 @@ struct LibraryScreen: View {
     var body: some View {
         Group {
             if useGrid {
+                libraryGridScroll
+            } else {
+                libraryList
+            }
+        }
+        .toolbar {
+            ToolbarItemGroup(placement: .primaryAction) {
+                Button {
+                    followArtistName = ""
+                    showFollowArtistPrompt = true
+                } label: {
+                    Image(systemName: "person.badge.plus")
+                }
+                .accessibilityLabel("Follow artist")
+                Button {
+                    newPlaylistTitle = ""
+                    showCreatePlaylistPrompt = true
+                } label: {
+                    Image(systemName: "plus.rectangle.on.rectangle")
+                }
+                .accessibilityLabel("New playlist")
+            }
+        }
+        .sheet(isPresented: $showFollowArtistPrompt) {
+            FollowArtistSheet { name in
+                viewModel.followArtist(name: name, artwork: nil)
+                followArtistName = ""
+            }
+        }
+        .sheet(isPresented: $showCreatePlaylistPrompt) {
+            CreatePlaylistSheet { title in
+                viewModel.createPlaylist(title: title)
+                newPlaylistTitle = ""
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var libraryGridScroll: some View {
                 ScrollView {
                     if !library.playlists.isEmpty {
                         VStack(alignment: .leading, spacing: 8) {
@@ -933,105 +972,76 @@ struct LibraryScreen: View {
                     }
                     .padding()
                 }
-            } else {
-                List {
-                    if !library.playlists.isEmpty {
-                        Section("Playlists") {
-                            ForEach(library.playlists, id: \.id) { pl in
-                                NavigationLink(
-                                    destination: PlaylistDetailScreen(
-                                        playlist: pl,
-                                        onOverflowTrack: onOverflowTrack
-                                    )
-                                ) {
-                                    HStack {
-                                        Text(pl.title)
-                                        Spacer()
-                                        Text("\(pl.videos.count) tracks").font(.caption).foregroundStyle(.secondary)
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    Section("Favorites") {
-                        if library.favorites.isEmpty {
-                            Text("No favorites yet — use Search or the heart button while playing.")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                        ForEach(library.favorites, id: \.effectiveId) { track in
-                            LibraryTrackRow(
-                                track: track,
-                                onPlay: { onPlay(track, library.favorites) },
-                                onOverflow: { onOverflowTrack(track) },
-                                onArtistTap: {
-                                    onOpenArtist(track.artist, track.artwork)
-                                },
-                                showFavoriteButton: true,
-                                isFavorite: true,
-                                onFavorite: { onFavorite(track) },
-                                useMaterialBackground: false
+    }
+
+    @ViewBuilder
+    private var libraryList: some View {
+        List {
+            if !library.playlists.isEmpty {
+                Section("Playlists") {
+                    ForEach(library.playlists, id: \.id) { pl in
+                        NavigationLink(
+                            destination: PlaylistDetailScreen(
+                                playlist: pl,
+                                onOverflowTrack: onOverflowTrack
                             )
-                        }
-                    }
-                    if !library.history.isEmpty {
-                        Section("History") {
-                            ForEach(library.history.prefix(30), id: \.effectiveId) { track in
-                                LibraryTrackRow(
-                                    track: track,
-                                    onPlay: { onPlay(track, library.history) },
-                                    onOverflow: { onOverflowTrack(track) },
-                                    onArtistTap: {
-                                        onOpenArtist(track.artist, track.artwork)
-                                    },
-                                    useMaterialBackground: false
-                                )
-                            }
-                        }
-                    }
-                    if !library.artists.isEmpty {
-                        Section("Followed artists") {
-                            ForEach(library.artists, id: \.artistId) { artist in
-                                HStack {
-                                    Text(artist.name)
-                                    Spacer()
-                                    Button("Unfollow") { onUnfollowArtist(artist.artistId) }
-                                        .font(.caption)
-                                }
+                        ) {
+                            HStack {
+                                Text(pl.title)
+                                Spacer()
+                                Text("\(pl.videos.count) tracks").font(.caption).foregroundStyle(.secondary)
                             }
                         }
                     }
                 }
             }
-        }
-        .toolbar {
-            ToolbarItemGroup(placement: .primaryAction) {
-                Button {
-                    followArtistName = ""
-                    showFollowArtistPrompt = true
-                } label: {
-                    Image(systemName: "person.badge.plus")
+            Section("Favorites") {
+                if library.favorites.isEmpty {
+                    Text("No favorites yet — use Search or the heart button while playing.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
-                .accessibilityLabel("Follow artist")
-                Button {
-                    newPlaylistTitle = ""
-                    showCreatePlaylistPrompt = true
-                } label: {
-                    Image(systemName: "plus.rectangle.on.rectangle")
+                ForEach(library.favorites, id: \.effectiveId) { track in
+                    LibraryTrackRow(
+                        track: track,
+                        onPlay: { onPlay(track, library.favorites) },
+                        onOverflow: { onOverflowTrack(track) },
+                        onArtistTap: {
+                            onOpenArtist(track.artist, track.artwork)
+                        },
+                        showFavoriteButton: true,
+                        isFavorite: true,
+                        onFavorite: { onFavorite(track) },
+                        useMaterialBackground: false
+                    )
                 }
-                .accessibilityLabel("New playlist")
             }
-        }
-        .sheet(isPresented: $showFollowArtistPrompt) {
-            FollowArtistSheet { name in
-                viewModel.followArtist(name, artwork: nil)
-                followArtistName = ""
+            if !library.history.isEmpty {
+                Section("History") {
+                    ForEach(library.history.prefix(30), id: \.effectiveId) { track in
+                        LibraryTrackRow(
+                            track: track,
+                            onPlay: { onPlay(track, library.history) },
+                            onOverflow: { onOverflowTrack(track) },
+                            onArtistTap: {
+                                onOpenArtist(track.artist, track.artwork)
+                            },
+                            useMaterialBackground: false
+                        )
+                    }
+                }
             }
-        }
-        .sheet(isPresented: $showCreatePlaylistPrompt) {
-            CreatePlaylistSheet { title in
-                viewModel.createPlaylist(title: title)
-                newPlaylistTitle = ""
+            if !library.artists.isEmpty {
+                Section("Followed artists") {
+                    ForEach(library.artists, id: \.artistId) { artist in
+                        HStack {
+                            Text(artist.name)
+                            Spacer()
+                            Button("Unfollow") { onUnfollowArtist(artist.artistId) }
+                                .font(.caption)
+                        }
+                    }
+                }
             }
         }
     }
@@ -1151,9 +1161,8 @@ struct SettingsScreen: View {
                 Text("Home chart regions")
                     .font(.headline)
                 ForEach(HomeCountries.all, id: \.code) { entry in
-                    let selected = settings.homeCountries.contains(entry.code)
                     Toggle(entry.name, isOn: .init(
-                        get: { selected },
+                        get: { settings.homeCountries.contains(entry.code) },
                         set: { on in
                             var codes = Set(settings.homeCountries)
                             if on { codes.insert(entry.code) } else { codes.remove(entry.code) }

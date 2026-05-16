@@ -70,7 +70,7 @@ struct ArtistCatalogScreen: View {
                             if let existing = matchedFollowedArtist {
                                 viewModel.unfollowArtist(artistId: existing.artistId)
                             } else if let browse = browseResult {
-                                viewModel.followArtist(browse.displayName, artwork: browse.artworkUrl)
+                                viewModel.followArtist(name: browse.displayName, artwork: browse.artworkUrl)
                             }
                         }
                     }
@@ -102,7 +102,7 @@ struct ArtistCatalogScreen: View {
                 if let existing = matchedFollowedArtist {
                     viewModel.unfollowArtist(artistId: existing.artistId)
                 } else {
-                    viewModel.followArtist(browse.displayName, artwork: browse.artworkUrl)
+                    viewModel.followArtist(name: browse.displayName, artwork: browse.artworkUrl)
                 }
             }
             .buttonStyle(.bordered)
