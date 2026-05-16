@@ -1,7 +1,8 @@
 package com.fireball.nativeapp.ui.components
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material.icons.Icons
@@ -28,18 +29,30 @@ import androidx.compose.ui.platform.LocalContext
  * full-screen view (large square). Same composable so the look stays
  * consistent.
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun AlbumArt(
     thumbnailUrl: String?,
     contentDescription: String?,
     modifier: Modifier = Modifier,
     onClick: (() -> Unit)? = null,
+    onLongClick: (() -> Unit)? = null,
 ) {
-    val container = if (onClick != null) {
-        modifier.clickable(onClick = onClick)
-    } else {
-        modifier
-    }
+    val container =
+        when {
+            onLongClick != null || onClick != null ->
+                modifier.combinedClickable(
+                    onClick = { onClick?.invoke() },
+                    onLongClick =
+                        if (onLongClick != null) {
+                            { onLongClick.invoke() }
+                        } else {
+                            null
+                        },
+                )
+
+            else -> modifier
+        }
 
     if (thumbnailUrl.isNullOrBlank()) {
         GradientPlaceholder(modifier = container)

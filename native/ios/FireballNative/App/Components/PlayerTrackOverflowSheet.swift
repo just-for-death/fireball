@@ -11,6 +11,7 @@ struct PlayerTrackOverflowSheet: View {
     let onToggleFavorite: () -> Void
     let onAddToPlaylist: (String) -> Void
     let onSeeArtist: () -> Void
+    let onFollowArtist: () -> Void
 
     private var favoriteLabel: String {
         viewModel.isFavorite(track) ? "Remove from favorites" : "Add to favorites"
@@ -27,7 +28,8 @@ struct PlayerTrackOverflowSheet: View {
                     Button("Play next", action: onPlayNext)
                     Button("Add to queue", action: onAddToQueue)
                     Button(favoriteLabel, action: onToggleFavorite)
-                    Button("View artist in Search", action: onSeeArtist)
+                    Button("View artist catalog", action: onSeeArtist)
+                    Button("Follow artist", action: onFollowArtist)
                 }
                 if !playlists.isEmpty {
                     Section {

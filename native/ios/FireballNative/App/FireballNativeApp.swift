@@ -31,6 +31,7 @@ private struct OverflowTrackDraft: Identifiable {
 
 private struct RootShellView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.scenePhase) private var scenePhase
     @EnvironmentObject private var viewModel: MainViewModel
     @State private var selectedTab: RootTab = .home
     @State private var isPlayerOpen = false
@@ -57,6 +58,8 @@ private struct RootShellView: View {
                                     onPrevious: { viewModel.previous() },
                                     onTap: { isPlayerOpen = true },
                                     onLongPressMenu: { overflowDraft = OverflowTrackDraft(track: track) },
+                                    onArtistTap: { viewModel.requestArtistDetail(artistDisplayName: track.artist) },
+                                    onClose: { viewModel.stopPlaybackAndDismissMiniPlayer() },
                                     chrome: .ipadSidebarRail
                                 )
                                 .padding(.horizontal, 10)
@@ -65,13 +68,15 @@ private struct RootShellView: View {
                         }
                         .navigationTitle("Fireball")
                     } detail: {
-                        screen(for: selectedTab)
-                            .navigationTitle(selectedTab.rawValue.capitalized)
-                    }
-                    .sheet(isPresented: $isPlayerOpen, onDismiss: { isPlayerOpen = false }) {
-                        if let track = viewModel.currentTrack {
-                            fullPlayer(track: track)
-                                .modifier(PlayerSheetChrome())
+                        NavigationStack {
+                            screen(for: selectedTab)
+                                .navigationTitle(selectedTab.rawValue.capitalized)
+                        }
+                        .sheet(isPresented: $isPlayerOpen, onDismiss: { isPlayerOpen = false }) {
+                            if let track = viewModel.currentTrack {
+                                fullPlayer(track: track)
+                                    .modifier(PlayerSheetChrome())
+                            }
                         }
                     }
                 } else {
@@ -94,8 +99,11 @@ private struct RootShellView: View {
                                 isLoading: viewModel.isPlaybackLoading,
                                 onPlayPause: viewModel.togglePlayPause,
                                 onNext: viewModel.next,
+                                onPrevious: {},
                                 onTap: { isPlayerOpen = true },
                                 onLongPressMenu: { overflowDraft = OverflowTrackDraft(track: track) },
+                                onArtistTap: { viewModel.requestArtistDetail(artistDisplayName: track.artist) },
+                                onClose: { viewModel.stopPlaybackAndDismissMiniPlayer() },
                                 chrome: .phone
                             )
                             .padding(.horizontal)
@@ -146,23 +154,34 @@ private struct RootShellView: View {
                         viewModel.addTrackToPlaylist(track: draft.track, playlistId: pid)
                     },
                     onSeeArtist: {
-                        viewModel.requestSearchForArtist(draft.track.artist)
+                        viewModel.requestArtistDetail(artistDisplayName: draft.track.artist)
+                        overflowDraft = nil
+                    },
+                    onFollowArtist: {
+                        viewModel.followArtist(draft.track.artist, artwork: draft.track.artwork)
                         overflowDraft = nil
                     }
                 )
             }
-            .onChange(of: viewModel.currentTrack?.effectiveId) { _ in
-                guard let draft = overflowDraft else { return }
-                if viewModel.currentTrack?.effectiveId != draft.track.effectiveId {
-                    overflowDraft = nil
-                }
-            }
+
             .onChange(of: viewModel.searchFocusRequest) { newValue in
                 guard let q = newValue, !q.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
                 selectedTab = .search
                 viewModel.query = q
                 Task { await viewModel.search() }
                 viewModel.consumeSearchFocusRequest()
+            }
+            .onChange(of: scenePhase) { phase in
+                if phase == .active {
+                    Task { await viewModel.refreshFollowedArtistReleaseChecksFromForeground() }
+                }
+            }
+            .fullScreenCover(
+                item: $viewModel.artistOpenRequest,
+                onDismiss: { viewModel.consumeArtistOpenRequest() }
+            ) { req in
+                ArtistCatalogScreen(appleArtistId: req.appleId, fallbackDisplayName: req.fallbackDisplayName)
+                    .environmentObject(viewModel)
             }
         }
     }
@@ -234,13 +253,18 @@ private struct RootShellView: View {
             SearchScreen(
                 query: $viewModel.query,
                 results: viewModel.searchResults,
+                albumResults: viewModel.searchAlbumResults,
+                searchSuggestions: viewModel.searchSuggestions,
                 isSearching: viewModel.isSearching,
                 error: viewModel.error,
                 isFavorite: viewModel.isFavorite,
                 onDismissError: { viewModel.clearError() },
                 onSearch: viewModel.search,
+                onRefreshSuggestions: { viewModel.refreshSearchSuggestionsNow() },
                 onPlay: viewModel.play,
-                onFavorite: viewModel.toggleFavorite
+                onPlayAlbum: viewModel.playCatalogAlbum,
+                onFavorite: viewModel.toggleFavorite,
+                onOverflowTrack: { t in overflowDraft = OverflowTrackDraft(track: t) }
             )
         case .library:
             LibraryScreen(

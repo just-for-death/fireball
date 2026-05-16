@@ -92,12 +92,16 @@ class AppearanceSettings {
   final int? accentSeedColor;
   final bool ipadSidebarCollapsed;
 
+  /// Native chrome source: `music` \| `scheme` \| `material_you`; empty keeps legacy mapping from [useDynamicColorWhenAvailable].
+  final String appearanceColorSource;
+
   const AppearanceSettings({
     this.themeMode = 'system',
     this.flexScheme = 'deepPurple',
     this.useDynamicColorWhenAvailable = true,
     this.accentSeedColor,
     this.ipadSidebarCollapsed = false,
+    this.appearanceColorSource = '',
   });
 }
 
@@ -270,6 +274,15 @@ class FireballSettings {
   /// iPad glass sidebar: narrow icon-only rail vs expanded.
   final bool ipadSidebarCollapsed;
 
+  /// Post OS notifications when followed artists publish new albums (same probe path as optional Gotify).
+  final bool notifyArtistReleasesOnDevice;
+
+  /// Show lyrics strip on Now Playing without long-pressing artwork first.
+  final bool alwaysShowLyricsPanel;
+
+  /// `music` \| `scheme` \| `material_you`; empty uses legacy dynamic-color semantics only.
+  final String appearanceColorSource;
+
   // Gotify Push Notifications
   final bool gotifyEnabled;
   final String gotifyUrl;
@@ -325,6 +338,9 @@ class FireballSettings {
     this.useDynamicColorWhenAvailable = true,
     this.accentSeedColor,
     this.ipadSidebarCollapsed = false,
+    this.notifyArtistReleasesOnDevice = false,
+    this.alwaysShowLyricsPanel = false,
+    this.appearanceColorSource = '',
     this.gotifyEnabled = false,
     this.gotifyUrl = '',
     this.gotifyToken = '',
@@ -418,6 +434,10 @@ class FireballSettings {
               ? (j['accentSeedColor'] as num).toInt()
               : int.tryParse(j['accentSeedColor']?.toString() ?? '')),
       ipadSidebarCollapsed: toBool(j['ipadSidebarCollapsed'], false),
+      notifyArtistReleasesOnDevice:
+          toBool(j['notifyArtistReleasesOnDevice'], false),
+      alwaysShowLyricsPanel: toBool(j['alwaysShowLyricsPanel'], false),
+      appearanceColorSource: j['appearanceColorSource']?.toString() ?? '',
       gotifyEnabled: toBool(j['gotifyEnabled'], false),
       gotifyUrl: j['gotifyUrl']?.toString() ?? '',
       gotifyToken: j['gotifyToken']?.toString() ?? '',
@@ -473,6 +493,9 @@ class FireballSettings {
         'useDynamicColorWhenAvailable': useDynamicColorWhenAvailable,
         if (accentSeedColor != null) 'accentSeedColor': accentSeedColor,
         'ipadSidebarCollapsed': ipadSidebarCollapsed,
+        'notifyArtistReleasesOnDevice': notifyArtistReleasesOnDevice,
+        'alwaysShowLyricsPanel': alwaysShowLyricsPanel,
+        'appearanceColorSource': appearanceColorSource,
         'gotifyEnabled': gotifyEnabled,
         'gotifyUrl': gotifyUrl,
         'gotifyToken': gotifyToken,
@@ -530,6 +553,9 @@ class FireballSettings {
     int? accentSeedColor,
     bool clearAccentSeedColor = false,
     bool? ipadSidebarCollapsed,
+    bool? notifyArtistReleasesOnDevice,
+    bool? alwaysShowLyricsPanel,
+    String? appearanceColorSource,
     bool? gotifyEnabled,
     String? gotifyUrl,
     String? gotifyToken,
@@ -598,6 +624,12 @@ class FireballSettings {
             ? null
             : (accentSeedColor ?? this.accentSeedColor),
         ipadSidebarCollapsed: ipadSidebarCollapsed ?? this.ipadSidebarCollapsed,
+        notifyArtistReleasesOnDevice:
+            notifyArtistReleasesOnDevice ?? this.notifyArtistReleasesOnDevice,
+        alwaysShowLyricsPanel:
+            alwaysShowLyricsPanel ?? this.alwaysShowLyricsPanel,
+        appearanceColorSource:
+            appearanceColorSource ?? this.appearanceColorSource,
         gotifyEnabled: gotifyEnabled ?? this.gotifyEnabled,
         gotifyUrl: gotifyUrl ?? this.gotifyUrl,
         gotifyToken: gotifyToken ?? this.gotifyToken,
@@ -652,6 +684,7 @@ class FireballSettings {
         useDynamicColorWhenAvailable: useDynamicColorWhenAvailable,
         accentSeedColor: accentSeedColor,
         ipadSidebarCollapsed: ipadSidebarCollapsed,
+        appearanceColorSource: appearanceColorSource,
       );
 
   /// Fills empty service/account fields from [remote] when merging WebDAV

@@ -27,6 +27,7 @@ fun PlayerTrackOverflowDialog(
     onToggleFavorite: () -> Unit,
     onAddToPlaylist: (String) -> Unit,
     onSeeArtist: () -> Unit,
+    onFollowArtist: () -> Unit = {},
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -85,6 +86,7 @@ fun PlayerTrackOverflowDialog(
                     }
                 }
                 HorizontalDivider(Modifier.padding(vertical = 8.dp))
+                OverflowRow("Follow artist", onFollowArtist)
                 OverflowRow("View artist in Search", onSeeArtist)
             }
         },

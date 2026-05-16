@@ -42,14 +42,27 @@ public struct DynamicThemeViewModifier: ViewModifier {
             .onChange(of: settings.useDynamicColorWhenAvailable) { _ in applyTheme() }
             .onChange(of: settings.flexScheme) { _ in applyTheme() }
             .onChange(of: settings.themeMode) { _ in applyTheme() }
+            .onChange(of: settings.appearanceColorSource) { _ in applyTheme() }
+            .onChange(of: settings.accentSeedColor) { _ in applyTheme() }
             .onAppear { applyTheme() }
+    }
+
+    private func resolvedChromeMode(_ settings: FireballSettings) -> String {
+        let raw = settings.appearanceColorSource.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        switch raw {
+        case "music", "scheme": return raw
+        case "material_you": return "scheme"
+        default:
+            return settings.useDynamicColorWhenAvailable ? "music" : "scheme"
+        }
     }
 
     private func applyTheme() {
         let isDark = FlexTheme.isDark(themeMode: settings.themeMode, systemDark: colorScheme == .dark)
-        if settings.useDynamicColorWhenAvailable {
+        switch resolvedChromeMode(settings) {
+        case "music":
             themeManager.updateColors(from: artworkUrl, isDark: isDark)
-        } else {
+        default:
             var colors = FlexTheme.colors(for: settings.flexScheme, isDark: isDark)
             if let seed = settings.accentSeedColor {
                 colors = FlexTheme.withAccentSeed(colors, seedArgb: seed)

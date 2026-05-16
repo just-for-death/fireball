@@ -42,6 +42,7 @@ public struct NowPlayingScreen: View {
     @State private var dragOffset: CGSize = .zero
     @State private var queueExpanded = false
     @State private var containerWidth: CGFloat = 0
+    @State private var lyricsOverlayPresented = false
 
     /// Two-column layout on iPad regular width when the column is actually wide enough (Stage Manager friendly).
     private var splitLayoutEnabled: Bool {
@@ -99,6 +100,10 @@ public struct NowPlayingScreen: View {
         .onPreferenceChange(PlayerContainerWidthKey.self) { containerWidth = $0 }
         .dynamicTheme(artworkUrl: track.artwork, settings: settings)
         .safeAreaInset(edge: .bottom) { Color.clear.frame(height: 8) }
+        .sheet(isPresented: $lyricsOverlayPresented) {
+            lyricsOverlaySheet
+                .presentationDragIndicator(.visible)
+        }
     }
 
     private var playerDragHandle: some View {
@@ -161,19 +166,63 @@ public struct NowPlayingScreen: View {
         return splitLayoutEnabled ? 420 : 160
     }
 
+    private var pinnedLyricsPanel: Bool { settings.alwaysShowLyricsPanel }
+
+    private var hasLyricsToShow: Bool {
+        guard let s = currentLyrics else { return false }
+        return !s.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
     private func albumArtView(maxSquare: CGFloat) -> some View {
-        AsyncImage(url: URL(string: track.artwork ?? "")) { phase in
-            if let image = phase.image {
-                image.resizable().aspectRatio(contentMode: .fill)
-            } else {
-                Rectangle().fill(dominantColors.tertiary)
+        ZStack {
+            AsyncImage(url: URL(string: track.artwork ?? "")) { phase in
+                if let image = phase.image {
+                    image.resizable().aspectRatio(contentMode: .fill)
+                } else {
+                    Rectangle().fill(dominantColors.tertiary)
+                }
             }
+            TapOrLongPressHostingView(
+                onTap: onPlayPause,
+                onLongPress: {
+                    if hasLyricsToShow { lyricsOverlayPresented = true }
+                }
+            )
         }
         .frame(width: maxSquare, height: maxSquare)
         .clipShape(RoundedRectangle(cornerRadius: splitLayoutEnabled ? 28 : 22, style: .continuous))
         .shadow(color: Color.black.opacity(0.33), radius: splitLayoutEnabled ? 28 : 18, x: 0, y: 14)
         .contentShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-        .onTapGesture(perform: onPlayPause)
+    }
+
+    @ViewBuilder
+    private var lyricsOverlaySheet: some View {
+        NavigationStack {
+            Group {
+                if let lyrics = currentLyrics, hasLyricsToShow {
+                    SyncedLyricsPanel(
+                        lyrics: lyrics,
+                        positionMs: Int64(positionSeconds * 1000),
+                        autoScroll: lyricsAutoScroll,
+                        reducedMotion: lyricsReducedMotion,
+                        textColor: dominantColors.onBackground,
+                        accentColor: dominantColors.accent,
+                        panelMaxHeight: lyricsReducedMotion ? 420 : 640
+                    )
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .navigationTitle("Lyrics")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Close") { lyricsOverlayPresented = false }
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
     }
 
     private var phoneArtSquare: CGFloat { 336 }
@@ -275,7 +324,7 @@ public struct NowPlayingScreen: View {
 
                     seekBlock
 
-                    if let lyrics = currentLyrics, !lyrics.isEmpty {
+                    if pinnedLyricsPanel, let lyrics = currentLyrics, !lyrics.isEmpty {
                         SyncedLyricsPanel(
                             lyrics: lyrics,
                             positionMs: Int64(positionSeconds * 1000),
@@ -323,7 +372,7 @@ public struct NowPlayingScreen: View {
 
                 ScrollView {
                     VStack(alignment: .leading, spacing: 20) {
-                        if let lyrics = currentLyrics, !lyrics.isEmpty {
+                        if pinnedLyricsPanel, let lyrics = currentLyrics, !lyrics.isEmpty {
                             Text("Lyrics")
                                 .font(.subheadline.weight(.semibold))
                                 .foregroundStyle(dominantColors.onBackground.opacity(0.54))

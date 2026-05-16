@@ -191,4 +191,9 @@ class PlayerManager {
             )
         }
     }
+
+    /** Stops playback and clears the logical queue (mini-player close / quit). */
+    fun clearPlaybackSession() {
+        _state.value = PlaybackState()
+    }
 }

@@ -99,6 +99,12 @@ struct FireballSettings: Codable, Hashable {
     var loggingEnabled = false
     var bluetoothAutoplayEnabled = false
     var speakSongDetailsEnabled = false
+    /// Synced enum string: material_you \| music \| scheme. Empty ⇒ derive from legacy `useDynamicColorWhenAvailable`.
+    var appearanceColorSource = ""
+    /// Local notifications for followed-artist new albums.
+    var notifyArtistReleasesOnDevice = false
+    /// Lyrics panel pinned below transports on Now Playing.
+    var alwaysShowLyricsPanel = false
     var startTab = "home"
     var libraryUseGrid = false
 }

@@ -110,7 +110,13 @@ data class FireballSettings(
     val dynamicIslandEnabled: Boolean = false,
     val loggingEnabled: Boolean = false,
     val bluetoothAutoplayEnabled: Boolean = false,
-    val speakSongDetailsEnabled: Boolean = false
+    val speakSongDetailsEnabled: Boolean = false,
+    /** Android color source; `material_you` | `music` | `scheme`. Empty uses legacy [useDynamicColorWhenAvailable]. */
+    val appearanceColorSource: String = "",
+    /** Post local notifications when followed artists ship new albums (same probe as Gotify path). */
+    val notifyArtistReleasesOnDevice: Boolean = false,
+    /** Shows lyrics panel below transport on Now Playing (vs long-press on artwork default). */
+    val alwaysShowLyricsPanel: Boolean = false,
 )
 
 @Serializable

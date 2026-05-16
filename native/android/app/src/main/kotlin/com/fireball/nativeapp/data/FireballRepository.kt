@@ -5,9 +5,11 @@ import com.fireball.nativeapp.core.data.InvidiousInstanceProvider
 import com.fireball.nativeapp.core.data.ItunesFeedParser
 import com.fireball.nativeapp.core.data.LibraryStore
 import com.fireball.nativeapp.core.data.YoutubeDirectStreamResolver
+import com.fireball.nativeapp.core.model.Album
 import com.fireball.nativeapp.core.model.Artist
 import com.fireball.nativeapp.core.model.FireballSettings
 import com.fireball.nativeapp.core.model.LibrarySnapshot
+import com.fireball.nativeapp.core.model.Playlist
 import com.fireball.nativeapp.core.model.Track
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -17,6 +19,15 @@ import kotlinx.serialization.json.jsonPrimitive
 import java.io.File
 import android.net.Uri
 import androidx.core.net.toUri
+
+data class ArtistBrowseResult(
+    val artistAppleId: Int,
+    val displayName: String,
+    val artworkUrl: String?,
+    val songs: List<Track>,
+    val albums: List<Album>,
+    val playlistsContainingArtist: List<Playlist>,
+)
 
 class FireballRepository(
     private val api: FireballApiClient,
@@ -76,20 +87,23 @@ class FireballRepository(
     }
 
     /**
-     * Notifies via [onNotify] when a followed artist has a new iTunes album (Flutter parity).
-     * Returns an updated snapshot when artist metadata changed.
+     * Polls followed artists for new iTunes albums. Updates baseline [Artist.latestReleaseId].
+     * [onGotifyNotify] fires when Gotify credentials are configured; [onDeviceNotify] when
+     * [FireballSettings.notifyArtistReleasesOnDevice] is on. Both may run for the same release.
      */
-    suspend fun checkGotifyNewReleases(
+    suspend fun checkFollowedArtistNewReleases(
         snapshot: LibrarySnapshot,
-        onNotify: suspend (title: String, message: String) -> Boolean,
+        onGotifyNotify: (suspend (String, String) -> Boolean)?,
+        onDeviceNotify: (suspend (String, String) -> Unit)?,
     ): LibrarySnapshot? = withContext(Dispatchers.IO) {
         val settings = snapshot.settings
-        if (!settings.gotifyEnabled ||
-            settings.gotifyUrl.isBlank() ||
-            settings.gotifyToken.isBlank()
-        ) {
-            return@withContext null
-        }
+        val wantGotify =
+            settings.gotifyEnabled &&
+                settings.gotifyUrl.isNotBlank() &&
+                settings.gotifyToken.isNotBlank() &&
+                onGotifyNotify != null
+        val wantDevice = settings.notifyArtistReleasesOnDevice && onDeviceNotify != null
+        if (!wantGotify && !wantDevice) return@withContext null
 
         var artistsChanged = false
         val updated = snapshot.artists.map { artist ->
@@ -101,10 +115,14 @@ class FireballRepository(
             if (releaseId == artist.latestReleaseId) return@map artist
 
             if (artist.latestReleaseId != null) {
-                onNotify(
-                    "New Release from ${artist.name}",
-                    "$releaseName is out now!",
-                )
+                val title = "New Release from ${artist.name}"
+                val message = "$releaseName is out now!"
+                if (wantGotify) {
+                    runCatching { onGotifyNotify!!(title, message) }
+                }
+                if (wantDevice) {
+                    runCatching { onDeviceNotify!!(title, message) }
+                }
             }
             artistsChanged = true
             artist.copy(latestReleaseId = releaseId)
@@ -112,6 +130,68 @@ class FireballRepository(
 
         if (!artistsChanged) null else snapshot.copy(artists = updated)
     }
+
+    suspend fun searchAlbumsCatalog(query: String, settings: FireballSettings): List<Album> {
+        if (query.isBlank() || settings.offlineModeEnabled) return emptyList()
+        return withContext(Dispatchers.IO) {
+            runCatching {
+                val root = api.itunesSearchAlbums(query)
+                val items = root["results"]?.jsonArray ?: return@runCatching emptyList()
+                items.mapNotNull { jsonCollectionToAlbum(it.jsonObject) }
+            }.getOrDefault(emptyList())
+        }
+    }
+
+    suspend fun catalogAlbumTracks(collectionId: Int): List<Track> = withContext(Dispatchers.IO) {
+        runCatching {
+            api.itunesAlbumTracks(collectionId).mapNotNull { jsonObjectToCatalogTrack(it) }
+        }.getOrDefault(emptyList())
+    }
+
+    suspend fun browseArtist(library: LibrarySnapshot, artistAppleId: Int?, artistName: String?): ArtistBrowseResult? =
+        withContext(Dispatchers.IO) {
+            val resolvedId =
+                artistAppleId ?: run {
+                    val guess = artistName?.trim().orEmpty()
+                    if (guess.isEmpty()) return@withContext null
+                    val row = api.itunesFindArtist(guess) ?: return@withContext null
+                    row["artistId"]?.jsonPrimitive?.content?.toIntOrNull() ?: return@withContext null
+                }
+            val meta = api.itunesArtistDetail(resolvedId)
+            val displayName =
+                meta?.get("artistName")?.jsonPrimitive?.content?.trim()?.takeIf { it.isNotBlank() }
+                    ?: artistName?.trim().orEmpty().ifBlank { "Artist" }
+            var artwork =
+                meta?.get("artworkUrl100")?.jsonPrimitive?.content
+                    ?.replace("100x100", "600x600")
+            val songs =
+                api.itunesArtistSongs(resolvedId, limit = 60).mapNotNull { jsonObjectToCatalogTrack(it) }
+            val albumRows =
+                api.itunesArtistAlbums(resolvedId, limit = 80)
+            val albums = albumRows.mapNotNull { jsonCollectionToAlbum(it) }.distinctBy { it.id }
+            if (artwork.isNullOrBlank()) {
+                artwork =
+                    albumRows.firstOrNull()
+                        ?.get("artworkUrl100")?.jsonPrimitive?.content
+                        ?.replace("100x100", "600x600")
+            }
+            val needle = displayName.lowercase()
+            val playlists =
+                library.playlists.filter { pl ->
+                    pl.videos.any {
+                        val a = it.artist.lowercase()
+                        a == needle || a.contains(needle) || needle.contains(a)
+                    }
+                }
+            ArtistBrowseResult(
+                artistAppleId = resolvedId,
+                displayName = displayName,
+                artworkUrl = artwork,
+                songs = songs,
+                albums = albums,
+                playlistsContainingArtist = playlists,
+            )
+        }
 
     suspend fun searchTracks(query: String, settings: FireballSettings): List<Track> {
         if (query.isBlank()) return emptyList()
@@ -167,6 +247,13 @@ class FireballRepository(
 
         return emptyList()
     }
+
+    /**
+     * True when playback handoff must run [resolvePlayableTrack]: missing URL, or blocked
+     * Apple/iTunes sample / preview CDN (prefer Invidious then YouTube fallback).
+     */
+    fun needsInvidiousStreamResolution(track: Track): Boolean =
+        track.url.isNullOrBlank() || isItunesPreviewUrl(track.url)
 
     /**
      * Resolve a playable stream URL.
@@ -361,10 +448,15 @@ class FireballRepository(
     private fun isItunesPreviewUrl(url: String?): Boolean {
         if (url.isNullOrBlank()) return false
         val u = url.lowercase()
-        // Do not treat mzstatic artwork CDNs as "preview streams" — only block Apple audio previews.
+        if (u.contains("mzstatic.com")) {
+            return u.contains(".m4a") ||
+                u.contains(".mp4") ||
+                u.contains("/preview/")
+        }
         return u.contains("itunes.apple.com") ||
             u.contains("audio-ssl.itunes.apple.com") ||
             u.contains("audio.itunes.apple.com") ||
+            (u.contains("music.apple.com") && (u.contains("/preview") || u.contains(".m4a"))) ||
             (u.contains("apple.com") && (u.contains(".m4a") || u.contains("/preview")))
     }
 
@@ -408,6 +500,41 @@ class FireballRepository(
         val explicit = settings.searchCacheMaxEntries
         if (explicit > 0) return explicit.coerceIn(10, 500)
         return settings.localMusicCacheLimit.coerceIn(1, 20) * 10
+    }
+
+    private fun jsonObjectToCatalogTrack(e: kotlinx.serialization.json.JsonObject): Track? {
+        val id = e["trackId"]?.jsonPrimitive?.content ?: return null
+        return Track(
+            id = id,
+            videoId = null,
+            title = e["trackName"]?.jsonPrimitive?.content ?: "Unknown",
+            artist = e["artistName"]?.jsonPrimitive?.content ?: "Unknown",
+            artwork = e["artworkUrl100"]?.jsonPrimitive?.content
+                ?.replace("100x100", "600x600"),
+            url = null,
+            duration =
+                e["trackTimeMillis"]?.jsonPrimitive?.content?.toLongOrNull()
+                    ?.div(1000L)?.toInt(),
+            album = e["collectionName"]?.jsonPrimitive?.content,
+            year = e["releaseDate"]?.jsonPrimitive?.content?.take(4),
+        )
+    }
+
+    private fun jsonCollectionToAlbum(e: kotlinx.serialization.json.JsonObject): Album? {
+        val cid = e["collectionId"]?.jsonPrimitive?.content ?: return null
+        val year = e["releaseDate"]?.jsonPrimitive?.content?.take(4)?.toIntOrNull()
+        return Album(
+            id = cid,
+            title = e["collectionName"]?.jsonPrimitive?.content ?: "Album",
+            artist = e["artistName"]?.jsonPrimitive?.content ?: "",
+            artwork =
+                e["artworkUrl100"]?.jsonPrimitive?.content?.replace(
+                    "100x100",
+                    "600x600",
+                ),
+            year = year,
+            tracks = null,
+        )
     }
 
     private fun cacheSearch(key: String, tracks: List<Track>, settings: FireballSettings) {

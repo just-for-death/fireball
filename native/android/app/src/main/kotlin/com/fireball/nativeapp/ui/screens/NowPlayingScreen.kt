@@ -5,6 +5,7 @@ package com.fireball.nativeapp.ui.screens
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.onLongClick
@@ -39,11 +40,13 @@ import androidx.compose.material.icons.filled.RepeatOne
 import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -78,6 +81,7 @@ fun NowPlayingScreen(
     currentLyrics: String?,
     lyricsAutoScroll: Boolean = true,
     lyricsReducedMotion: Boolean = false,
+    pinnedLyricsPanel: Boolean = false,
     onPlayPause: () -> Unit,
     onNext: () -> Unit,
     onPrevious: () -> Unit,
@@ -86,10 +90,13 @@ fun NowPlayingScreen(
     onToggleRepeatMode: () -> Unit,
     onPlayQueueIndex: (Int) -> Unit = {},
     onFollowArtist: (String, String?) -> Unit = { _, _ -> },
+    onOpenArtistSearch: (String, String?) -> Unit = { _, _ -> },
+    onOverflowQueueTrackMenu: (Track) -> Unit = {},
     onCollapse: () -> Unit,
     onOpenTrackMenu: () -> Unit = {},
 ) {
     var queueExpanded by remember { mutableStateOf(false) }
+    var lyricsOverlay by remember { mutableStateOf(false) }
     val currentSong = playbackState.currentTrack
     val isPlaying = playbackState.isPlaying
     val positionMs = playbackState.positionMs
@@ -100,6 +107,29 @@ fun NowPlayingScreen(
     val isDark = isSystemInDarkTheme()
     val dominant = rememberDominantColors(currentSong?.artwork, isDark)
     val progress = if (durationMs > 0) positionMs.toFloat() / durationMs.toFloat() else 0f
+
+    if (lyricsOverlay && !currentLyrics.isNullOrBlank()) {
+        val overlayCap = if (lyricsReducedMotion) 240.dp else 420.dp
+        AlertDialog(
+            onDismissRequest = { lyricsOverlay = false },
+            confirmButton = {
+                TextButton(onClick = { lyricsOverlay = false }) { Text("Close") }
+            },
+            title = { Text("Lyrics") },
+            text = {
+                SyncedLyricsView(
+                    lyrics = currentLyrics,
+                    positionMs = positionMs,
+                    autoScroll = lyricsAutoScroll,
+                    reducedMotion = lyricsReducedMotion,
+                    textColor = MaterialTheme.colorScheme.onSurface,
+                    accentColor = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.fillMaxWidth(),
+                    maxContentHeight = overlayCap,
+                )
+            },
+        )
+    }
 
     Box(modifier = Modifier.fillMaxSize()) {
         Box(
@@ -165,6 +195,10 @@ fun NowPlayingScreen(
                                 thumbnailUrl = currentSong?.artwork,
                                 contentDescription = currentSong?.title,
                                 onClick = onPlayPause,
+                                onLongClick =
+                                    currentLyrics.takeUnless { it.isNullOrBlank() }?.let {
+                                        { lyricsOverlay = true }
+                                    },
                                 modifier = Modifier
                                     .widthIn(max = 420.dp)
                                     .fillMaxWidth()
@@ -178,6 +212,11 @@ fun NowPlayingScreen(
                                 titleStyle = MaterialTheme.typography.headlineMedium,
                                 artistStyle = MaterialTheme.typography.titleMedium,
                                 onOpenTrackMenu = onOpenTrackMenu,
+                                onArtistClick = {
+                                    currentSong?.artist?.takeIf { it.isNotBlank() }?.let { a ->
+                                        onOpenArtistSearch(a, currentSong.artwork)
+                                    }
+                                },
                             )
                             Spacer(Modifier.height(20.dp))
                             SeekSection(
@@ -213,7 +252,7 @@ fun NowPlayingScreen(
                                 .verticalScroll(scrollRight),
                         ) {
                             Spacer(Modifier.height(8.dp))
-                            if (!currentLyrics.isNullOrBlank()) {
+                            if (pinnedLyricsPanel && !currentLyrics.isNullOrBlank()) {
                                 Text(
                                     text = "Lyrics",
                                     style = MaterialTheme.typography.labelLarge,
@@ -238,7 +277,8 @@ fun NowPlayingScreen(
                                 dominant = dominant,
                                 onExpandedChange = { queueExpanded = it },
                                 onPlayQueueIndex = onPlayQueueIndex,
-                                onFollowArtist = onFollowArtist,
+                                onOpenArtistSearch = onOpenArtistSearch,
+                                onOverflowQueueTrackMenu = onOverflowQueueTrackMenu,
                             )
                             Spacer(Modifier.height(sidePad))
                         }
@@ -258,6 +298,10 @@ fun NowPlayingScreen(
                             thumbnailUrl = currentSong?.artwork,
                             contentDescription = currentSong?.title,
                             onClick = onPlayPause,
+                            onLongClick =
+                                currentLyrics.takeUnless { it.isNullOrBlank() }?.let {
+                                    { lyricsOverlay = true }
+                                },
                             modifier = Modifier
                                 .widthIn(max = 380.dp)
                                 .fillMaxWidth()
@@ -273,6 +317,11 @@ fun NowPlayingScreen(
                             titleStyle = MaterialTheme.typography.headlineSmall,
                             artistStyle = MaterialTheme.typography.bodyLarge,
                             onOpenTrackMenu = onOpenTrackMenu,
+                            onArtistClick = {
+                                currentSong?.artist?.takeIf { it.isNotBlank() }?.let { a ->
+                                    onOpenArtistSearch(a, currentSong.artwork)
+                                }
+                            },
                         )
 
                         Spacer(Modifier.height(20.dp))
@@ -287,7 +336,7 @@ fun NowPlayingScreen(
                             fillMax = true,
                         )
 
-                        if (!currentLyrics.isNullOrBlank()) {
+                        if (pinnedLyricsPanel && !currentLyrics.isNullOrBlank()) {
                             Spacer(Modifier.height(12.dp))
                             SyncedLyricsView(
                                 lyrics = currentLyrics,
@@ -321,7 +370,8 @@ fun NowPlayingScreen(
                             dominant = dominant,
                             onExpandedChange = { queueExpanded = it },
                             onPlayQueueIndex = onPlayQueueIndex,
-                            onFollowArtist = onFollowArtist,
+                            onOpenArtistSearch = onOpenArtistSearch,
+                            onOverflowQueueTrackMenu = onOverflowQueueTrackMenu,
                         )
 
                         Spacer(modifier = Modifier.height(sidePad + 24.dp))
@@ -339,9 +389,10 @@ private fun TrackMetadata(
     titleStyle: TextStyle,
     artistStyle: TextStyle,
     onOpenTrackMenu: () -> Unit = {},
+    onArtistClick: () -> Unit = {},
 ) {
     val view = LocalView.current
-    val menuModifier = if (currentSong != null) {
+    val titleLongPressModifier = if (currentSong != null) {
         Modifier
             .semantics {
                 onLongClick("Track options") {
@@ -361,21 +412,24 @@ private fun TrackMetadata(
         Modifier
     }
     Column(
-        modifier = Modifier
-            .widthIn(max = 520.dp)
-            .then(menuModifier),
+        modifier = Modifier.widthIn(max = 520.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Text(
-            text = currentSong?.title ?: "Nothing playing",
-            style = titleStyle,
-            fontWeight = FontWeight.Bold,
-            textAlign = TextAlign.Center,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-            color = dominant.onBackground,
-            modifier = Modifier.fillMaxWidth(),
-        )
+        Column(
+            modifier = Modifier.then(titleLongPressModifier),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text(
+                text = currentSong?.title ?: "Nothing playing",
+                style = titleStyle,
+                fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Center,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                color = dominant.onBackground,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
         Spacer(Modifier.height(4.dp))
         Text(
             text = currentSong?.artist.orEmpty(),
@@ -384,7 +438,11 @@ private fun TrackMetadata(
             textAlign = TextAlign.Center,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(enabled = !currentSong?.artist.isNullOrBlank()) {
+                    onArtistClick()
+                },
         )
     }
 }
@@ -513,8 +571,10 @@ private fun QueueSection(
     dominant: DominantColors,
     onExpandedChange: (Boolean) -> Unit,
     onPlayQueueIndex: (Int) -> Unit,
-    onFollowArtist: (String, String?) -> Unit,
+    onOpenArtistSearch: (String, String?) -> Unit,
+    onOverflowQueueTrackMenu: (Track) -> Unit,
 ) {
+    val view = LocalView.current
     if (playbackState.queue.size <= 1) return
 
     Spacer(Modifier.height(16.dp))
@@ -542,7 +602,13 @@ private fun QueueSection(
                             if (selected) dominant.accent.copy(alpha = 0.25f)
                             else dominant.secondary.copy(alpha = 0.2f),
                         )
-                        .clickable { onPlayQueueIndex(index) }
+                        .combinedClickable(
+                            onClick = { onPlayQueueIndex(index) },
+                            onLongClick = {
+                                view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                                onOverflowQueueTrackMenu(track)
+                            },
+                        )
                         .padding(horizontal = 12.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -560,7 +626,7 @@ private fun QueueSection(
                             color = dominant.onBackground.copy(alpha = 0.7f),
                             maxLines = 1,
                             modifier = Modifier.clickable {
-                                onFollowArtist(track.artist, track.artwork)
+                                onOpenArtistSearch(track.artist, track.artwork)
                             },
                         )
                     }

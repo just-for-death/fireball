@@ -25,7 +25,7 @@
   - Target: Fireball WebDAV live sync + Google Drive appData backup
 - Notifications:
   - SuvMusic: Android media + optional Discord
-  - Target: Fireball Gotify new-release notifications
+  - Target: Fireball Gotify optional new-release push + optional on-device/OS notifications (`notifyArtistReleasesOnDevice`) for followed artists (same baseline diff as Gotify probe)
 
 ## Data Contract Mapping
 
@@ -103,4 +103,7 @@
 - [x] Full audio engine parity + OS background media service parity (Exo wake lock + engine→UI sync, becoming-noisy; iOS route-change pause, stream disk cache, UIBackgroundModes audio, Now Playing + remote commands)
 - [x] ListenBrainz Home feeds (recent + top by range) on Android/iOS
 - [x] Follow artist (iTunes resolve) + Gotify release tracking
+- [x] Follow-artist new releases — dual channel optional Gotify push + optional on-device local notifications (`notifyArtistReleasesOnDevice`; Android periodic WorkManager + POST_NOTIFICATIONS; iOS foreground refresh + authorization on toggle)
+- [x] Appearance chrome source persisted as `appearanceColorSource` (`music` \| `scheme` \| Material You mapped on Android); album-art dynamic colors gated to `music` mode where applicable
+- [x] Now Playing lyrics: pinned inline panel toggle (`alwaysShowLyricsPanel`) + long-press artwork lyrics overlay sheet (Android + iOS parity)
 - [x] Now Playing queue panel + Invidious favorites auto-push playlist ID setting

@@ -64,6 +64,17 @@ class FireballApiClient(
         }.getOrNull()
     }
 
+    /** Artist metadata-only row from lookup endpoint. */
+    suspend fun itunesArtistDetail(artistId: Int): JsonObject? =
+        runCatching {
+            val bodyText = httpClient.get("https://itunes.apple.com/lookup") {
+                parameter("id", artistId)
+            }.bodyAsText()
+            val root = looseJson.parseToJsonElement(bodyText).jsonObject
+            val results = root["results"]?.jsonArray ?: return@runCatching null
+            results.firstOrNull()?.jsonObject
+        }.getOrNull()
+
     suspend fun itunesArtistAlbums(artistId: Int, limit: Int = 1): List<JsonObject> {
         val bodyText = httpClient.get("https://itunes.apple.com/lookup") {
             parameter("id", artistId)
@@ -75,6 +86,47 @@ class FireballApiClient(
         val results = root["results"]?.jsonArray ?: return emptyList()
         return results.mapNotNull { it.jsonObject }
             .filter { it["wrapperType"]?.jsonPrimitive?.content == "collection" }
+    }
+
+    suspend fun itunesArtistSongs(artistId: Int, limit: Int = 50): List<JsonObject> {
+        val bodyText = httpClient.get("https://itunes.apple.com/lookup") {
+            parameter("id", artistId)
+            parameter("entity", "song")
+            parameter("limit", limit)
+        }.bodyAsText()
+        val root = looseJson.parseToJsonElement(bodyText).jsonObject
+        val results = root["results"]?.jsonArray ?: return emptyList()
+        return results.mapNotNull { it.jsonObject }
+            .filter {
+                val w = it["wrapperType"]?.jsonPrimitive?.content
+                w == "track" || it["kind"]?.jsonPrimitive?.content == "song"
+            }
+    }
+
+    suspend fun itunesAlbumTracks(collectionId: Int, limit: Int = 250): List<JsonObject> {
+        val bodyText = httpClient.get("https://itunes.apple.com/lookup") {
+            parameter("id", collectionId)
+            parameter("entity", "song")
+            parameter("limit", limit)
+        }.bodyAsText()
+        val root = looseJson.parseToJsonElement(bodyText).jsonObject
+        val results = root["results"]?.jsonArray ?: return emptyList()
+        return results.mapNotNull { it.jsonObject }
+            .filter {
+                val w = it["wrapperType"]?.jsonPrimitive?.content
+                w == "track" || it["kind"]?.jsonPrimitive?.content == "song"
+            }
+    }
+
+    suspend fun itunesSearchAlbums(term: String, limit: Int = 25): JsonObject {
+        val bodyText = httpClient.get("https://itunes.apple.com/search") {
+            parameter("media", "music")
+            parameter("entity", "album")
+            parameter("term", term)
+            parameter("limit", limit)
+            parameter("country", "US")
+        }.bodyAsText()
+        return looseJson.parseToJsonElement(bodyText).jsonObject
     }
 
     suspend fun invidiousSearch(instanceUrl: String, query: String, sid: String? = null): JsonArray {

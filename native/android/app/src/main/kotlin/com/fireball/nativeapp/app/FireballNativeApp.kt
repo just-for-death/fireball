@@ -41,7 +41,12 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.NavType
+import androidx.navigation.navArgument
+import android.net.Uri
+import com.fireball.nativeapp.core.model.Playlist
 import com.fireball.nativeapp.core.model.Track
+import com.fireball.nativeapp.ui.screens.PlaylistDetailScreen
 import com.fireball.nativeapp.navigation.Destination
 import com.fireball.nativeapp.ui.components.PlayerTrackOverflowDialog
 import com.fireball.nativeapp.ui.components.PillMiniPlayerLayout
@@ -88,6 +93,17 @@ fun FireballNativeApp(viewModel: MainViewModel) {
         viewModel.search()
         viewModel.consumeSearchFocusRequest()
     }
+
+    LaunchedEffect(uiState.artistOpenRequest) {
+        val req = uiState.artistOpenRequest ?: return@LaunchedEffect
+        val keyPart =
+            when (val id = req.appleId) {
+                null -> "n"
+                else -> "i$id"
+            }
+        navController.navigate("artist_detail/$keyPart/" + Uri.encode(req.fallbackName))
+        viewModel.consumeArtistOpenRequest()
+    }
     val isTablet = LocalConfiguration.current.smallestScreenWidthDp >= 700
     val startRoute = when (settings.startTab.trim().lowercase()) {
         "search", "library", "settings" -> settings.startTab.trim().lowercase()
@@ -121,15 +137,32 @@ fun FireballNativeApp(viewModel: MainViewModel) {
     val currentTrack = playback.currentTrack
     val systemDark = isSystemInDarkTheme()
 
-    LaunchedEffect(currentTrack?.effectiveId) {
-        val menuTrack = overflowTrack ?: return@LaunchedEffect
-        val currentId = currentTrack?.effectiveId
-        if (currentId == null || menuTrack.effectiveId != currentId) {
-            overflowTrack = null
-        }
+    fun closeMiniPlayerAndSession() {
+        isPlayerOpen = false
+        viewModel.stopPlaybackAndDismissMiniPlayer()
     }
+
+    fun openArtistSearchFromName(name: String) {
+        val n = name.trim()
+        if (n.isNotEmpty()) viewModel.requestArtistDetail(n)
+    }
+
     val darkTheme = themeModeToDark(settings.themeMode, systemDark)
-    val albumArtColors = rememberAlbumArtColors(currentTrack?.artwork, darkTheme)
+    val appearanceChrome =
+        remember(settings.appearanceColorSource, settings.useDynamicColorWhenAvailable) {
+            val raw = settings.appearanceColorSource.trim().lowercase()
+            when {
+                raw == "music" || raw == "scheme" || raw == "material_you" -> raw
+                settings.useDynamicColorWhenAvailable -> "material_you"
+                else -> "scheme"
+            }
+        }
+    val albumArtColors =
+        if (appearanceChrome == "music") {
+            rememberAlbumArtColors(currentTrack?.artwork, darkTheme)
+        } else {
+            null
+        }
     val dominantColors = albumArtColors ?: rememberDominantColors(currentTrack?.artwork, darkTheme)
 
     val railCollapsed = isTablet && settings.ipadSidebarCollapsed
@@ -141,7 +174,7 @@ fun FireballNativeApp(viewModel: MainViewModel) {
 
     SuvMusicTheme(
         darkTheme = darkTheme,
-        dynamicColor = settings.useDynamicColorWhenAvailable,
+        dynamicColor = appearanceChrome == "material_you",
         appTheme = flexSchemeToAppTheme(settings.flexScheme),
         albumArtColors = albumArtColors,
         accentSeedArgb = settings.accentSeedColor,
@@ -158,8 +191,16 @@ fun FireballNativeApp(viewModel: MainViewModel) {
                             .windowInsetsPadding(WindowInsets.navigationBars)
                     ) {
                         items.forEach { item ->
+                            val routeStr =
+                                navBackStackEntry?.destination?.route
+                                    ?: currentDestination?.route.orEmpty()
+                            val selected =
+                                when (item.route) {
+                                    "library" -> routeStr.startsWith("library")
+                                    else -> routeStr == item.route
+                                }
                             NavigationRailItem(
-                                selected = currentDestination?.hierarchy?.any { it.route == item.route } == true,
+                                selected = selected,
                                 onClick = {
                                     navController.navigate(item.route) {
                                         popUpTo(navController.graph.findStartDestination().id) { saveState = true }
@@ -189,8 +230,12 @@ fun FireballNativeApp(viewModel: MainViewModel) {
                                 onPlayPause = viewModel::togglePlayPause,
                                 onNext = viewModel::next,
                                 onPrevious = viewModel::previous,
-                                onClose = { isPlayerOpen = false },
+                                onClose = { closeMiniPlayerAndSession() },
                                 onTap = { isPlayerOpen = true },
+                                onArtistClick = {
+                                    currentTrack.artist.takeIf { it.isNotBlank() }
+                                        ?.let { openArtistSearchFromName(it) }
+                                },
                                 onLongPressMenu = { overflowTrack = currentTrack },
                                 layout = miniPlayerLayout,
                                 isLoading = uiState.isPlaybackLoading,
@@ -231,8 +276,12 @@ fun FireballNativeApp(viewModel: MainViewModel) {
                                         onPlayPause = viewModel::togglePlayPause,
                                         onNext = viewModel::next,
                                         onPrevious = viewModel::previous,
-                                        onClose = { isPlayerOpen = false },
+                                        onClose = { closeMiniPlayerAndSession() },
                                         onTap = { isPlayerOpen = true },
+                                        onArtistClick = {
+                                            track.artist.takeIf { it.isNotBlank() }
+                                                ?.let { openArtistSearchFromName(it) }
+                                        },
                                         onLongPressMenu = { overflowTrack = track },
                                         layout = PillMiniPlayerLayout.Phone,
                                         isLoading = uiState.isPlaybackLoading,
@@ -243,8 +292,16 @@ fun FireballNativeApp(viewModel: MainViewModel) {
                                 val currentDestination = navBackStackEntry?.destination
                                 NavigationBar {
                                     items.forEach { item ->
+                                        val routeStr =
+                                            navBackStackEntry?.destination?.route
+                                                ?: currentDestination?.route.orEmpty()
+                                        val selected =
+                                            when (item.route) {
+                                                "library" -> routeStr.startsWith("library")
+                                                else -> routeStr == item.route
+                                            }
                                         NavigationBarItem(
-                                            selected = currentDestination?.hierarchy?.any { it.route == item.route } == true,
+                                            selected = selected,
                                             onClick = {
                                                 navController.navigate(item.route) {
                                                     popUpTo(navController.graph.findStartDestination().id) {
@@ -255,7 +312,7 @@ fun FireballNativeApp(viewModel: MainViewModel) {
                                                 }
                                             },
                                             icon = item.icon,
-                                            label = { Text(item.label) }
+                                            label = { Text(item.label) },
                                         )
                                     }
                                 }
@@ -288,6 +345,12 @@ fun FireballNativeApp(viewModel: MainViewModel) {
                                 lbHomeLoading = uiState.lbHomeLoading,
                                 onSelectLbTopRange = viewModel::selectLbTopRange,
                                 onFollowArtist = viewModel::followArtist,
+                                onOpenPlaylist = { pl ->
+                                    navController.navigate(
+                                        "library/playlist/" + Uri.encode(pl.id),
+                                    )
+                                },
+                                onOverflowTrack = { overflowTrack = it },
                                 onRefreshHome = { viewModel.refreshHome() },
                                 onPlay = viewModel::play,
                                 onTogglePlayPause = viewModel::togglePlayPause,
@@ -299,13 +362,18 @@ fun FireballNativeApp(viewModel: MainViewModel) {
                             SearchScreen(
                                 query = uiState.query,
                                 results = uiState.searchResults,
+                                albumResults = uiState.searchAlbumResults,
+                                searchSuggestions = uiState.searchSuggestions,
                                 isSearching = uiState.isSearching,
                                 isPlaybackLoading = uiState.isPlaybackLoading,
                                 isFavorite = viewModel::isFavorite,
                                 onQueryChange = viewModel::updateQuery,
                                 onSearch = viewModel::search,
+                                onRefreshSuggestions = viewModel::refreshSearchSuggestionsNow,
                                 onPlay = viewModel::play,
-                                onToggleFavorite = viewModel::toggleFavorite
+                                onToggleFavorite = viewModel::toggleFavorite,
+                                onOpenTrackMenu = { overflowTrack = it },
+                                onPlayAlbum = viewModel::playCatalogAlbum,
                             )
                         }
                         composable("library") {
@@ -313,7 +381,81 @@ fun FireballNativeApp(viewModel: MainViewModel) {
                                 library = uiState.library,
                                 useGrid = settings.libraryUseGrid,
                                 onPlay = viewModel::play,
+                                onOpenPlaylist = { pl ->
+                                    navController.navigate(
+                                        "library/playlist/" + Uri.encode(pl.id),
+                                    )
+                                },
                                 onUnfollowArtist = viewModel::unfollowArtist,
+                                onCreatePlaylist = viewModel::createPlaylist,
+                                onFollowArtistByName = { name ->
+                                    viewModel.followArtist(name.trim())
+                                },
+                                onOpenTrackMenu = { overflowTrack = it },
+                            )
+                        }
+                        composable(
+                            route = "library/playlist/{playlistId}",
+                            arguments = listOf(
+                                navArgument("playlistId") { type = NavType.StringType },
+                            ),
+                        ) { entry ->
+                            val rawId = entry.arguments?.getString("playlistId").orEmpty()
+                            val id = Uri.decode(rawId)
+                            val pl = uiState.library.playlists.firstOrNull { it.id == id }
+                            if (pl == null) {
+                                LaunchedEffect(Unit) {
+                                    navController.popBackStack()
+                                }
+                            } else {
+                                PlaylistDetailScreen(
+                                    playlist = pl,
+                                    isFavorite = viewModel::isFavorite,
+                                    onBack = { navController.popBackStack() },
+                                    onPlayAllFromPlaylist = {
+                                        pl.videos.firstOrNull()?.let { first ->
+                                            viewModel.playFromPlaylist(first, pl.videos)
+                                            isPlayerOpen = true
+                                        }
+                                    },
+                                    onPlayPlaylistUpNext = {
+                                        viewModel.appendTracksUpNext(pl.videos)
+                                    },
+                                    onAddPlaylistToQueue = {
+                                        viewModel.appendTracksToQueue(pl.videos)
+                                    },
+                                    onPlaySingleTrackFromPlaylist = { track ->
+                                        viewModel.playFromPlaylist(track, listOf(track))
+                                        isPlayerOpen = true
+                                    },
+                                    onToggleFavorite = viewModel::toggleFavorite,
+                                    onOpenTrackMenu = { overflowTrack = it },
+                                )
+                            }
+                        }
+                        composable(
+                            route = "artist_detail/{artistKey}/{artistNameEncoded}",
+                            arguments =
+                                listOf(
+                                    navArgument("artistKey") { type = NavType.StringType },
+                                    navArgument("artistNameEncoded") { type = NavType.StringType },
+                                ),
+                        ) { entry ->
+                            val keyArg = entry.arguments?.getString("artistKey").orEmpty()
+                            val nameEnc =
+                                entry.arguments?.getString("artistNameEncoded").orEmpty()
+                            com.fireball.nativeapp.ui.screens.ArtistDetailRoute(
+                                parsedKey = keyArg,
+                                encodedName = nameEnc,
+                                library = uiState.library,
+                                viewModel = viewModel,
+                                onBack = { navController.popBackStack() },
+                                onOpenPlaylist = { pl ->
+                                    navController.navigate(
+                                        "library/playlist/" + Uri.encode(pl.id),
+                                    )
+                                },
+                                onOverflowTrack = { overflowTrack = it },
                             )
                         }
                         composable("settings") {
@@ -370,6 +512,7 @@ fun FireballNativeApp(viewModel: MainViewModel) {
                     currentLyrics = uiState.currentLyrics,
                     lyricsAutoScroll = settings.lyricsAutoScroll,
                     lyricsReducedMotion = settings.lyricsReducedMotion,
+                    pinnedLyricsPanel = settings.alwaysShowLyricsPanel,
                     onPlayPause = viewModel::togglePlayPause,
                     onNext = viewModel::next,
                     onPrevious = viewModel::previous,
@@ -383,6 +526,8 @@ fun FireballNativeApp(viewModel: MainViewModel) {
                     onToggleRepeatMode = viewModel::toggleRepeatMode,
                     onPlayQueueIndex = viewModel::playQueueIndex,
                     onFollowArtist = viewModel::followArtist,
+                    onOpenArtistSearch = { name, _ -> openArtistSearchFromName(name) },
+                    onOverflowQueueTrackMenu = { overflowTrack = it },
                     onCollapse = { isPlayerOpen = false },
                     onOpenTrackMenu = { playback.currentTrack?.let { overflowTrack = it } },
                 )
@@ -410,8 +555,11 @@ fun FireballNativeApp(viewModel: MainViewModel) {
                         viewModel.addTrackToPlaylist(t, id)
                     },
                     onSeeArtist = {
-                        viewModel.requestSearchForArtist(t.artist)
+                        viewModel.requestArtistDetail(t.artist)
                         overflowTrack = null
+                    },
+                    onFollowArtist = {
+                        viewModel.followArtist(t.artist, t.artwork)
                     },
                 )
             }
