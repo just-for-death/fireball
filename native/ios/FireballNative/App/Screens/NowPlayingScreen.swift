@@ -52,6 +52,8 @@ public struct NowPlayingScreen: View {
     @State private var dragOffset: CGSize = .zero
     @State private var queueExpanded = false
     @State private var containerWidth: CGFloat = 0
+    @State private var artistPickerNames: [String]?
+    @State private var artistPickerArtwork: String?
     /// Two-column layout on iPad regular width when the column is actually wide enough (Stage Manager friendly).
     private var splitLayoutEnabled: Bool {
         let w = containerWidth > 1 ? containerWidth : (horizontalSizeClass == .regular ? 900 : 390)
@@ -108,6 +110,43 @@ public struct NowPlayingScreen: View {
         .onPreferenceChange(PlayerContainerWidthKey.self) { containerWidth = $0 }
         .dynamicTheme(artworkUrl: track.artwork, settings: settings)
         .safeAreaInset(edge: .bottom) { Color.clear.frame(height: 8) }
+        .confirmationDialog(
+            "Choose artist",
+            isPresented: Binding(
+                get: { artistPickerNames != nil },
+                set: { if !$0 { artistPickerNames = nil; artistPickerArtwork = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            if let names = artistPickerNames {
+                ForEach(names, id: \.self) { name in
+                    Button(name) {
+                        onOpenArtist(name, artistPickerArtwork)
+                        artistPickerNames = nil
+                        artistPickerArtwork = nil
+                    }
+                }
+            }
+            Button("Cancel", role: .cancel) {
+                artistPickerNames = nil
+                artistPickerArtwork = nil
+            }
+        } message: {
+            Text("This track lists multiple artists.")
+        }
+    }
+
+    private func openArtistFromDisplayLine(_ raw: String, artwork: String?) {
+        let names = ArtistNameParser.splitArtists(raw)
+        switch names.count {
+        case 0:
+            return
+        case 1:
+            onOpenArtist(names[0], artwork)
+        default:
+            artistPickerNames = names
+            artistPickerArtwork = artwork
+        }
     }
 
     private var playerDragHandle: some View {
@@ -245,7 +284,7 @@ public struct NowPlayingScreen: View {
                 }
 
             Button {
-                onOpenArtist(track.artist, track.artwork)
+                openArtistFromDisplayLine(track.artist, artwork: track.artwork)
             } label: {
                 Text(track.artist)
                     .font(.title3)
@@ -253,7 +292,7 @@ public struct NowPlayingScreen: View {
                     .lineLimit(1)
                     .minimumScaleFactor(0.82)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(ArtistPressButtonStyle())
             .accessibilityLabel("Open artist \(track.artist)")
         }
         .padding(.horizontal, splitLayoutEnabled ? 12 : 32)
@@ -460,7 +499,7 @@ public struct NowPlayingScreen: View {
                         .contentShape(RoundedRectangle(cornerRadius: 12))
                         .overlay(alignment: .bottomTrailing) {
                             Button {
-                                onOpenArtist(item.artist, item.artwork)
+                                openArtistFromDisplayLine(item.artist, artwork: item.artwork)
                             } label: {
                                 Image(systemName: "person.crop.circle")
                                     .font(.caption)
@@ -493,7 +532,6 @@ private struct SyncedLyricsPanel: View {
     let reducedMotion: Bool
     let textColor: Color
     let accentColor: Color
-    /// Default mirrors the portrait mini lyrics strip; enlarged on iPad column.
     var panelMaxHeight: CGFloat = 140
 
     private var lines: [LrcLine] { LrcParser.parse(lyrics) }
@@ -502,32 +540,50 @@ private struct SyncedLyricsPanel: View {
         return LrcParser.activeLineIndex(lines: lines, positionMs: positionMs)
     }
 
+    private func lineOpacity(index: Int) -> Double {
+        guard activeIndex >= 0 else { return 0.78 }
+        let distance = abs(index - activeIndex)
+        switch distance {
+        case 0: return 1
+        case 1: return 0.62
+        case 2: return 0.45
+        default: return 0.28
+        }
+    }
+
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView {
                 if lines.isEmpty {
                     Text(lyrics)
-                        .font(.footnote)
-                        .foregroundStyle(textColor.opacity(0.86))
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .font(.body)
+                        .foregroundStyle(textColor.opacity(0.88))
+                        .multilineTextAlignment(.center)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        .padding(.horizontal, 8)
                         .id("plain")
                 } else {
-                    VStack(alignment: .leading, spacing: 6) {
+                    VStack(alignment: .center, spacing: 8) {
                         ForEach(Array(lines.enumerated()), id: \.offset) { index, line in
                             Text(line.text)
-                                .font(index == activeIndex ? .body.weight(.bold) : .footnote)
-                                .foregroundStyle(index == activeIndex ? accentColor : textColor.opacity(0.78))
+                                .font(index == activeIndex ? .title3.weight(.semibold) : .subheadline)
+                                .foregroundStyle(index == activeIndex ? accentColor : textColor)
+                                .opacity(lineOpacity(index: index))
+                                .multilineTextAlignment(.center)
+                                .frame(maxWidth: .infinity, alignment: .center)
+                                .padding(.vertical, 2)
+                                .animation(reducedMotion ? nil : .easeOut(duration: 0.22), value: activeIndex)
                                 .id(index)
                         }
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.vertical, 8)
                 }
             }
             .frame(maxHeight: panelMaxHeight)
-            .padding(.horizontal, reducedMotion ? 12 : 20)
+            .padding(.horizontal, reducedMotion ? 10 : 16)
             .onChange(of: activeIndex) { idx in
                 guard autoScroll, !reducedMotion, idx >= 0 else { return }
-                withAnimation(.easeInOut(duration: 0.25)) {
+                withAnimation(.easeInOut(duration: 0.28)) {
                     proxy.scrollTo(idx, anchor: .center)
                 }
             }

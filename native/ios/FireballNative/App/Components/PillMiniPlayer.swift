@@ -126,15 +126,16 @@ public struct PillMiniPlayer: View {
                         TapOrLongPressHostingView(onTap: onTap, onLongPress: onLongPressMenu)
                     }
 
-                Text(track.artist)
-                    .font(chrome == .ipadSidebarRail ? .subheadline : .caption)
-                    .foregroundStyle(dominantColors.onBackground.opacity(0.74))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.85)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .contentShape(Rectangle())
-                    .onTapGesture { onArtistTap() }
-                    .accessibilityLabel("Artist — \(track.artist)")
+                Button(action: onArtistTap) {
+                    Text(track.artist)
+                        .font(chrome == .ipadSidebarRail ? .subheadline : .caption)
+                        .foregroundStyle(dominantColors.onBackground.opacity(0.74))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.85)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .buttonStyle(ArtistPressButtonStyle())
+                .accessibilityLabel("Artist — \(track.artist)")
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
