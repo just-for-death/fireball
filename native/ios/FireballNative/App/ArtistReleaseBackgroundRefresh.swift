@@ -27,7 +27,7 @@ enum ArtistReleaseBackgroundRefresh {
     }
 
     private static func run(refreshTask: BGAppRefreshTask, store: LibraryStore) {
-        let work = Task {
+        let work = Task<Bool, Never> {
             let snapshot = store.load()
             scheduleIfNeeded(settings: snapshot.settings)
             guard snapshot.settings.notifyArtistReleasesOnDevice else { return true }
@@ -42,7 +42,7 @@ enum ArtistReleaseBackgroundRefresh {
 
             let onGotify: (@Sendable (String, String) async -> Bool)? =
                 wantGotify
-                    ? { title, message in
+                    ? { @Sendable (title: String, message: String) async -> Bool in
                         await gotify.send(
                             url: snapshot.settings.gotifyUrl,
                             token: snapshot.settings.gotifyToken,
@@ -52,9 +52,12 @@ enum ArtistReleaseBackgroundRefresh {
                     }
                     : nil
 
-            let onDevice: (@Sendable (String, String) async -> Void)? = { title, message in
-                await ArtistReleaseNotifier.notify(title: title, message: message)
-            }
+            let onDevice: (@Sendable (String, String) async -> Void)? =
+                snapshot.settings.notifyArtistReleasesOnDevice
+                    ? { @Sendable (title: String, message: String) async in
+                        await ArtistReleaseNotifier.notify(title: title, message: message)
+                    }
+                    : nil
 
             guard let updated = await repository.checkFollowedArtistNewReleases(
                 snapshot: snapshot,

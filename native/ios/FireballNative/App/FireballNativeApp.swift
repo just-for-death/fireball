@@ -143,18 +143,18 @@ private struct RootShellView: View {
                     selectedTab = tab
                 }
             }
-            .onValueChange(of: viewModel.library.settings.ipadSidebarCollapsed) { collapsed in
+            .onChange(of: viewModel.library.settings.ipadSidebarCollapsed) { _, collapsed in
                 splitVisibility = collapsed ? .detailOnly : .doubleColumn
             }
             .sheet(item: $overflowDraft) { draft in
                 PlayerTrackOverflowSheet(
                     track: draft.track,
                     onPlayNext: {
-                        viewModel.playTrackUpNext(draft.track)
+                        viewModel.playTrackUpNext(track: draft.track)
                         overflowDraft = nil
                     },
                     onAddToQueue: {
-                        viewModel.appendTrackToQueue(draft.track)
+                        viewModel.appendTrackToQueue(track: draft.track)
                         overflowDraft = nil
                     },
                     onToggleFavorite: {
@@ -264,16 +264,16 @@ private struct RootShellView: View {
             onOpenArtist: { name, artwork in
                 handleOpenArtist(name, artwork: artwork)
             },
-            onSeekToLyricMs: { ms in
-                viewModel.seekTo(seconds: Double(ms) / 1000.0)
-            },
             onClose: { isPlayerOpen = false },
             onOpenTrackMenu: {
                 if let t = viewModel.currentTrack {
                     overflowDraft = OverflowTrackDraft(track: t)
                 }
             },
-            onOverflowQueueTrack: { overflowDraft = OverflowTrackDraft(track: $0) }
+            onOverflowQueueTrack: { overflowDraft = OverflowTrackDraft(track: $0) },
+            onSeekToLyricMs: { ms in
+                viewModel.seekTo(seconds: Double(ms) / 1000.0)
+            }
         )
     }
 

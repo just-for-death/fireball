@@ -323,7 +323,7 @@ final class MainViewModel: ObservableObject {
 
         let onGotify: (@Sendable (String, String) async -> Bool)? =
             wantGotify
-                ? { [weak self] title, message -> Bool in
+                ? { @Sendable [weak self] (title: String, message: String) async -> Bool in
                     guard let self else { return false }
                     return await self.gotify.send(
                         url: self.library.settings.gotifyUrl,
@@ -331,14 +331,16 @@ final class MainViewModel: ObservableObject {
                         title: title,
                         message: message
                     )
-                } : nil
+                }
+                : nil
 
         let wantDevice = snapshot.settings.notifyArtistReleasesOnDevice
         let onDevice: (@Sendable (String, String) async -> Void)? =
             wantDevice
-                ? { title, message in
+                ? { @Sendable (title: String, message: String) async in
                     await ArtistReleaseNotifier.notify(title: title, message: message)
-                } : nil
+                }
+                : nil
 
         guard let updated = await repository.checkFollowedArtistNewReleases(
             snapshot: snapshot,

@@ -29,7 +29,7 @@ enum FlexTheme {
         }
     }
 
-    static func withAccentSeed(_ base: DominantColors, seedArgb: Int) -> DominantColors {
+    static func withAccentSeed(_ base: DominantColors, seedArgb: Int32) -> DominantColors {
         let uiColor = UIColor(argb: UInt32(bitPattern: seedArgb))
         let accent = Color(uiColor)
         return DominantColors(

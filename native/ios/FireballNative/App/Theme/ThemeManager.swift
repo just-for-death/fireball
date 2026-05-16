@@ -76,7 +76,7 @@ public struct DynamicThemeViewModifier: ViewModifier {
     }
 }
 
-public extension View {
+extension View {
     func dynamicTheme(artworkUrl: String?, settings: FireballSettings) -> some View {
         modifier(DynamicThemeViewModifier(artworkUrl: artworkUrl, settings: settings))
     }
