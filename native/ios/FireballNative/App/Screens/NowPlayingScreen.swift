@@ -12,7 +12,7 @@ private struct PlayerContainerWidthKey: PreferenceKey {
     }
 }
 
-public struct NowPlayingScreen: View {
+struct NowPlayingScreen: View {
     let track: Track
     let settings: FireballSettings
     let isPlaying: Bool
@@ -75,7 +75,7 @@ public struct NowPlayingScreen: View {
         )
     }
 
-    public var body: some View {
+    var body: some View {
         ZStack {
             LinearGradient(
                 gradient: Gradient(colors: [dominantColors.primary, dominantColors.secondary]),

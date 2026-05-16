@@ -1158,8 +1158,8 @@ struct SettingsScreen: View {
                     get: { settings.ipadSidebarCollapsed },
                     set: { value in onUpdateSettings { $0.ipadSidebarCollapsed = value } }
                 ))
-                Text("Home chart regions")
-                    .font(.headline)
+            }
+            Section("Home chart regions") {
                 ForEach(HomeCountries.all, id: \.code) { entry in
                     Toggle(entry.name, isOn: .init(
                         get: { settings.homeCountries.contains(entry.code) },
@@ -1171,89 +1171,7 @@ struct SettingsScreen: View {
                     ))
                 }
             }
-            Section("Appearance") {
-                Picker("Theme mode", selection: .init(
-                    get: { settings.themeMode },
-                    set: { value in onUpdateSettings { $0.themeMode = value } }
-                )) {
-                    Text("System").tag("system")
-                    Text("Light").tag("light")
-                    Text("Dark").tag("dark")
-                }
-                Picker("Color scheme", selection: .init(
-                    get: { settings.flexScheme },
-                    set: { value in onUpdateSettings { $0.flexScheme = value } }
-                )) {
-                    Text("Deep purple").tag("deepPurple")
-                    Text("Ocean").tag("ocean")
-                    Text("Sunset").tag("sunset")
-                    Text("Nature").tag("nature")
-                    Text("Love").tag("mandyRed")
-                }
-                Picker("Chrome colors", selection: .init(
-                    get: {
-                        let raw = settings.appearanceColorSource.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-                        if raw == "scheme" || raw == "material_you" { return "scheme" }
-                        if raw == "music" { return "music" }
-                        return settings.useDynamicColorWhenAvailable ? "music" : "scheme"
-                    },
-                    set: { v in
-                        onUpdateSettings { s in
-                            s.appearanceColorSource = v
-                            s.useDynamicColorWhenAvailable = (v == "music")
-                        }
-                    },
-                )) {
-                    Text("Album artwork").tag("music")
-                    Text("Preset scheme").tag("scheme")
-                }
-                Text("appearanceColorSource: music or scheme. On Android, Material You maps to scheme.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                TextField("Accent seed (ARGB hex)", text: .init(
-                    get: {
-                        guard let seed = settings.accentSeedColor else { return "" }
-                        return String(format: "%08X", UInt32(bitPattern: seed))
-                    },
-                    set: { raw in
-                        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-                            .replacingOccurrences(of: "0x", with: "")
-                            .replacingOccurrences(of: "#", with: "")
-                        if trimmed.isEmpty {
-                            onUpdateSettings { $0.accentSeedColor = nil }
-                        } else if let value = UInt32(trimmed, radix: 16) {
-                            onUpdateSettings { $0.accentSeedColor = Int32(bitPattern: value) }
-                        }
-                    }
-                ))
-                Toggle("Auto-scroll lyrics", isOn: .init(
-                    get: { settings.lyricsAutoScroll },
-                    set: { value in onUpdateSettings { $0.lyricsAutoScroll = value } }
-                ))
-                Toggle("Reduce lyrics motion", isOn: .init(
-                    get: { settings.lyricsReducedMotion },
-                    set: { value in onUpdateSettings { $0.lyricsReducedMotion = value } }
-                ))
-                Toggle("Prefer English/Hindi lyrics", isOn: .init(
-                    get: { settings.lyricsPreferEnglishHindi },
-                    set: { value in onUpdateSettings { $0.lyricsPreferEnglishHindi = value } }
-                ))
-                Toggle("Always show lyrics panel", isOn: .init(
-                    get: { settings.alwaysShowLyricsPanel },
-                    set: { value in onUpdateSettings { $0.alwaysShowLyricsPanel = value } }
-                ))
-                Text("When lyrics load, they replace album art on Now Playing. This toggle adds an extra lyrics strip below the seek bar.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                TextField("Start tab", text: .init(
-                    get: { settings.startTab },
-                    set: { value in onUpdateSettings { $0.startTab = value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() } }
-                ))
-                Toggle("Library Grid Layout", isOn: .init(
-                    get: { settings.libraryUseGrid },
-                    set: { value in onUpdateSettings { $0.libraryUseGrid = value } }
-                ))
-            }
+            settingsAppearanceSection
             Section("Integrations") {
                 Toggle("Enable SponsorBlock", isOn: .init(
                     get: { settings.sponsorBlock },
@@ -1558,5 +1476,100 @@ struct SettingsScreen: View {
                 }
             }
         }
+    }
+
+    @ViewBuilder
+    private var settingsAppearanceSection: some View {
+        Section("Appearance") {
+            Picker("Theme mode", selection: .init(
+                get: { settings.themeMode },
+                set: { value in onUpdateSettings { $0.themeMode = value } }
+            )) {
+                Text("System").tag("system")
+                Text("Light").tag("light")
+                Text("Dark").tag("dark")
+            }
+            Picker("Color scheme", selection: .init(
+                get: { settings.flexScheme },
+                set: { value in onUpdateSettings { $0.flexScheme = value } }
+            )) {
+                Text("Deep purple").tag("deepPurple")
+                Text("Ocean").tag("ocean")
+                Text("Sunset").tag("sunset")
+                Text("Nature").tag("nature")
+                Text("Love").tag("mandyRed")
+            }
+            chromeColorsPicker
+            Text("appearanceColorSource: music or scheme. On Android, Material You maps to scheme.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            accentSeedField
+            Toggle("Auto-scroll lyrics", isOn: .init(
+                get: { settings.lyricsAutoScroll },
+                set: { value in onUpdateSettings { $0.lyricsAutoScroll = value } }
+            ))
+            Toggle("Reduce lyrics motion", isOn: .init(
+                get: { settings.lyricsReducedMotion },
+                set: { value in onUpdateSettings { $0.lyricsReducedMotion = value } }
+            ))
+            Toggle("Prefer English/Hindi lyrics", isOn: .init(
+                get: { settings.lyricsPreferEnglishHindi },
+                set: { value in onUpdateSettings { $0.lyricsPreferEnglishHindi = value } }
+            ))
+            Toggle("Always show lyrics panel", isOn: .init(
+                get: { settings.alwaysShowLyricsPanel },
+                set: { value in onUpdateSettings { $0.alwaysShowLyricsPanel = value } }
+            ))
+            Text("When lyrics load, they replace album art on Now Playing. This toggle adds an extra lyrics strip below the seek bar.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            TextField("Start tab", text: .init(
+                get: { settings.startTab },
+                set: { value in onUpdateSettings { $0.startTab = value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() } }
+            ))
+            Toggle("Library Grid Layout", isOn: .init(
+                get: { settings.libraryUseGrid },
+                set: { value in onUpdateSettings { $0.libraryUseGrid = value } }
+            ))
+        }
+    }
+
+    private var chromeColorsPicker: some View {
+        Picker("Chrome colors", selection: .init(
+            get: {
+                let raw = settings.appearanceColorSource.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                if raw == "scheme" || raw == "material_you" { return "scheme" }
+                if raw == "music" { return "music" }
+                return settings.useDynamicColorWhenAvailable ? "music" : "scheme"
+            },
+            set: { v in
+                onUpdateSettings { s in
+                    s.appearanceColorSource = v
+                    s.useDynamicColorWhenAvailable = (v == "music")
+                }
+            },
+        )) {
+            Text("Album artwork").tag("music")
+            Text("Preset scheme").tag("scheme")
+        }
+    }
+
+    private var accentSeedField: some View {
+        TextField("Accent seed (ARGB hex)", text: .init(
+            get: {
+                guard let seed = settings.accentSeedColor else { return "" }
+                return String(format: "%08X", UInt32(bitPattern: Int32(truncatingIfNeeded: seed)))
+            },
+            set: { raw in
+                let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+                    .replacingOccurrences(of: "0x", with: "")
+                    .replacingOccurrences(of: "#", with: "")
+                if trimmed.isEmpty {
+                    onUpdateSettings { $0.accentSeedColor = nil }
+                } else if let value = UInt32(trimmed, radix: 16) {
+                    onUpdateSettings { $0.accentSeedColor = Int(bitPattern: value) }
+                }
+            }
+        ))
     }
 }

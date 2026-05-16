@@ -130,41 +130,21 @@ struct PillMiniPlayer: View {
 
     private var trackMetadataColumn: some View {
             VStack(alignment: .leading, spacing: chrome == .ipadSidebarRail ? 4 : 2) {
-                Group {
-                    if #available(iOS 17.0, *), chrome == .phone {
-                        Text(track.title)
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundStyle(dominantColors.onBackground)
-                            .lineLimit(1)
-                            .marquee()
-                    } else {
-                        Text(track.title)
-                            .font(.system(size: chrome == .ipadSidebarRail ? 16 : 15, weight: .semibold))
-                            .foregroundStyle(dominantColors.onBackground)
-                            .lineLimit(chrome == .ipadSidebarRail ? 2 : 1)
-                            .minimumScaleFactor(0.82)
-                    }
-                }
+                Text(track.title)
+                    .font(.system(size: chrome == .ipadSidebarRail ? 16 : 15, weight: .semibold))
+                    .foregroundStyle(dominantColors.onBackground)
+                    .lineLimit(chrome == .ipadSidebarRail ? 2 : 1)
+                    .minimumScaleFactor(0.82)
                 .overlay {
                     TapOrLongPressHostingView(onTap: onTap, onLongPress: onLongPressMenu)
                 }
 
                 Button(action: onArtistTap) {
-                    Group {
-                        if #available(iOS 17.0, *), chrome == .phone {
-                            Text(track.artist)
-                                .font(.caption)
-                                .foregroundStyle(dominantColors.onBackground.opacity(0.74))
-                                .lineLimit(1)
-                                .marquee()
-                        } else {
-                            Text(track.artist)
-                                .font(chrome == .ipadSidebarRail ? .subheadline : .caption)
-                                .foregroundStyle(dominantColors.onBackground.opacity(0.74))
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.85)
-                        }
-                    }
+                    Text(track.artist)
+                        .font(chrome == .ipadSidebarRail ? .subheadline : .caption)
+                        .foregroundStyle(dominantColors.onBackground.opacity(0.74))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.85)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .buttonStyle(ArtistPressButtonStyle())
