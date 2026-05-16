@@ -167,9 +167,11 @@ final class NativeAudioEngine {
             object: item,
             queue: .main
         ) { [weak self] note in
-            guard let self else { return }
-            guard note.object as? AVPlayerItem === self.player.currentItem else { return }
-            self.onTrackEnded?()
+            Task { @MainActor in
+                guard let self else { return }
+                guard note.object as? AVPlayerItem === self.player.currentItem else { return }
+                self.onTrackEnded?()
+            }
         }
     }
 
@@ -209,7 +211,7 @@ final class NativeAudioEngine {
         let t = max(0, seconds)
         let time = CMTime(seconds: t, preferredTimescale: 600)
         player.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] _ in
-            self?.refreshNowPlaying()
+            self?.enqueueRefreshNowPlaying()
         }
     }
 
@@ -248,13 +250,15 @@ final class NativeAudioEngine {
             object: AVAudioSession.sharedInstance(),
             queue: .main
         ) { [weak self] note in
-            guard let self else { return }
-            guard let reasonRaw = note.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt,
-                  let reason = AVAudioSession.RouteChangeReason(rawValue: reasonRaw) else { return }
-            if reason == .oldDeviceUnavailable {
-                self.player.pause()
-                self.refreshNowPlaying()
-                self.onInterrupted?(true)
+            Task { @MainActor in
+                guard let self else { return }
+                guard let reasonRaw = note.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt,
+                      let reason = AVAudioSession.RouteChangeReason(rawValue: reasonRaw) else { return }
+                if reason == .oldDeviceUnavailable {
+                    self.player.pause()
+                    self.refreshNowPlaying()
+                    self.onInterrupted?(true)
+                }
             }
         }
     }
@@ -265,25 +269,27 @@ final class NativeAudioEngine {
             object: AVAudioSession.sharedInstance(),
             queue: .main
         ) { [weak self] note in
-            guard let self else { return }
-            guard let typeValue = note.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
-                  let type = AVAudioSession.InterruptionType(rawValue: typeValue) else { return }
+            Task { @MainActor in
+                guard let self else { return }
+                guard let typeValue = note.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
+                      let type = AVAudioSession.InterruptionType(rawValue: typeValue) else { return }
 
-            switch type {
-            case .began:
-                self.player.pause()
-                self.refreshNowPlaying()
-                self.onInterrupted?(true)
-            case .ended:
-                let optionsValue = note.userInfo?[AVAudioSessionInterruptionOptionKey] as? UInt ?? 0
-                let options = AVAudioSession.InterruptionOptions(rawValue: optionsValue)
-                if options.contains(.shouldResume) {
-                    self.player.play()
+                switch type {
+                case .began:
+                    self.player.pause()
+                    self.refreshNowPlaying()
+                    self.onInterrupted?(true)
+                case .ended:
+                    let optionsValue = note.userInfo?[AVAudioSessionInterruptionOptionKey] as? UInt ?? 0
+                    let options = AVAudioSession.InterruptionOptions(rawValue: optionsValue)
+                    if options.contains(.shouldResume) {
+                        self.player.play()
+                    }
+                    self.refreshNowPlaying()
+                    self.onInterrupted?(false)
+                @unknown default:
+                    break
                 }
-                self.refreshNowPlaying()
-                self.onInterrupted?(false)
-            @unknown default:
-                break
             }
         }
     }
@@ -291,39 +297,55 @@ final class NativeAudioEngine {
     private func setupRemoteCommands() {
         let center = MPRemoteCommandCenter.shared()
         center.playCommand.addTarget { [weak self] _ in
-            self?.player.play()
-            self?.refreshNowPlaying()
+            Task { @MainActor in
+                self?.player.play()
+                self?.refreshNowPlaying()
+            }
             return .success
         }
         center.pauseCommand.addTarget { [weak self] _ in
-            self?.player.pause()
-            self?.refreshNowPlaying()
+            Task { @MainActor in
+                self?.player.pause()
+                self?.refreshNowPlaying()
+            }
             return .success
         }
         center.nextTrackCommand.addTarget { [weak self] _ in
-            guard let self else { return .commandFailed }
-            if let onRemoteNext = self.onRemoteNext {
-                onRemoteNext()
-                return .success
+            Task { @MainActor in
+                guard let self else { return }
+                if let onRemoteNext = self.onRemoteNext {
+                    onRemoteNext()
+                } else {
+                    self.next()
+                }
             }
-            self.next()
             return .success
         }
         center.previousTrackCommand.addTarget { [weak self] _ in
-            guard let self else { return .commandFailed }
-            if let onRemotePrevious = self.onRemotePrevious {
-                onRemotePrevious()
-                return .success
+            Task { @MainActor in
+                guard let self else { return }
+                if let onRemotePrevious = self.onRemotePrevious {
+                    onRemotePrevious()
+                } else {
+                    self.previous()
+                }
             }
-            self.previous()
             return .success
         }
         center.changePlaybackPositionCommand.isEnabled = true
         center.changePlaybackPositionCommand.addTarget { [weak self] event in
-            guard let self else { return .commandFailed }
             guard let e = event as? MPChangePlaybackPositionCommandEvent else { return .commandFailed }
-            self.seek(to: e.positionTime)
+            Task { @MainActor in
+                self?.seek(to: e.positionTime)
+            }
             return .success
+        }
+    }
+
+    /// Schedules `refreshNowPlaying()` on the main actor (MPRemoteCommand / Notification / KVO callbacks are nonisolated).
+    nonisolated private func enqueueRefreshNowPlaying() {
+        Task { @MainActor [weak self] in
+            self?.refreshNowPlaying()
         }
     }
 
@@ -372,7 +394,7 @@ final class NativeAudioEngine {
             forInterval: CMTime(seconds: 0.5, preferredTimescale: 600),
             queue: .main
         ) { [weak self] _ in
-            self?.refreshNowPlaying()
+            self?.enqueueRefreshNowPlaying()
         }
     }
 
