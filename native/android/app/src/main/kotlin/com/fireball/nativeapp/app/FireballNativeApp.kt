@@ -48,7 +48,10 @@ import com.fireball.nativeapp.core.model.Playlist
 import com.fireball.nativeapp.core.model.Track
 import com.fireball.nativeapp.ui.screens.PlaylistDetailScreen
 import com.fireball.nativeapp.navigation.Destination
+import com.fireball.nativeapp.ui.components.ArtistPickerContext
+import com.fireball.nativeapp.ui.components.ArtistPickerSheet
 import com.fireball.nativeapp.ui.components.PlayerTrackOverflowDialog
+import com.fireball.nativeapp.ui.screens.AlbumDetailScreen
 import com.fireball.nativeapp.ui.components.PillMiniPlayerLayout
 import com.fireball.nativeapp.ui.MainViewModel
 import com.fireball.nativeapp.ui.screens.HomeScreen
@@ -117,7 +120,7 @@ fun FireballNativeApp(viewModel: MainViewModel) {
     }
     var isPlayerOpen by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
     var overflowTrack by remember { mutableStateOf<Track?>(null) }
-    var artistPickerNames by remember { mutableStateOf<List<String>?>(null) }
+    var artistPickerContext by remember { mutableStateOf<ArtistPickerContext?>(null) }
 
     LaunchedEffect(uiState.artistOpenRequest) {
         val req = uiState.artistOpenRequest ?: return@LaunchedEffect
@@ -145,12 +148,12 @@ fun FireballNativeApp(viewModel: MainViewModel) {
         viewModel.stopPlaybackAndDismissMiniPlayer()
     }
 
-    fun openArtistFromDisplayLine(line: String) {
+    fun openArtistFromDisplayLine(line: String, artwork: String? = null) {
         val names = com.fireball.nativeapp.core.model.ArtistNameParser.splitArtists(line)
         when {
             names.isEmpty() -> return
             names.size == 1 -> viewModel.requestArtistDetail(names.first())
-            else -> artistPickerNames = names
+            else -> artistPickerContext = ArtistPickerContext(names, artwork)
         }
     }
 
@@ -248,7 +251,7 @@ fun FireballNativeApp(viewModel: MainViewModel) {
                                 onTap = { isPlayerOpen = true },
                                 onArtistClick = {
                                     currentTrack.artist.takeIf { it.isNotBlank() }
-                                        ?.let { openArtistFromDisplayLine(it) }
+                                        ?.let { openArtistFromDisplayLine(it, currentTrack.artwork) }
                                 },
                                 onLongPressMenu = { overflowTrack = currentTrack },
                                 layout = miniPlayerLayout,
@@ -294,7 +297,7 @@ fun FireballNativeApp(viewModel: MainViewModel) {
                                         onTap = { isPlayerOpen = true },
                                         onArtistClick = {
                                             track.artist.takeIf { it.isNotBlank() }
-                                                ?.let { openArtistFromDisplayLine(it) }
+                                                ?.let { openArtistFromDisplayLine(it, track.artwork) }
                                         },
                                         onLongPressMenu = { overflowTrack = track },
                                         layout = PillMiniPlayerLayout.Phone,
@@ -358,7 +361,7 @@ fun FireballNativeApp(viewModel: MainViewModel) {
                                 lbTopRange = uiState.lbTopRange,
                                 lbHomeLoading = uiState.lbHomeLoading,
                                 onSelectLbTopRange = viewModel::selectLbTopRange,
-                                onFollowArtist = viewModel::followArtist,
+                                onOpenArtist = { line, artwork -> openArtistFromDisplayLine(line, artwork) },
                                 onOpenPlaylist = { pl ->
                                     navController.navigate(
                                         "library/playlist/" + Uri.encode(pl.id),
@@ -465,9 +468,55 @@ fun FireballNativeApp(viewModel: MainViewModel) {
                                 viewModel = viewModel,
                                 onBack = { navController.popBackStack() },
                                 onOverflowTrack = { overflowTrack = it },
+                                onOpenAlbum = { album ->
+                                    val cid = album.id.toIntOrNull() ?: return@ArtistDetailRoute
+                                    navController.navigate(
+                                        "artist_album/$cid/" +
+                                            Uri.encode(album.title) + "/" +
+                                            Uri.encode(album.artist) + "/" +
+                                            Uri.encode(album.artwork.orEmpty()),
+                                    )
+                                },
                                 onSettingsChange = { updated ->
                                     viewModel.updateSettings { _ -> updated }
                                 },
+                            )
+                        }
+                        composable(
+                            route = "artist_album/{collectionId}/{title}/{artist}/{artwork}",
+                            arguments =
+                                listOf(
+                                    navArgument("collectionId") { type = NavType.IntType },
+                                    navArgument("title") { type = NavType.StringType },
+                                    navArgument("artist") { type = NavType.StringType },
+                                    navArgument("artwork") { type = NavType.StringType },
+                                ),
+                        ) { entry ->
+                            val cid = entry.arguments?.getInt("collectionId") ?: 0
+                            val title = Uri.decode(entry.arguments?.getString("title").orEmpty())
+                            val artist = Uri.decode(entry.arguments?.getString("artist").orEmpty())
+                            val artworkEnc = entry.arguments?.getString("artwork").orEmpty()
+                            val artwork = Uri.decode(artworkEnc).ifBlank { null }
+                            AlbumDetailScreen(
+                                collectionId = cid,
+                                albumTitle = title,
+                                albumArtist = artist,
+                                artworkUrl = artwork,
+                                viewModel = viewModel,
+                                onBack = { navController.popBackStack() },
+                                onPlayAll = { tracks ->
+                                    tracks.firstOrNull()?.let { first ->
+                                        viewModel.playFromPlaylist(first, tracks)
+                                        isPlayerOpen = true
+                                    }
+                                },
+                                onPlayTrack = { track, tracks ->
+                                    viewModel.playFromPlaylist(track, tracks)
+                                    isPlayerOpen = true
+                                },
+                                onPlayAlbumUpNext = { viewModel.appendTracksUpNext(it) },
+                                onAddAlbumToQueue = { viewModel.appendTracksToQueue(it) },
+                                onOpenTrackMenu = { overflowTrack = it },
                             )
                         }
                         composable("settings") {
@@ -538,18 +587,23 @@ fun FireballNativeApp(viewModel: MainViewModel) {
                     onToggleShuffle = viewModel::toggleShuffle,
                     onToggleRepeatMode = viewModel::toggleRepeatMode,
                     onPlayQueueIndex = viewModel::playQueueIndex,
-                    onOpenArtistSearch = { name, _ -> openArtistFromDisplayLine(name) },
+                    onOpenArtistSearch = { name, artwork -> openArtistFromDisplayLine(name, artwork) },
+                    onSeekToLyricMs = viewModel::seekTo,
                     onOverflowQueueTrackMenu = { overflowTrack = it },
                     onCollapse = { isPlayerOpen = false },
                     onOpenTrackMenu = { playback.currentTrack?.let { overflowTrack = it } },
                 )
             }
 
-            artistPickerNames?.let { names ->
-                com.fireball.nativeapp.ui.components.ArtistPickerSheet(
-                    artists = names,
-                    onDismiss = { artistPickerNames = null },
-                    onSelect = { viewModel.requestArtistDetail(it) },
+            artistPickerContext?.let { ctx ->
+                ArtistPickerSheet(
+                    context = ctx,
+                    viewModel = viewModel,
+                    onDismiss = { artistPickerContext = null },
+                    onSelect = {
+                        viewModel.requestArtistDetail(it)
+                        artistPickerContext = null
+                    },
                 )
             }
 
@@ -559,6 +613,8 @@ fun FireballNativeApp(viewModel: MainViewModel) {
                     isFavorite = viewModel.isFavorite(t),
                     isArtistFollowed = viewModel.isArtistFollowed(t.artist),
                     playlists = viewModel.userPlaylistsForPicker(),
+                    sleepTimerEndEpochMs = playback.sleepTimerEndEpochMs,
+                    sleepAfterCurrent = playback.sleepAfterCurrent,
                     onDismiss = { overflowTrack = null },
                     onPlayNext = {
                         viewModel.playTrackUpNext(t)
@@ -587,6 +643,9 @@ fun FireballNativeApp(viewModel: MainViewModel) {
                         viewModel.unfollowArtistByName(t.artist)
                         overflowTrack = null
                     },
+                    onSetSleepTimer = viewModel::setSleepTimer,
+                    onSetSleepAfterCurrent = viewModel::sleepAfterCurrent,
+                    artistImageUrl = t.artwork,
                 )
             }
         }

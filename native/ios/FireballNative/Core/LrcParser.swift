@@ -6,22 +6,35 @@ struct LrcLine: Equatable {
 }
 
 enum LrcParser {
-    private static let lineRegex = try! NSRegularExpression(
-        pattern: #"\[(\d{1,2}):(\d{2})(?:\.(\d{1,3}))?]\s*(.*)"#
+    private static let timestampRegex = try! NSRegularExpression(
+        pattern: #"\[(\d{1,2}):(\d{2})(?:\.(\d{1,3}))?]"#
     )
 
     static func parse(_ raw: String) -> [LrcLine] {
         var lines: [LrcLine] = []
-        for match in raw.components(separatedBy: .newlines) {
-            let trimmed = match.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !trimmed.isEmpty else { continue }
-            let range = NSRange(trimmed.startIndex..<trimmed.endIndex, in: trimmed)
-            guard let result = lineRegex.firstMatch(in: trimmed, range: range) else { continue }
-            guard result.numberOfRanges >= 5 else { continue }
-            let min = Int64((trimmed as NSString).substring(with: result.range(at: 1))) ?? 0
-            let sec = Int64((trimmed as NSString).substring(with: result.range(at: 2))) ?? 0
+        for line in raw.components(separatedBy: .newlines) {
+            lines.append(contentsOf: parseLine(line))
+        }
+        return lines.sorted { $0.timeMs < $1.timeMs }
+    }
+
+    private static func parseLine(_ line: String) -> [LrcLine] {
+        let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return [] }
+        let ns = trimmed as NSString
+        let fullRange = NSRange(location: 0, length: ns.length)
+        let matches = timestampRegex.matches(in: trimmed, range: fullRange)
+        guard let last = matches.last else { return [] }
+        let textStart = last.range.location + last.range.length
+        guard textStart <= ns.length else { return [] }
+        let text = ns.substring(from: textStart).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return [] }
+        return matches.compactMap { result -> LrcLine? in
+            guard result.numberOfRanges >= 4 else { return nil }
+            let min = Int64(ns.substring(with: result.range(at: 1))) ?? 0
+            let sec = Int64(ns.substring(with: result.range(at: 2))) ?? 0
             let fracStr = result.range(at: 3).location != NSNotFound
-                ? (trimmed as NSString).substring(with: result.range(at: 3))
+                ? ns.substring(with: result.range(at: 3))
                 : ""
             let msFrac: Int64 = {
                 if fracStr.isEmpty { return 0 }
@@ -29,12 +42,8 @@ enum LrcParser {
                 let padded = fracStr.padding(toLength: 3, withPad: "0", startingAt: 0)
                 return Int64(padded) ?? 0
             }()
-            let text = (trimmed as NSString).substring(with: result.range(at: 4))
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !text.isEmpty else { continue }
-            lines.append(LrcLine(timeMs: min * 60_000 + sec * 1_000 + msFrac, text: text))
+            return LrcLine(timeMs: min * 60_000 + sec * 1_000 + msFrac, text: text)
         }
-        return lines.sorted { $0.timeMs < $1.timeMs }
     }
 
     static func hasSyncedTimestamps(_ raw: String) -> Bool { !parse(raw).isEmpty }

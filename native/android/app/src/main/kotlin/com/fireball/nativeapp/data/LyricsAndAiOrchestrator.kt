@@ -1,6 +1,7 @@
 package com.fireball.nativeapp.data
 
 import com.fireball.nativeapp.core.data.FireballApiClient
+import com.fireball.nativeapp.core.data.LrcParser
 import com.fireball.nativeapp.core.model.FireballSettings
 import com.fireball.nativeapp.core.model.Track
 import kotlinx.serialization.json.JsonElement
@@ -51,10 +52,12 @@ class LyricsAndAiOrchestrator(
 
     private fun choosePreferredLyrics(candidates: List<String>, preferEnglishHindi: Boolean): String? {
         if (candidates.isEmpty()) return null
-        if (!preferEnglishHindi) return candidates.first()
+        val synced = candidates.filter { LrcParser.hasSyncedTimestamps(it) }
+        val pool = if (synced.isNotEmpty()) synced else candidates
+        if (!preferEnglishHindi) return pool.first()
         val hindiRegex = Regex("[\\u0900-\\u097F]")
         val englishRegex = Regex("[A-Za-z]")
-        return candidates.maxByOrNull { text ->
+        return pool.maxByOrNull { text ->
             val hasHindi = hindiRegex.containsMatchIn(text)
             val hasEnglish = englishRegex.containsMatchIn(text)
             when {
@@ -63,6 +66,6 @@ class LyricsAndAiOrchestrator(
                 hasHindi -> 1
                 else -> 0
             }
-        } ?: candidates.first()
+        } ?: pool.first()
     }
 }

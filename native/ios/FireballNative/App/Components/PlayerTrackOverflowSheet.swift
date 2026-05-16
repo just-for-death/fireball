@@ -1,3 +1,4 @@
+import Combine
 import SwiftUI
 
 /// Track actions from long-press on the mini player / now playing overflow button.
@@ -24,6 +25,16 @@ struct PlayerTrackOverflowSheet: View {
 
     private var playlists: [Playlist] {
         viewModel.userPlaylistsForPicker()
+    }
+
+    @State private var sleepTick = Date()
+
+    private var sleepStatus: String? {
+        guard let end = viewModel.sleepTimerEnd else { return nil }
+        let remaining = end.timeIntervalSince(sleepTick)
+        guard remaining > 0 else { return nil }
+        let total = Int(remaining)
+        return String(format: "Stops in %d:%02d", total / 60, total % 60)
     }
 
     var body: some View {
@@ -67,6 +78,51 @@ struct PlayerTrackOverflowSheet: View {
                             action: onToggleFavorite
                         )
                     }
+
+                    Divider().padding(.vertical, 4)
+
+                    Text("SLEEP")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .padding(.top, 4)
+
+                    if let sleepStatus {
+                        Text(sleepStatus)
+                            .font(.caption)
+                            .foregroundStyle(.tint)
+                            .padding(.leading, 4)
+                    }
+
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            ForEach(["15m", "30m", "45m", "60m", "Clear"], id: \.self) { label in
+                                Button(label) {
+                                    switch label {
+                                    case "15m": viewModel.setSleepTimer(minutes: 15)
+                                    case "30m": viewModel.setSleepTimer(minutes: 30)
+                                    case "45m": viewModel.setSleepTimer(minutes: 45)
+                                    case "60m": viewModel.setSleepTimer(minutes: 60)
+                                    default: viewModel.setSleepTimer(minutes: nil)
+                                    }
+                                }
+                                .buttonStyle(.bordered)
+                                .controlSize(.small)
+                            }
+                        }
+                    }
+
+                    Toggle(isOn: Binding(
+                        get: { viewModel.sleepAfterCurrent },
+                        set: { viewModel.setSleepAfterCurrent($0) }
+                    )) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Sleep after current track")
+                            Text("Pause when this song ends")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .padding(.vertical, 4)
 
                     Divider().padding(.vertical, 4)
 
@@ -118,6 +174,11 @@ struct PlayerTrackOverflowSheet: View {
         }
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
+        .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { now in
+            if viewModel.sleepTimerEnd != nil {
+                sleepTick = now
+            }
+        }
     }
 
     @ViewBuilder

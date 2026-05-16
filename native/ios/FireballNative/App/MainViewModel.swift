@@ -676,6 +676,10 @@ final class MainViewModel: ObservableObject {
         await repository.catalogAlbumTracks(collectionId: collectionId)
     }
 
+    func resolveArtistThumbnail(artistName: String, fallbackArtwork: String? = nil) async -> String? {
+        await repository.resolveArtistThumbnail(artistName: artistName, fallbackArtwork: fallbackArtwork)
+    }
+
     func playCatalogAlbum(_ album: Album) {
         guard let cid = Int(album.id) else {
             error = "Invalid album identifier."

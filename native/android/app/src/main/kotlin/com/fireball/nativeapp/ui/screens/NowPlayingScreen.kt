@@ -10,6 +10,8 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalView
 import android.view.HapticFeedbackConstants
 import java.util.Locale
@@ -99,6 +101,7 @@ fun NowPlayingScreen(
     onOverflowQueueTrackMenu: (Track) -> Unit = {},
     onCollapse: () -> Unit,
     onOpenTrackMenu: () -> Unit = {},
+    onSeekToLyricMs: (Long) -> Unit = {},
     appearanceChrome: String = "music",
 ) {
     var queueExpanded by remember { mutableStateOf(false) }
@@ -209,6 +212,7 @@ fun NowPlayingScreen(
                                 onToggleArtLyrics = {
                                     if (hasLyrics) showLyricsInArtSlot = !showLyricsInArtSlot
                                 },
+                                onSeekToMs = onSeekToLyricMs,
                                 modifier =
                                     Modifier
                                         .widthIn(max = 420.dp)
@@ -318,6 +322,7 @@ fun NowPlayingScreen(
                             onToggleArtLyrics = {
                                 if (hasLyrics) showLyricsInArtSlot = !showLyricsInArtSlot
                             },
+                            onSeekToMs = onSeekToLyricMs,
                             modifier =
                                 Modifier
                                     .widthIn(max = 380.dp)
@@ -367,6 +372,7 @@ fun NowPlayingScreen(
                                 accentColor = dominant.accent,
                                 modifier = Modifier.widthIn(max = 480.dp),
                                 maxContentHeight = if (lyricsReducedMotion) 120.dp else 160.dp,
+                                onSeekToMs = onSeekToLyricMs,
                             )
                         }
 
@@ -419,6 +425,7 @@ private fun ArtworkOrLyricsSlot(
     lyricsMaxHeight: Dp,
     onPlayPause: () -> Unit,
     onToggleArtLyrics: () -> Unit,
+    onSeekToMs: (Long) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val shape = RoundedCornerShape(cornerRadius)
@@ -445,12 +452,16 @@ private fun ArtworkOrLyricsSlot(
                         .fillMaxSize()
                         .clip(shape)
                         .background(dominant.secondary.copy(alpha = 0.55f))
-                        .combinedClickable(
-                            onClick = onPlayPause,
-                            onLongClick = toggleLyrics,
-                        )
                         .padding(horizontal = 16.dp, vertical = 12.dp),
             ) {
+                Box(
+                    modifier =
+                        Modifier
+                            .fillMaxSize()
+                            .pointerInput(hasLyrics) {
+                                detectTapGestures(onLongPress = { toggleLyrics() })
+                            },
+                )
                 SyncedLyricsView(
                     lyrics = lyrics,
                     positionMs = positionMs,
@@ -460,6 +471,7 @@ private fun ArtworkOrLyricsSlot(
                     accentColor = dominant.accent,
                     modifier = Modifier.fillMaxSize(),
                     maxContentHeight = lyricsMaxHeight,
+                    onSeekToMs = onSeekToMs,
                 )
             }
         } else {

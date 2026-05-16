@@ -2,6 +2,8 @@ package com.fireball.nativeapp.ui.components
 
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -10,6 +12,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -20,6 +23,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -40,6 +44,7 @@ fun SyncedLyricsView(
     accentColor: Color,
     modifier: Modifier = Modifier,
     maxContentHeight: Dp? = null,
+    onSeekToMs: ((Long) -> Unit)? = null,
 ) {
     val lines = remember(lyrics) { LrcParser.parse(lyrics) }
     val synced = lines.isNotEmpty()
@@ -85,9 +90,9 @@ fun SyncedLyricsView(
                     val targetAlpha =
                         when {
                             index == activeIndex -> 1f
-                            distance == 1 -> 0.62f
-                            distance == 2 -> 0.45f
-                            else -> 0.28f
+                            distance == 1 -> 0.5f
+                            distance == 2 -> 0.35f
+                            else -> 0.22f
                         }
                     val alpha by animateFloatAsState(
                         targetValue = targetAlpha,
@@ -95,24 +100,47 @@ fun SyncedLyricsView(
                         label = "lyricAlpha",
                     )
                     val isActive = index == activeIndex
-                    Text(
-                        text = line.text,
-                        style =
-                            if (isActive) {
-                                MaterialTheme.typography.titleMedium
-                            } else {
-                                MaterialTheme.typography.bodyMedium
-                            },
-                        fontWeight = if (isActive) FontWeight.SemiBold else FontWeight.Normal,
-                        color = if (isActive) accentColor else textColor,
-                        textAlign = TextAlign.Center,
-                        lineHeight = if (isActive) 26.sp else 20.sp,
-                        modifier =
-                            Modifier
-                                .fillMaxWidth()
-                                .alpha(alpha)
-                                .padding(vertical = 6.dp, horizontal = 4.dp),
-                    )
+                    val lineModifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .alpha(alpha)
+                            .padding(vertical = 4.dp, horizontal = 4.dp)
+                            .then(
+                                if (onSeekToMs != null) {
+                                    Modifier.clickable { onSeekToMs.invoke(line.timeMs) }
+                                } else {
+                                    Modifier
+                                },
+                            )
+                    if (isActive) {
+                        Box(
+                            modifier =
+                                lineModifier
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(accentColor.copy(alpha = 0.18f))
+                                    .padding(vertical = 8.dp, horizontal = 12.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(
+                                text = line.text,
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.Bold,
+                                color = accentColor,
+                                textAlign = TextAlign.Center,
+                                lineHeight = 30.sp,
+                            )
+                        }
+                    } else {
+                        Text(
+                            text = line.text,
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Normal,
+                            color = textColor,
+                            textAlign = TextAlign.Center,
+                            lineHeight = 20.sp,
+                            modifier = lineModifier.padding(vertical = 6.dp, horizontal = 8.dp),
+                        )
+                    }
                 }
             } else {
                 item(key = "plain") {

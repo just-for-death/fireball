@@ -123,7 +123,7 @@ fun HomeScreen(
     lbHomeLoading: Boolean = false,
     onSelectChartCountry: (String) -> Unit = {},
     onSelectLbTopRange: (String) -> Unit = {},
-    onFollowArtist: (String, String?) -> Unit = { _, _ -> },
+    onOpenArtist: (String, String?) -> Unit = { _, _ -> },
     onRefreshHome: () -> Unit = {},
     onOpenPlaylist: (Playlist) -> Unit = {},
     onOverflowTrack: (Track) -> Unit = {},
@@ -319,7 +319,7 @@ fun HomeScreen(
                             HomeTrackCarouselCard(
                                 track = track,
                                 onPlay = { onPlay(track, lbRecentTracks) },
-                                onFollowArtist = { onFollowArtist(track.artist, track.artwork) },
+                                onOpenArtist = { onOpenArtist(track.artist, track.artwork) },
                                 onLongPressMenu = { onOverflowTrack(track) },
                             )
                         }
@@ -366,7 +366,7 @@ fun HomeScreen(
                                 HomeTrackCarouselCard(
                                     track = track,
                                     onPlay = { onPlay(track, lbTopTracks) },
-                                    onFollowArtist = { onFollowArtist(track.artist, track.artwork) },
+                                    onOpenArtist = { onOpenArtist(track.artist, track.artwork) },
                                     onLongPressMenu = { onOverflowTrack(track) },
                                 )
                             }
@@ -724,7 +724,7 @@ fun HomeScreen(
 private fun HomeTrackCarouselCard(
     track: Track,
     onPlay: () -> Unit,
-    onFollowArtist: () -> Unit,
+    onOpenArtist: () -> Unit,
     onLongPressMenu: () -> Unit = {},
 ) {
     Column(
@@ -760,7 +760,7 @@ private fun HomeTrackCarouselCard(
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             maxLines = 1,
-            modifier = Modifier.clickable(onClick = onFollowArtist),
+            modifier = Modifier.clickable(onClick = onOpenArtist),
         )
     }
 }
@@ -1107,63 +1107,21 @@ fun LibraryScreen(
     var followArtistName by remember { mutableStateOf("") }
 
     if (creatingPlaylist) {
-        androidx.compose.material3.AlertDialog(
-            onDismissRequest = { creatingPlaylist = false },
-            title = { Text("Create playlist") },
-            text = {
-                OutlinedTextField(
-                    value = newPlaylistTitle,
-                    onValueChange = { newPlaylistTitle = it },
-                    label = { Text("Name") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        onCreatePlaylist(newPlaylistTitle)
-                        creatingPlaylist = false
-                        newPlaylistTitle = ""
-                    },
-                    enabled = newPlaylistTitle.isNotBlank(),
-                ) {
-                    Text("Create")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { creatingPlaylist = false }) { Text("Cancel") }
+        com.fireball.nativeapp.ui.components.CreatePlaylistSheet(
+            onDismiss = { creatingPlaylist = false },
+            onCreate = { title ->
+                onCreatePlaylist(title)
+                newPlaylistTitle = ""
             },
         )
     }
 
     if (followDialog) {
-        androidx.compose.material3.AlertDialog(
-            onDismissRequest = { followDialog = false },
-            title = { Text("Follow artist") },
-            text = {
-                OutlinedTextField(
-                    value = followArtistName,
-                    onValueChange = { followArtistName = it },
-                    label = { Text("Artist name") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        onFollowArtistByName(followArtistName)
-                        followDialog = false
-                        followArtistName = ""
-                    },
-                    enabled = followArtistName.isNotBlank(),
-                ) {
-                    Text("Follow")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { followDialog = false }) { Text("Cancel") }
+        com.fireball.nativeapp.ui.components.FollowArtistSheet(
+            onDismiss = { followDialog = false },
+            onFollow = { name ->
+                onFollowArtistByName(name)
+                followArtistName = ""
             },
         )
     }

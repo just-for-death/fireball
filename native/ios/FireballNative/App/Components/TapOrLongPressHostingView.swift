@@ -4,6 +4,7 @@ import UIKit
 /// UIKit linkage so tap is not delayed waiting for long-press to fail visually, yet a long press does not also invoke tap (`tap.requires(toFail: long)`).
 struct TapOrLongPressHostingView: UIViewRepresentable {
     var minimumPressDuration: TimeInterval = 0.48
+    var tapEnabled: Bool = true
     var onTap: () -> Void = {}
     var onLongPress: () -> Void
 
@@ -16,10 +17,12 @@ struct TapOrLongPressHostingView: UIViewRepresentable {
         v.backgroundColor = .clear
         let long = UILongPressGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleLongPress(_:)))
         long.minimumPressDuration = minimumPressDuration
-        let tap = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleTap(_:)))
-        tap.require(toFail: long)
         v.addGestureRecognizer(long)
-        v.addGestureRecognizer(tap)
+        if tapEnabled {
+            let tap = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleTap(_:)))
+            tap.require(toFail: long)
+            v.addGestureRecognizer(tap)
+        }
         context.coordinator.longPress = long
         return v
     }
