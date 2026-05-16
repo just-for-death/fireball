@@ -503,10 +503,27 @@ private struct SyncedLyricsPanel: View {
         let distance = abs(index - activeIndex)
         switch distance {
         case 0: return 1
-        case 1: return 0.5
-        case 2: return 0.35
-        default: return 0.22
+        case 1: return 0.48
+        case 2: return 0.32
+        default: return 0.2
         }
+    }
+
+    private func cascadeOffset(index: Int) -> CGFloat {
+        guard activeIndex >= 0, !reducedMotion else { return 0 }
+        return CGFloat(index - activeIndex) * 18
+    }
+
+    private func cascadeScale(index: Int) -> CGFloat {
+        guard activeIndex >= 0, !reducedMotion else { return 1 }
+        let distance = abs(index - activeIndex)
+        if distance == 0 { return 1.08 }
+        return max(0.8, 1 - CGFloat(distance) * 0.045)
+    }
+
+    private func cascadeDelay(index: Int) -> Double {
+        guard !reducedMotion else { return 0 }
+        return Double(abs(index - activeIndex)) * 0.04
     }
 
     var body: some View {
@@ -521,40 +538,46 @@ private struct SyncedLyricsPanel: View {
                         .padding(.horizontal, 8)
                         .id("plain")
                 } else {
-                    VStack(alignment: .center, spacing: 8) {
+                    VStack(alignment: .center, spacing: 6) {
                         ForEach(Array(lines.enumerated()), id: \.offset) { index, line in
                             let isActive = index == activeIndex
                             Button {
                                 onSeekToMs(line.timeMs)
                             } label: {
                                 Text(line.text)
-                                    .font(isActive ? .title2.weight(.bold) : .subheadline)
+                                    .font(isActive ? .title2.weight(.bold) : .subheadline.weight(abs(index - activeIndex) <= 1 ? .medium : .regular))
                                     .foregroundStyle(isActive ? accentColor : textColor)
                                     .opacity(lineOpacity(index: index))
                                     .multilineTextAlignment(.center)
                                     .frame(maxWidth: .infinity, alignment: .center)
-                                    .padding(.vertical, isActive ? 8 : 4)
-                                    .padding(.horizontal, isActive ? 12 : 4)
+                                    .padding(.vertical, isActive ? 10 : 6)
+                                    .padding(.horizontal, isActive ? 14 : 8)
                                     .background(
                                         isActive
-                                            ? accentColor.opacity(0.18)
+                                            ? accentColor.opacity(0.2)
                                             : Color.clear,
                                         in: RoundedRectangle(cornerRadius: 12, style: .continuous)
                                     )
                             }
                             .buttonStyle(.plain)
-                            .animation(reducedMotion ? nil : .easeOut(duration: 0.22), value: activeIndex)
+                            .offset(y: cascadeOffset(index: index))
+                            .scaleEffect(cascadeScale(index: index))
+                            .animation(
+                                reducedMotion ? nil : .spring(response: 0.38, dampingFraction: 0.82)
+                                    .delay(cascadeDelay(index: index)),
+                                value: activeIndex
+                            )
                             .id(index)
                         }
                     }
-                    .padding(.vertical, 8)
+                    .padding(.vertical, 16)
                 }
             }
             .frame(maxHeight: panelMaxHeight)
             .padding(.horizontal, reducedMotion ? 10 : 16)
             .onChange(of: activeIndex) { idx in
                 guard autoScroll, !reducedMotion, idx >= 0 else { return }
-                withAnimation(.easeInOut(duration: 0.28)) {
+                withAnimation(.easeInOut(duration: 0.32)) {
                     proxy.scrollTo(idx, anchor: .center)
                 }
             }
