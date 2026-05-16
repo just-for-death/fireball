@@ -59,6 +59,20 @@ final class NativeAudioEngine {
         refreshNowPlaying()
     }
 
+    /// Stops playback, clears logical queue (mini-player dismiss / session reset).
+    func stopAndClearPlayback() {
+        player.pause()
+        player.replaceCurrentItem(with: nil)
+        if let endObserver {
+            NotificationCenter.default.removeObserver(endObserver)
+            self.endObserver = nil
+        }
+        queue = []
+        currentIndex = 0
+        MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
+        onStateUpdate?(-1, false, 0, 0)
+    }
+
     func resumeIfPaused() {
         guard queue.indices.contains(currentIndex) else { return }
         if player.currentItem == nil {

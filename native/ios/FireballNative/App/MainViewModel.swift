@@ -1,8 +1,23 @@
+import Combine
 import Foundation
 import SwiftUI
 
 enum RepeatMode: String, CaseIterable {
     case off, all, one
+}
+
+struct ArtistOpenRequest: Identifiable, Hashable {
+    let appleId: Int?
+    let fallbackDisplayName: String
+
+    var id: String {
+        switch appleId {
+        case let i?:
+            return "i\(i):\(fallbackDisplayName)"
+        case nil:
+            return "n:\(fallbackDisplayName)"
+        }
+    }
 }
 
 @MainActor
@@ -54,6 +69,9 @@ final class MainViewModel: ObservableObject {
     @Published var lbHomeLoading = false
     @Published var isPlaybackLoading = false
     @Published var searchFocusRequest: String?
+    @Published var searchSuggestions: [Track] = []
+    @Published var searchAlbumResults: [Album] = []
+    @Published var artistOpenRequest: ArtistOpenRequest?
 
     private let repository: FireballRepository
     private let listenBrainz = ListenBrainzClient()
@@ -75,6 +93,7 @@ final class MainViewModel: ObservableObject {
     private var sponsorSegmentsVideoId: String?
     private var sponsorSkippedUUIDs = Set<String>()
     private var activePlayTask: Task<Void, Never>?
+    private var suggestionCancellable: AnyCancellable?
 
     init(repository: FireballRepository) {
         self.repository = repository
@@ -83,9 +102,13 @@ final class MainViewModel: ObservableObject {
         audioEngine.bindSettings { [weak self] in
             self?.library.settings ?? FireballSettings()
         }
-        audioEngine.onStateUpdate = { [weak self] currentIndex, isPlaying, position, duration in
+        audioEngine.onStateUpdate = { [weak self] engineIndex, isPlaying, position, duration in
             guard let self else { return }
-            self.currentIndex = currentIndex >= 0 ? currentIndex : self.currentIndex
+            if engineIndex >= 0 {
+                self.currentIndex = engineIndex
+            } else {
+                self.currentIndex = nil
+            }
             self.isPlaying = isPlaying
             self.positionSeconds = position
             self.durationSeconds = duration
@@ -139,8 +162,60 @@ final class MainViewModel: ObservableObject {
         chartCountryCode = chartCodes.first?.lowercased() ?? "us"
         Task {
             await refreshHome()
-            await checkGotifyNewReleases()
+            await checkFollowedArtistNewReleases()
         }
+        setupSearchSuggestionDebounce()
+    }
+
+    /// Debounced search-as-you-type (matches Android [MainViewModel.updateQuery] semantics).
+    private func setupSearchSuggestionDebounce() {
+        suggestionCancellable = $query
+            .debounce(for: .milliseconds(340), scheduler: DispatchQueue.main)
+            .removeDuplicates()
+            .sink { [weak self] raw in
+                guard let self else { return }
+                Task { await self.refreshSearchSuggestionsLocked(raw) }
+            }
+    }
+
+    func refreshSearchSuggestionsNow() {
+        Task { await refreshSearchSuggestionsLocked(query) }
+    }
+
+    /// Mirrors Android [refreshSearchSuggestionsLocked].
+    private func refreshSearchSuggestionsLocked(_ raw: String) async {
+        let q = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard q.count >= 2 else {
+            searchSuggestions = []
+            return
+        }
+        let settings = library.settings
+        if settings.offlineModeEnabled {
+            let needle = q.lowercased()
+            let pooled = (library.favorites + library.history).uniqued(by: \.effectiveId)
+            searchSuggestions =
+                pooled
+                .filter { $0.title.lowercased().contains(needle) || $0.artist.lowercased().contains(needle) }
+                .prefix(8)
+                .map { $0 }
+            return
+        }
+
+        let needle = q.lowercased()
+        let artistStubs: [Track] = library.artists.map { a in
+            Track(id: a.artistId, videoId: nil, title: "Artist · \(a.name)", artist: a.name, artwork: a.artwork, url: nil, duration: nil, album: nil, year: nil)
+        }
+        let pooled = (library.favorites + library.history + artistStubs).uniqued(by: \.effectiveId)
+        var localMatches = pooled.filter {
+            $0.title.lowercased().contains(needle) || $0.artist.lowercased().contains(needle)
+        }
+        let remote = await repository.searchTracks(query: q, settings: settings).prefix(8)
+        searchSuggestions =
+            (localMatches + remote)
+                .uniqued(by: \.effectiveId)
+                .prefix(12)
+                .prefix(10)
+                .map { $0 }
     }
 
     func refreshHome() async {
@@ -222,18 +297,44 @@ final class MainViewModel: ObservableObject {
         trendingLoading = false
     }
 
-    private func checkGotifyNewReleases() async {
-        guard let updated = await repository.checkGotifyNewReleases(snapshot: library, onNotify: { [weak self] title, message in
-            guard let self else { return false }
-            return await self.gotify.send(
-                url: self.library.settings.gotifyUrl,
-                token: self.library.settings.gotifyToken,
-                title: title,
-                message: message
-            )
-        }) else { return }
+    private func checkFollowedArtistNewReleases() async {
+        let snapshot = library
+        let wantGotify =
+            snapshot.settings.gotifyEnabled &&
+            !snapshot.settings.gotifyUrl.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+            !snapshot.settings.gotifyToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+
+        let onGotify: (@Sendable (String, String) async -> Bool)? =
+            wantGotify
+                ? { [weak self] title, message -> Bool in
+                    guard let self else { return false }
+                    return await self.gotify.send(
+                        url: self.library.settings.gotifyUrl,
+                        token: self.library.settings.gotifyToken,
+                        title: title,
+                        message: message
+                    )
+                } : nil
+
+        let wantDevice = snapshot.settings.notifyArtistReleasesOnDevice
+        let onDevice: (@Sendable (String, String) async -> Void)? =
+            wantDevice
+                ? { title, message in
+                    await ArtistReleaseNotifier.notify(title: title, message: message)
+                } : nil
+
+        guard let updated = await repository.checkFollowedArtistNewReleases(
+            snapshot: snapshot,
+            onGotifyNotify: onGotify,
+            onDeviceNotify: onDevice,
+        )
+        else { return }
         library = updated
         repository.saveLibrary(updated)
+    }
+
+    func refreshFollowedArtistReleaseChecksFromForeground() async {
+        await checkFollowedArtistNewReleases()
     }
 
     private func bootstrapEngineFromRestoredSession() {
@@ -248,7 +349,10 @@ final class MainViewModel: ObservableObject {
 
     private func restorePlaybackSession() {
         let session = library.playbackSession
-        if !session.queue.isEmpty {
+        if session.queue.isEmpty {
+            queue = []
+            currentIndex = nil
+        } else {
             queue = session.queue
             if session.currentIndex >= 0, session.currentIndex < session.queue.count {
                 currentIndex = session.currentIndex
@@ -261,9 +365,17 @@ final class MainViewModel: ObservableObject {
     }
 
     private func savePlaybackSession() {
+        let persistedIndex: Int
+        if queue.isEmpty {
+            persistedIndex = -1
+        } else if let idx = currentIndex, queue.indices.contains(idx) {
+            persistedIndex = idx
+        } else {
+            persistedIndex = 0
+        }
         library.playbackSession = PlaybackSession(
             queue: queue,
-            currentIndex: currentIndex ?? 0,
+            currentIndex: persistedIndex,
             shuffled: shuffled,
             repeatMode: repeatMode.rawValue
         )
@@ -279,6 +391,8 @@ final class MainViewModel: ObservableObject {
         guard !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
         error = nil
         isSearching = true
+        searchSuggestions = []
+        searchAlbumResults = []
         let settings = library.settings
         if settings.offlineModeEnabled {
             let q = query.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
@@ -290,9 +404,14 @@ final class MainViewModel: ObservableObject {
             return
         }
 
-        let tracks = await repository.searchTracks(query: query, settings: settings)
+        async let tracksFetched = repository.searchTracks(query: query, settings: settings)
+        async let albumsFetched = repository.searchAlbumsCatalog(query: query, settings: settings)
+        let tracks = await tracksFetched
+        let albums = await albumsFetched
         searchResults = tracks
-        if tracks.isEmpty && !settings.offlineModeEnabled {
+        searchAlbumResults = albums
+
+        if tracks.isEmpty && albums.isEmpty && !settings.offlineModeEnabled {
             error = "No results. Try another query or check Invidious / network."
         }
         isSearching = false
@@ -363,6 +482,98 @@ final class MainViewModel: ObservableObject {
         }
     }
 
+    func playFromPlaylist(track: Track, source: [Track]) {
+        play(track: track, source: source)
+    }
+
+    func createPlaylist(title: String) {
+        let raw = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !raw.isEmpty else { return }
+        let slug =
+            raw
+                .lowercased()
+                .replacingOccurrences(of: #"[^a-zA-Z0-9]+"#, with: "_", options: .regularExpression)
+                .trimmingCharacters(in: CharacterSet(charactersIn: "_"))
+        let safeSlug = slug.isEmpty ? "playlist" : String(slug.prefix(48))
+        let id = "local_\(safeSlug)_\(UUID().uuidString.replacingOccurrences(of: "-", with: ""))"
+        library.playlists.append(Playlist(id: id, title: raw, videos: []))
+        persist()
+    }
+
+    func appendTracksUpNext(_ tracks: [Track]) {
+        guard !tracks.isEmpty else { return }
+        Task {
+            let settings = library.settings
+            guard let idx = currentIndex, !queue.isEmpty else {
+                play(track: tracks[0], source: tracks)
+                return
+            }
+            var resolved: [Track] = []
+            for t in tracks {
+                let r = await repository.resolvePlayableTrack(t, settings: settings)
+                if let u = r.url?.trimmingCharacters(in: .whitespacesAndNewlines), !u.isEmpty {
+                    resolved.append(r)
+                }
+            }
+            guard !resolved.isEmpty else {
+                error = "Could not resolve tracks for Play next."
+                return
+            }
+            var q = queue
+            let insertAt = min(idx + 1, q.count)
+            q.insert(contentsOf: resolved, at: insertAt)
+            queue = q
+            audioEngine.applyQueueMutation(q, currentIndex: idx)
+            persist()
+        }
+    }
+
+    func appendTracksToQueue(_ tracks: [Track]) {
+        guard !tracks.isEmpty else { return }
+        Task {
+            let settings = library.settings
+            guard let idx = currentIndex, !queue.isEmpty else {
+                play(track: tracks[0], source: tracks)
+                return
+            }
+            var resolved: [Track] = []
+            for t in tracks {
+                let r = await repository.resolvePlayableTrack(t, settings: settings)
+                if let u = r.url?.trimmingCharacters(in: .whitespacesAndNewlines), !u.isEmpty {
+                    resolved.append(r)
+                }
+            }
+            guard !resolved.isEmpty else {
+                error = "Could not resolve tracks for queue."
+                return
+            }
+            var q = queue
+            q.append(contentsOf: resolved)
+            queue = q
+            audioEngine.applyQueueMutation(q, currentIndex: idx)
+            persist()
+        }
+    }
+
+    func stopPlaybackAndDismissMiniPlayer() {
+        activePlayTask?.cancel()
+        scrobbledTrackIds.removeAll()
+        resetSponsorState()
+        sponsorSkippedUUIDs.removeAll()
+        audioEngine.stopAndClearPlayback()
+        queue = []
+        currentIndex = nil
+        isPlaying = false
+        currentLyrics = nil
+        positionSeconds = 0
+        durationSeconds = 0
+        library.playbackSession = PlaybackSession()
+        savePlaybackSession()
+        lastLibraryPersistAt = Date()
+        repository.saveLibrary(library)
+        NowPlayingLiveActivityManager.end()
+    }
+
     func consumeSearchFocusRequest() {
         searchFocusRequest = nil
     }
@@ -373,6 +584,60 @@ final class MainViewModel: ObservableObject {
         guard !q.isEmpty else { return }
         searchFocusRequest = q
         error = nil
+    }
+
+    func requestArtistDetail(artistDisplayName: String) {
+        let trimmed = artistDisplayName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        let appleId =
+            library.artists.first(where: { $0.name.caseInsensitiveCompare(trimmed) == .orderedSame })
+                .flatMap { Int($0.artistId.trimmingCharacters(in: .whitespacesAndNewlines)) }
+        navigateArtistDetailInternal(appleArtistId: appleId, fallback: trimmed)
+    }
+
+    func requestArtistDetail(appleArtistId: Int?, fallbackDisplayName: String) {
+        let t = fallbackDisplayName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmed = t.isEmpty ? "Artist" : t
+        navigateArtistDetailInternal(appleArtistId: appleArtistId, fallback: trimmed)
+    }
+
+    func consumeArtistOpenRequest() {
+        artistOpenRequest = nil
+    }
+
+    private func navigateArtistDetailInternal(appleArtistId: Int?, fallback: String) {
+        let name = fallback.isEmpty ? "Artist" : fallback
+        artistOpenRequest = ArtistOpenRequest(appleId: appleArtistId, fallbackDisplayName: name)
+        error = nil
+    }
+
+    func browseArtistPage(artistAppleId: Int?, fallbackName: String) async -> ArtistBrowseResult? {
+        let t = fallbackName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let namePassed = t.isEmpty ? nil : t
+        return await repository.browseArtist(
+            library: library,
+            artistAppleId: artistAppleId,
+            artistName: namePassed,
+        )
+    }
+
+    func albumTracksCatalog(collectionId: Int) async -> [Track] {
+        await repository.catalogAlbumTracks(collectionId: collectionId)
+    }
+
+    func playCatalogAlbum(_ album: Album) {
+        guard let cid = Int(album.id) else {
+            error = "Invalid album identifier."
+            return
+        }
+        Task { @MainActor in
+            let tracks = await albumTracksCatalog(collectionId: cid)
+            guard let first = tracks.first else {
+                error = "No tracks resolved for album."
+                return
+            }
+            play(track: first, source: tracks)
+        }
     }
 
     func userPlaylistsForPicker() -> [Playlist] {
@@ -483,6 +748,12 @@ final class MainViewModel: ObservableObject {
             if !visible.contains(where: { $0.caseInsensitiveCompare(chartCountryCode) == .orderedSame }) {
                 chartCountryCode = visible.first?.lowercased() ?? "us"
                 Task { await refreshHomeCharts(countryCode: chartCountryCode) }
+            }
+        }
+        if !previous.notifyArtistReleasesOnDevice && settings.notifyArtistReleasesOnDevice {
+            Task {
+                _ = await ArtistReleaseNotifier.requestAuthorizationIfNeeded()
+                await checkFollowedArtistNewReleases()
             }
         }
     }

@@ -40,6 +40,8 @@ public struct PillMiniPlayer: View {
     let onPrevious: () -> Void
     let onTap: () -> Void
     let onLongPressMenu: () -> Void
+    var onArtistTap: () -> Void = {}
+    var onClose: () -> Void = {}
     var chrome: PillMiniPlayerChrome = .phone
 
     @Environment(\.dominantColors) var dominantColors
@@ -54,6 +56,8 @@ public struct PillMiniPlayer: View {
         onPrevious: @escaping () -> Void = {},
         onTap: @escaping () -> Void,
         onLongPressMenu: @escaping () -> Void = {},
+        onArtistTap: @escaping () -> Void = {},
+        onClose: @escaping () -> Void = {},
         chrome: PillMiniPlayerChrome = .phone
     ) {
         self.track = track
@@ -65,6 +69,8 @@ public struct PillMiniPlayer: View {
         self.onPrevious = onPrevious
         self.onTap = onTap
         self.onLongPressMenu = onLongPressMenu
+        self.onArtistTap = onArtistTap
+        self.onClose = onClose
         self.chrome = chrome
     }
 
@@ -116,20 +122,24 @@ public struct PillMiniPlayer: View {
                     .foregroundStyle(dominantColors.onBackground)
                     .lineLimit(chrome == .ipadSidebarRail ? 2 : 1)
                     .minimumScaleFactor(0.82)
+                    .overlay {
+                        TapOrLongPressHostingView(onTap: onTap, onLongPress: onLongPressMenu)
+                    }
 
                 Text(track.artist)
                     .font(chrome == .ipadSidebarRail ? .subheadline : .caption)
                     .foregroundStyle(dominantColors.onBackground.opacity(0.74))
                     .lineLimit(1)
                     .minimumScaleFactor(0.85)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
+                    .onTapGesture { onArtistTap() }
+                    .accessibilityLabel("Artist — \(track.artist)")
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .contentShape(Rectangle())
-        .overlay {
-            TapOrLongPressHostingView(onTap: onTap, onLongPress: onLongPressMenu)
-        }
 
             HStack(spacing: chrome == .ipadSidebarRail ? 10 : 6) {
+                IconCircleButton(icon: "xmark.circle.fill", size: chrome == .ipadSidebarRail ? 34 : 30, iconPoints: chrome == .ipadSidebarRail ? 15 : 14, action: onClose)
                 if chrome == .ipadSidebarRail {
                     IconCircleButton(icon: "backward.fill", size: 34, iconPoints: 15, action: onPrevious)
                 }

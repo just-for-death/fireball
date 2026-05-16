@@ -5,9 +5,11 @@ import androidx.lifecycle.viewModelScope
 import com.fireball.nativeapp.data.IntegrationOrchestrator
 import com.fireball.nativeapp.core.model.FireballSettings
 import com.fireball.nativeapp.core.model.LibrarySnapshot
+import com.fireball.nativeapp.core.model.Album
 import com.fireball.nativeapp.core.model.PlaybackSession
 import com.fireball.nativeapp.core.model.Playlist
 import com.fireball.nativeapp.core.model.Track
+import com.fireball.nativeapp.data.ArtistBrowseResult
 import com.fireball.nativeapp.data.FireballRepository
 import com.fireball.nativeapp.data.LyricsAndAiOrchestrator
 import com.fireball.nativeapp.player.PlayerManager
@@ -21,6 +23,7 @@ import com.fireball.nativeapp.core.data.FireballAnalytics
 import com.fireball.nativeapp.core.data.PlaybackPreferences
 import com.fireball.nativeapp.core.data.integrations.SponsorSegment
 import android.content.Context
+import android.os.Build
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -40,11 +43,20 @@ import kotlin.random.Random
 import androidx.media3.common.MediaItem
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
+import java.util.Locale
+
+data class ArtistOpenRequest(
+    val appleId: Int?,
+    val fallbackName: String,
+)
 
 data class MainUiState(
     val library: LibrarySnapshot = LibrarySnapshot(),
     val query: String = "",
     val searchResults: List<Track> = emptyList(),
+    /** Lightweight matches while typing (debounced; not replacing full Search results until user searches). */
+    val searchSuggestions: List<Track> = emptyList(),
+    val searchAlbumResults: List<Album> = emptyList(),
     val isSearching: Boolean = false,
     /** Resolving streams / handing off to ExoPlayer */
     val isPlaybackLoading: Boolean = false,
@@ -61,6 +73,8 @@ data class MainUiState(
     val lbHomeLoading: Boolean = false,
     /** When non-null, root should navigate to Search and run a query once (artist / discovery). */
     val searchFocusRequest: String? = null,
+    /** Navigate to Artist detail route; consumed by root. */
+    val artistOpenRequest: ArtistOpenRequest? = null,
 )
 
 class MainViewModel(
@@ -103,6 +117,13 @@ class MainViewModel(
     private var sponsorSegments: List<SponsorSegment> = emptyList()
     private var sponsorSegmentsVideoId: String? = null
 
+    /** Set from [MainActivity] to request POST_NOTIFICATIONS when enabling on-device artist alerts (API 33+). */
+    private var requestPostNotificationsPermission: (() -> Unit)? = null
+
+    fun configurePostNotificationsRequest(handler: () -> Unit) {
+        requestPostNotificationsPermission = handler
+    }
+
     /** Cancels overlapping [play] work; only the latest play wins. */
     private var activePlayJob: Job? = null
 
@@ -116,6 +137,8 @@ class MainViewModel(
 
     /** Invalidates in-flight [expandExoQueueInBackground] after a new [play]. */
     private var playGeneration: Int = 0
+
+    private var suggestionJob: Job? = null
 
     private val resolveSemaphore = Semaphore(4)
 
@@ -243,7 +266,8 @@ class MainViewModel(
             val initialChart = chartCodes.firstOrNull()?.lowercase() ?: "us"
             _uiState.update { it.copy(chartCountryCode = initialChart) }
             refreshHome()
-            checkGotifyNewReleases()
+            checkFollowedArtistReleasesAsync()
+            com.fireball.nativeapp.work.ArtistReleaseScheduler.schedule(appContext)
         }
     }
 
@@ -320,12 +344,37 @@ class MainViewModel(
         }
     }
 
-    private fun checkGotifyNewReleases() {
+    private fun checkFollowedArtistReleasesAsync() {
         viewModelScope.launch {
             val snapshot = _uiState.value.library
-            val updated = repository.checkGotifyNewReleases(snapshot) { title, message ->
-                integrations.gotify(snapshot.settings, title, message)
-            } ?: return@launch
+            com.fireball.nativeapp.notifications.ArtistReleaseNotifier.ensureChannel(appContext)
+            val onGotify: (suspend (String, String) -> Boolean)? =
+                if (snapshot.settings.gotifyEnabled &&
+                    snapshot.settings.gotifyUrl.isNotBlank() &&
+                    snapshot.settings.gotifyToken.isNotBlank()
+                ) {
+                    { title, message -> integrations.gotify(snapshot.settings, title, message) }
+                } else {
+                    null
+                }
+            val onDevice: (suspend (String, String) -> Unit)? =
+                if (snapshot.settings.notifyArtistReleasesOnDevice) {
+                    { title, message ->
+                        com.fireball.nativeapp.notifications.ArtistReleaseNotifier.show(
+                            appContext,
+                            title,
+                            message,
+                        )
+                    }
+                } else {
+                    null
+                }
+            val updated =
+                repository.checkFollowedArtistNewReleases(
+                    snapshot = snapshot,
+                    onGotifyNotify = onGotify,
+                    onDeviceNotify = onDevice,
+                ) ?: return@launch
             repository.saveLibrary(updated)
             _uiState.update { it.copy(library = updated) }
         }
@@ -337,13 +386,13 @@ class MainViewModel(
             if (idx < 0) return@launch
             val settings = _uiState.value.library.settings
             var track = playbackState.value.queue.getOrNull(idx) ?: return@launch
-            if (track.url.isNullOrBlank()) {
+            if (repository.needsInvidiousStreamResolution(track)) {
                 track = runCatching {
                     repository.resolvePlayableTrack(track, settings)
                 }.getOrNull() ?: return@launch
                 playerManager.updateTrackAt(idx, track)
             }
-            if (track.url.isNullOrBlank()) return@launch
+            if (repository.needsInvidiousStreamResolution(track)) return@launch
             val item = toMediaItem(track)
             exoMediaItems = listOf(item)
             engineHandoffMutex.withLock {
@@ -363,6 +412,55 @@ class MainViewModel(
         val q = query.trim()
         if (q.isEmpty()) return
         _uiState.update { it.copy(searchFocusRequest = q, error = null) }
+    }
+
+    /** Navigate to Artist catalog screen; resolves Apple id from followed-artists when names match. */
+    fun requestArtistDetail(artistDisplayName: String) {
+        val trimmed = artistDisplayName.trim()
+        if (trimmed.isEmpty()) return
+        val appleId =
+            _uiState.value.library.artists.firstOrNull { it.name.equals(trimmed, ignoreCase = true) }
+                ?.artistId
+                ?.toIntOrNull()
+        navigateArtistDetailInternal(appleId, trimmed)
+    }
+
+    fun requestArtistDetail(appleArtistId: Int?, fallbackDisplayName: String) {
+        val trimmed = fallbackDisplayName.trim().ifBlank { "Artist" }
+        navigateArtistDetailInternal(appleArtistId, trimmed)
+    }
+
+    private fun navigateArtistDetailInternal(artistAppleId: Int?, fallbackDisplayName: String) {
+        _uiState.update {
+            it.copy(artistOpenRequest = ArtistOpenRequest(artistAppleId, fallbackDisplayName))
+        }
+    }
+
+    fun consumeArtistOpenRequest() {
+        _uiState.update { it.copy(artistOpenRequest = null) }
+    }
+
+    suspend fun browseArtistPage(artistAppleId: Int?, fallbackName: String): ArtistBrowseResult? =
+        repository.browseArtist(_uiState.value.library, artistAppleId, fallbackName.takeIf { it.isNotBlank() })
+
+    suspend fun albumTracksCatalog(collectionId: Int): List<Track> =
+        repository.catalogAlbumTracks(collectionId)
+
+    fun playCatalogAlbum(album: com.fireball.nativeapp.core.model.Album) {
+        viewModelScope.launch {
+            val cid = album.id.toIntOrNull() ?: return@launch
+            val tracks =
+                try {
+                    repository.catalogAlbumTracks(cid)
+                } catch (_: Exception) {
+                    emptyList()
+                }
+            if (tracks.isEmpty()) {
+                _uiState.update { it.copy(error = "No tracks resolved for album.") }
+                return@launch
+            }
+            play(tracks.first(), tracks)
+        }
     }
 
     /** Insert a resolved copy of [track] after the current item without interrupting playback. */
@@ -424,8 +522,160 @@ class MainViewModel(
     fun userPlaylistsForPicker(): List<Playlist> =
         _uiState.value.library.playlists.filter { it.id != "ai_queue" }
 
+    /**
+     * Stops audio, clears the queue and persisted session, and hides the mini player.
+     * Used when the user taps Close on the pill player.
+     */
+    fun stopPlaybackAndDismissMiniPlayer() {
+        viewModelScope.launch {
+            activePlayJob?.cancel()
+            advanceAfterTrackJob?.cancel()
+            expandQueueJob?.cancel()
+            playGeneration++
+            exoMediaItems = emptyList()
+            clearSponsorState()
+            lastStartedMediaId = null
+            scrobbledTrackIds.clear()
+            aiQueueExpandedForTrackIds.clear()
+
+            engineHandoffMutex.withLock {
+                playbackController.stopAndClearMedia()
+            }
+            playerManager.clearPlaybackSession()
+            _uiState.update { it.copy(currentLyrics = null) }
+            persist(
+                _uiState.value.library.copy(
+                    playbackSession = PlaybackSession(),
+                ),
+            )
+        }
+    }
+
+    fun createPlaylist(title: String) {
+        val raw = title.trim()
+        if (raw.isBlank()) return
+        val library = _uiState.value.library
+        val slug =
+            Regex("[^a-zA-Z0-9]+")
+                .replace(raw.lowercase(Locale.US).trim(), "_")
+                .trim('_')
+                .ifBlank { "playlist" }
+                .take(48)
+        val id = "local_${slug}_${System.nanoTime().toString(36)}"
+        val pl = Playlist(id = id, title = raw, videos = emptyList())
+        persist(library.copy(playlists = library.playlists + pl))
+    }
+
+    /** Play [tracks] starting at [startIndex]; same handoff semantics as search tap-to-play. */
+    fun playFromPlaylist(track: Track, tracks: List<Track>) {
+        play(track, tracks)
+    }
+
+    /** Inserts resolved copies after the current queue item (entire playlist in order). */
+    fun appendTracksUpNext(tracks: List<Track>) {
+        if (tracks.isEmpty()) return
+        viewModelScope.launch {
+            val settings = _uiState.value.library.settings
+            val snapshot = playbackState.value
+            if (snapshot.queue.isEmpty() || snapshot.currentIndex < 0) {
+                play(tracks.first(), tracks)
+                return@launch
+            }
+            val resolved = tracks.mapNotNull { t ->
+                val r = runCatching { repository.resolvePlayableTrack(t, settings) }.getOrElse { t }
+                if (r.url.isNullOrBlank()) null else r
+            }
+            if (resolved.isEmpty()) {
+                _uiState.update { it.copy(error = "Could not resolve tracks for Play next.") }
+                return@launch
+            }
+            playerManager.insertTracksAt(snapshot.currentIndex + 1, resolved)
+            persistPlaybackSessionDebounced()
+            resyncEntireExoQueueFromLogicalState(preservePlaybackPosition = true)
+        }
+    }
+
+    /** Appends resolved playable tracks to the end of the queue. */
+    fun appendTracksToQueue(tracks: List<Track>) {
+        if (tracks.isEmpty()) return
+        viewModelScope.launch {
+            val settings = _uiState.value.library.settings
+            val snapshot = playbackState.value
+            if (snapshot.queue.isEmpty() || snapshot.currentIndex < 0) {
+                play(tracks.first(), tracks)
+                return@launch
+            }
+            val resolved = tracks.mapNotNull { t ->
+                val r = runCatching { repository.resolvePlayableTrack(t, settings) }.getOrElse { t }
+                if (r.url.isNullOrBlank()) null else r
+            }
+            if (resolved.isEmpty()) {
+                _uiState.update { it.copy(error = "Could not resolve tracks for queue.") }
+                return@launch
+            }
+            playerManager.appendToQueue(resolved)
+            persistPlaybackSessionDebounced()
+            appendResolvedTracksToExo(resolved, settings)
+        }
+    }
+
     fun updateQuery(query: String) {
-        _uiState.update { it.copy(query = query) }
+        _uiState.update { it.copy(query = query, searchSuggestions = if (query.isBlank()) emptyList() else it.searchSuggestions) }
+        suggestionJob?.cancel()
+        suggestionJob = viewModelScope.launch {
+            val q = _uiState.value.query.trim()
+            if (q.isBlank() || q.length < 2) {
+                _uiState.update { it.copy(searchSuggestions = emptyList()) }
+                return@launch
+            }
+            delay(340)
+            if (_uiState.value.query.trim() != q) return@launch
+            refreshSearchSuggestionsLocked(q)
+        }
+    }
+
+    private suspend fun refreshSearchSuggestionsLocked(q: String) {
+        val settings = _uiState.value.library.settings
+        val localSources = mutableListOf<Track>()
+        if (settings.offlineModeEnabled) {
+            val needle = q.lowercase()
+            val pooled = (_uiState.value.library.favorites + _uiState.value.library.history)
+                .distinctBy { it.effectiveId }
+            localSources.addAll(
+                pooled.filter {
+                    it.title.lowercase().contains(needle) || it.artist.lowercase().contains(needle)
+                }.take(8),
+            )
+            _uiState.update { it.copy(searchSuggestions = localSources.distinctBy { it.effectiveId }.take(8)) }
+            return
+        }
+
+        val needle = q.lowercase(Locale.US)
+        val pooled =
+            (_uiState.value.library.favorites + _uiState.value.library.history + _uiState.value.library.artists.map { a ->
+                Track(id = a.artistId, title = "Artist · ${a.name}", artist = a.name, artwork = a.artwork)
+            })
+                .distinctBy { it.effectiveId }
+        localSources.addAll(pooled.filter { it.title.lowercase().contains(needle) || it.artist.lowercase().contains(needle) })
+
+        val remote =
+            runCatching { repository.searchTracks(q, settings) }.getOrElse { emptyList() }.take(8)
+        val merged =
+            (localSources + remote).distinctBy { it.effectiveId }.take(12)
+        _uiState.update { it.copy(searchSuggestions = merged.take(10)) }
+    }
+
+    /** Run suggestion fetch when Search screen mounts with existing query. */
+    fun refreshSearchSuggestionsNow() {
+        suggestionJob?.cancel()
+        suggestionJob = viewModelScope.launch {
+            val q = _uiState.value.query.trim()
+            if (q.length < 2) {
+                _uiState.update { it.copy(searchSuggestions = emptyList()) }
+            } else {
+                refreshSearchSuggestionsLocked(q)
+            }
+        }
     }
 
     fun dismissError() {
@@ -436,7 +686,9 @@ class MainViewModel(
         val query = _uiState.value.query
         if (query.isBlank()) return
         viewModelScope.launch {
-            _uiState.update { it.copy(isSearching = true, error = null) }
+            _uiState.update {
+                it.copy(isSearching = true, error = null, searchSuggestions = emptyList())
+            }
 
             val settings = _uiState.value.library.settings
             if (settings.offlineModeEnabled) {
@@ -450,29 +702,42 @@ class MainViewModel(
                     current.copy(
                         isSearching = false,
                         searchResults = filtered,
+                        searchAlbumResults = emptyList(),
                     )
                 }
                 return@launch
             }
 
-            val tracks = runCatching {
-                repository.searchTracks(query, _uiState.value.library.settings)
-            }.getOrElse {
-                _uiState.update { current ->
-                    current.copy(isSearching = false, error = it.message ?: "Search failed")
+            coroutineScope {
+                val tracksDeferred = async {
+                    runCatching {
+                        repository.searchTracks(query, _uiState.value.library.settings)
+                    }
                 }
-                return@launch
-            }
-            _uiState.update {
-                it.copy(
-                    isSearching = false,
-                    searchResults = tracks,
-                    error = if (tracks.isEmpty()) {
-                        "No results. Try another query or check Invidious / network."
-                    } else {
-                        it.error
-                    },
-                )
+                val albumsDeferred = async {
+                    runCatching {
+                        repository.searchAlbumsCatalog(query, settings)
+                    }.getOrDefault(emptyList())
+                }
+                val tracks = tracksDeferred.await().getOrElse {
+                    _uiState.update { current ->
+                        current.copy(isSearching = false, error = it.message ?: "Search failed")
+                    }
+                    return@coroutineScope
+                }
+                val albums = albumsDeferred.await()
+                _uiState.update {
+                    it.copy(
+                        isSearching = false,
+                        searchResults = tracks,
+                        searchAlbumResults = albums,
+                        error = if (tracks.isEmpty() && albums.isEmpty()) {
+                            "No results. Try another query or check Invidious / network."
+                        } else {
+                            it.error
+                        },
+                    )
+                }
             }
         }
     }
@@ -636,16 +901,16 @@ class MainViewModel(
         _uiState.update { it.copy(isPlaybackLoading = true, error = null) }
         try {
             var track = queue[index]
-            if (track.url.isNullOrBlank()) {
+            if (repository.needsInvidiousStreamResolution(track)) {
                 track = repository.resolvePlayableTrack(track, settings)
                 playerManager.updateTrackAt(index, track)
                 queue = playbackState.value.queue
             }
 
-            if (track.url.isNullOrBlank()) {
+            if (repository.needsInvidiousStreamResolution(track)) {
                 _uiState.update {
                     it.copy(
-                        error = "No stream URL for this track. Public Invidious mirrors were tried automatically."
+                        error = "No stream URL for this track. Invidious mirrors and on-device YouTube were tried; Apple preview samples are not used for playback."
                     )
                 }
                 return
@@ -747,6 +1012,12 @@ class MainViewModel(
         val updated = transform(previous)
         PlaybackPreferences.save(appContext, updated)
         persist(_uiState.value.library.copy(settings = updated))
+        if (!previous.notifyArtistReleasesOnDevice &&
+            updated.notifyArtistReleasesOnDevice &&
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
+        ) {
+            requestPostNotificationsPermission?.invoke()
+        }
         if (previous.streamCacheEnabled != updated.streamCacheEnabled ||
             previous.localMusicCacheLimit != updated.localMusicCacheLimit
         ) {
@@ -867,10 +1138,16 @@ class MainViewModel(
 
     private fun persist(library: LibrarySnapshot) {
         val ps = playbackState.value
+        val sessionIndex =
+            when {
+                ps.queue.isEmpty() -> -1
+                ps.currentIndex < 0 -> 0
+                else -> ps.currentIndex.coerceIn(0, ps.queue.lastIndex)
+            }
         val withPlayback = library.copy(
             playbackSession = PlaybackSession(
                 queue = ps.queue,
-                currentIndex = ps.currentIndex.coerceAtLeast(0),
+                currentIndex = sessionIndex,
                 shuffled = ps.shuffled,
                 repeatMode = ps.repeatMode.name.lowercase(),
             ),

@@ -213,6 +213,15 @@ class PlaybackController(private val context: Context) {
         }
     }
 
+    /** Stops engine playback and clears the timeline (session cleared locally). */
+    fun stopAndClearMedia() {
+        controller?.let { c ->
+            c.stop()
+            c.clearMediaItems()
+            pushControllerState(c)
+        }
+    }
+
     fun next() {
         controller?.let { c ->
             c.seekToNext()

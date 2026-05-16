@@ -101,6 +101,76 @@ final class FireballAPIClient {
         return results.filter { ($0["wrapperType"] as? String) == "collection" }
     }
 
+    func iTunesArtistDetail(artistId: Int) async throws -> [String: Any]? {
+        var components = URLComponents(string: "https://itunes.apple.com/lookup")!
+        components.queryItems = [URLQueryItem(name: "id", value: "\(artistId)")]
+        var request = URLRequest(url: components.url!)
+        applyDefaultHeaders(&request)
+        let data = try await session.data(for: request).0
+        guard let root = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let results = root["results"] as? [[String: Any]],
+              let first = results.first else {
+            return nil
+        }
+        return first
+    }
+
+    func iTunesArtistSongs(artistId: Int, limit: Int = 50) async throws -> [[String: Any]] {
+        var components = URLComponents(string: "https://itunes.apple.com/lookup")!
+        components.queryItems = [
+            URLQueryItem(name: "id", value: "\(artistId)"),
+            URLQueryItem(name: "entity", value: "song"),
+            URLQueryItem(name: "limit", value: "\(limit)"),
+        ]
+        var request = URLRequest(url: components.url!)
+        applyDefaultHeaders(&request)
+        let data = try await session.data(for: request).0
+        guard let root = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let results = root["results"] as? [[String: Any]] else {
+            return []
+        }
+        return results.filter { row in
+            let w = row["wrapperType"] as? String
+            let kind = row["kind"] as? String
+            return w == "track" || kind == "song"
+        }
+    }
+
+    func iTunesAlbumTracks(collectionId: Int, limit: Int = 250) async throws -> [[String: Any]] {
+        var components = URLComponents(string: "https://itunes.apple.com/lookup")!
+        components.queryItems = [
+            URLQueryItem(name: "id", value: "\(collectionId)"),
+            URLQueryItem(name: "entity", value: "song"),
+            URLQueryItem(name: "limit", value: "\(limit)"),
+        ]
+        var request = URLRequest(url: components.url!)
+        applyDefaultHeaders(&request)
+        let data = try await session.data(for: request).0
+        guard let root = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let results = root["results"] as? [[String: Any]] else {
+            return []
+        }
+        return results.filter { row in
+            let w = row["wrapperType"] as? String
+            let kind = row["kind"] as? String
+            return w == "track" || kind == "song"
+        }
+    }
+
+    func iTunesSearchAlbums(term: String, limit: Int = 25) async throws -> Data {
+        var components = URLComponents(string: "https://itunes.apple.com/search")!
+        components.queryItems = [
+            URLQueryItem(name: "media", value: "music"),
+            URLQueryItem(name: "entity", value: "album"),
+            URLQueryItem(name: "term", value: term),
+            URLQueryItem(name: "limit", value: "\(limit)"),
+            URLQueryItem(name: "country", value: "US"),
+        ]
+        var request = URLRequest(url: components.url!)
+        applyDefaultHeaders(&request)
+        return try await session.data(for: request).0
+    }
+
     func invidiousSearch(instanceURL: String, query: String, sid: String? = nil) async throws -> Data {
         let base = trimTrailingSlashes(instanceURL)
         var c = URLComponents(string: "\(base)/api/v1/search")!

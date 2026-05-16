@@ -105,7 +105,7 @@ class MainActivity : ComponentActivity() {
         val store = LibraryStore(filesDir)
         val repository = FireballRepository(apiClient, store)
         val playerManager = PlayerManager()
-        val playbackController = PlaybackController(this)
+        val playbackController = PlaybackController(applicationContext)
         PlaybackPreferences.load(this)
         val integrations = IntegrationOrchestrator(
             fireballApiClient = apiClient,
@@ -127,6 +127,14 @@ class MainActivity : ComponentActivity() {
             playbackController,
             lyricsAndAi,
         )
+        viewModel.configurePostNotificationsRequest {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
+                != PackageManager.PERMISSION_GRANTED
+            ) {
+                requestPostNotificationsPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
+        }
 
         setupBluetoothAutoplay(viewModel)
         setupSongAnnounceTts(viewModel)

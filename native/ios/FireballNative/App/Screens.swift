@@ -554,60 +554,124 @@ private struct HomeTrackCard: View {
     }
 }
 struct SearchScreen: View {
+    enum SearchSegment: Hashable {
+        case songs
+        case albums
+    }
+
     @Binding var query: String
     let results: [Track]
+    let albumResults: [Album]
+    let searchSuggestions: [Track]
     let isSearching: Bool
     let error: String?
     let isFavorite: (Track) -> Bool
     let onDismissError: () -> Void
     let onSearch: () async -> Void
+    let onRefreshSuggestions: () -> Void
     let onPlay: (Track, [Track]) -> Void
+    let onPlayAlbum: (Album) -> Void
     let onFavorite: (Track) -> Void
+    let onOverflowTrack: (Track) -> Void
+
+    @State private var segment: SearchSegment = .songs
 
     var body: some View {
         VStack(spacing: 12) {
             if let error, !error.isEmpty {
                 HStack {
-                    Text(error)
-                        .font(.caption)
-                        .foregroundStyle(.red)
+                    Text(error).font(.caption).foregroundStyle(.red)
                     Spacer()
                     Button("Dismiss") { onDismissError() }
                 }
                 .padding(8)
                 .background(RoundedRectangle(cornerRadius: 8).fill(Color.red.opacity(0.12)))
             }
+
             TextField("Search music", text: $query)
                 .textFieldStyle(.roundedBorder)
                 .onSubmit { Task { await onSearch() } }
+                .onAppear { onRefreshSuggestions() }
+
             Button(isSearching ? "Searching..." : "Search") {
                 Task { await onSearch() }
             }
             .buttonStyle(.borderedProminent)
             .disabled(isSearching || query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
 
-            if results.isEmpty && !isSearching {
-                VStack(spacing: 8) {
-                    Image(systemName: "magnifyingglass")
-                        .font(.largeTitle)
+            if query.trimmingCharacters(in: .whitespacesAndNewlines).count >= 2 &&
+                !searchSuggestions.isEmpty &&
+                segment == .songs &&
+                results.isEmpty &&
+                !isSearching {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Suggestions")
+                        .font(.caption.weight(.semibold))
                         .foregroundStyle(.secondary)
-                    Text("No results")
-                        .font(.headline)
-                    Text("Try another query or check Invidious / network settings.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
+                    ScrollView {
+                        LazyVStack(alignment: .leading, spacing: 0) {
+                            ForEach(searchSuggestions, id: \.effectiveId) { t in
+                                Button {
+                                    query = t.title
+                                    Task { await onSearch() }
+                                } label: {
+                                    HStack {
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text(t.title)
+                                            Text(t.artist).font(.caption).foregroundStyle(.secondary)
+                                        }
+                                        Spacer()
+                                    }
+                                    .padding(.vertical, 8)
+                                }
+                                .buttonStyle(.plain)
+                                .contextMenu {
+                                    Button("Track actions…") {
+                                        onOverflowTrack(t)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    .frame(maxHeight: 180)
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                List(results, id: \.effectiveId) { track in
+                .padding(.horizontal, 4)
+            }
+
+            Picker("", selection: $segment) {
+                Text("Songs").tag(SearchSegment.songs)
+                Text("Albums").tag(SearchSegment.albums)
+            }
+            .pickerStyle(.segmented)
+
+            Group {
+                switch segment {
+                case .songs:
+                    songsBody
+                case .albums:
+                    albumsBody
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .padding()
+    }
+
+    @ViewBuilder
+    private var songsBody: some View {
+        if results.isEmpty && !isSearching {
+            emptyState(icon: "magnifyingglass", title: "No song results yet", subtitle: "Run search or tap a suggestion.")
+        } else {
+            List(results, id: \.effectiveId) { track in
+                Button {
+                    onPlay(track, results)
+                } label: {
                     HStack {
                         VStack(alignment: .leading) {
                             Text(track.title)
                             Text(track.artist).font(.caption).foregroundStyle(.secondary)
                         }
                         Spacer()
-                        Button("Play") { onPlay(track, results) }
                         Button {
                             onFavorite(track)
                         } label: {
@@ -617,9 +681,105 @@ struct SearchScreen: View {
                         .buttonStyle(.borderless)
                     }
                 }
+                .buttonStyle(.plain)
+                .contextMenu {
+                    Button("Track actions…") {
+                        onOverflowTrack(track)
+                    }
+                }
             }
         }
-        .padding()
+    }
+
+    @ViewBuilder
+    private var albumsBody: some View {
+        if albumResults.isEmpty && !isSearching {
+            emptyState(icon: "opticaldisc", title: "No albums", subtitle: "Switch to Songs or refine your query.")
+        } else {
+            List(albumResults, id: \.id) { album in
+                Button {
+                    onPlayAlbum(album)
+                } label: {
+                    HStack {
+                        AsyncImage(url: URL(string: album.artwork ?? "")) { p in
+                            if let img = p.image {
+                                img.resizable().aspectRatio(contentMode: .fill)
+                            } else {
+                                Color.secondary.opacity(0.35)
+                            }
+                        }
+                        .frame(width: 48, height: 48)
+                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(album.title)
+                            Text(album.artist).font(.caption).foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                    }
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    private func emptyState(icon: String, title: String, subtitle: String) -> some View {
+        VStack(spacing: 8) {
+            Image(systemName: icon).font(.largeTitle).foregroundStyle(.secondary)
+            Text(title).font(.headline)
+            Text(subtitle).font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+
+struct PlaylistDetailScreen: View {
+    let playlist: Playlist
+    @EnvironmentObject private var viewModel: MainViewModel
+
+    private var playableSource: [Track] {
+        playlist.videos
+    }
+
+    var body: some View {
+        Group {
+            if playableSource.isEmpty {
+                Text("This playlist has no tracks yet.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                List(playableSource, id: \.effectiveId) { track in
+                    Button {
+                        viewModel.playFromPlaylist(track: track, source: playableSource)
+                    } label: {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(track.title)
+                            Text(track.artist).font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+        .navigationTitle(playlist.title)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItemGroup(placement: .primaryAction) {
+                if !playableSource.isEmpty, let first = playableSource.first {
+                    Button("Play") {
+                        viewModel.play(track: first, source: playableSource)
+                    }
+                    Button("Next") {
+                        viewModel.appendTracksUpNext(playableSource)
+                    }
+                    Button("Queue") {
+                        viewModel.appendTracksToQueue(playableSource)
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -631,6 +791,12 @@ struct LibraryScreen: View {
     let onFavorite: (Track) -> Void
     var onUnfollowArtist: (String) -> Void = { _ in }
 
+    @EnvironmentObject private var viewModel: MainViewModel
+    @State private var newPlaylistTitle = ""
+    @State private var showCreatePlaylistPrompt = false
+    @State private var followArtistName = ""
+    @State private var showFollowArtistPrompt = false
+
     var body: some View {
         Group {
             if useGrid {
@@ -639,10 +805,7 @@ struct LibraryScreen: View {
                         VStack(alignment: .leading, spacing: 8) {
                             Text("Playlists").font(.headline).padding(.horizontal)
                             ForEach(library.playlists, id: \.id) { pl in
-                                Button {
-                                    guard let first = pl.videos.first else { return }
-                                    onPlay(first, pl.videos)
-                                } label: {
+                                NavigationLink(destination: PlaylistDetailScreen(playlist: pl)) {
                                     HStack {
                                         Text(pl.title)
                                         Spacer()
@@ -651,7 +814,6 @@ struct LibraryScreen: View {
                                     .padding(10)
                                     .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12))
                                 }
-                                .disabled(pl.videos.isEmpty)
                                 .padding(.horizontal)
                             }
                         }
@@ -722,17 +884,13 @@ struct LibraryScreen: View {
                     if !library.playlists.isEmpty {
                         Section("Playlists") {
                             ForEach(library.playlists, id: \.id) { pl in
-                                Button {
-                                    guard let first = pl.videos.first else { return }
-                                    onPlay(first, pl.videos)
-                                } label: {
+                                NavigationLink(destination: PlaylistDetailScreen(playlist: pl)) {
                                     HStack {
                                         Text(pl.title)
                                         Spacer()
                                         Text("\(pl.videos.count) tracks").font(.caption).foregroundStyle(.secondary)
                                     }
                                 }
-                                .disabled(pl.videos.isEmpty)
                             }
                         }
                     }
@@ -790,6 +948,38 @@ struct LibraryScreen: View {
                     }
                 }
             }
+        }
+        .toolbar {
+            ToolbarItemGroup(placement: .primaryAction) {
+                Button {
+                    followArtistName = ""
+                    showFollowArtistPrompt = true
+                } label: {
+                    Image(systemName: "person.badge.plus")
+                }
+                .accessibilityLabel("Follow artist")
+                Button {
+                    newPlaylistTitle = ""
+                    showCreatePlaylistPrompt = true
+                } label: {
+                    Image(systemName: "plus.rectangle.on.rectangle")
+                }
+                .accessibilityLabel("New playlist")
+            }
+        }
+        .alert("Follow artist", isPresented: $showFollowArtistPrompt) {
+            TextField("Artist name", text: $followArtistName)
+            Button("Follow") {
+                viewModel.followArtist(followArtistName.trimmingCharacters(in: .whitespacesAndNewlines), artwork: nil)
+            }
+            Button("Cancel", role: .cancel) {}
+        }
+        .alert("New playlist", isPresented: $showCreatePlaylistPrompt) {
+            TextField("Title", text: $newPlaylistTitle)
+            Button("Create") {
+                viewModel.createPlaylist(title: newPlaylistTitle)
+            }
+            Button("Cancel", role: .cancel) {}
         }
     }
 }
@@ -937,10 +1127,26 @@ struct SettingsScreen: View {
                     Text("Nature").tag("nature")
                     Text("Love").tag("mandyRed")
                 }
-                Toggle("Use Dynamic Color", isOn: .init(
-                    get: { settings.useDynamicColorWhenAvailable },
-                    set: { value in onUpdateSettings { $0.useDynamicColorWhenAvailable = value } }
-                ))
+                Picker("Chrome colors", selection: .init(
+                    get: {
+                        let raw = settings.appearanceColorSource.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                        if raw == "scheme" || raw == "material_you" { return "scheme" }
+                        if raw == "music" { return "music" }
+                        return settings.useDynamicColorWhenAvailable ? "music" : "scheme"
+                    },
+                    set: { v in
+                        onUpdateSettings { s in
+                            s.appearanceColorSource = v
+                            s.useDynamicColorWhenAvailable = (v == "music")
+                        }
+                    },
+                )) {
+                    Text("Album artwork").tag("music")
+                    Text("Preset scheme").tag("scheme")
+                }
+                Text("Synced as `appearanceColorSource` (`music` \| `scheme`). Android’s Material You maps to preset scheme here.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                 TextField("Accent seed (ARGB hex)", text: .init(
                     get: {
                         guard let seed = settings.accentSeedColor else { return "" }
@@ -968,6 +1174,10 @@ struct SettingsScreen: View {
                 Toggle("Prefer English/Hindi lyrics", isOn: .init(
                     get: { settings.lyricsPreferEnglishHindi },
                     set: { value in onUpdateSettings { $0.lyricsPreferEnglishHindi = value } }
+                ))
+                Toggle("Always show lyrics panel", isOn: .init(
+                    get: { settings.alwaysShowLyricsPanel },
+                    set: { value in onUpdateSettings { $0.alwaysShowLyricsPanel = value } }
                 ))
                 TextField("Start tab", text: .init(
                     get: { settings.startTab },
@@ -1229,6 +1439,13 @@ struct SettingsScreen: View {
                     get: { "\(settings.remotePeerPort)" },
                     set: { value in if let parsed = Int(value) { onUpdateSettings { $0.remotePeerPort = parsed } } }
                 ))
+                Toggle("Artist release alerts (this device)", isOn: .init(
+                    get: { settings.notifyArtistReleasesOnDevice },
+                    set: { value in onUpdateSettings { $0.notifyArtistReleasesOnDevice = value } }
+                ))
+                Text("Posts a local notification when a followed artist’s newest iTunes album changes; works alongside Gotify when configured.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                 Toggle("Gotify enabled", isOn: .init(
                     get: { settings.gotifyEnabled },
                     set: { value in onUpdateSettings { $0.gotifyEnabled = value } }

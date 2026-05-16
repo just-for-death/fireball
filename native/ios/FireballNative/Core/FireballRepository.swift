@@ -1,5 +1,15 @@
 import Foundation
 
+/// iTunes-backed artist browse payload (catalog + filtered local playlists).
+struct ArtistBrowseResult: Sendable, Equatable {
+    let artistAppleId: Int
+    let displayName: String
+    let artworkUrl: String?
+    let songs: [Track]
+    let albums: [Album]
+    let playlistsContainingArtist: [Playlist]
+}
+
 @MainActor
 final class FireballRepository {
     private static let searchCachePrefix = "v5:"
@@ -59,49 +69,128 @@ final class FireballRepository {
         }
     }
 
-    func checkGotifyNewReleases(
+    func checkFollowedArtistNewReleases(
         snapshot: LibrarySnapshot,
-        onNotify: @escaping (String, String) async -> Bool
+        onGotifyNotify: (@Sendable (String, String) async -> Bool)?,
+        onDeviceNotify: (@Sendable (String, String) async -> Void)?
     ) async -> LibrarySnapshot? {
         let settings = snapshot.settings
-        guard settings.gotifyEnabled,
-              !settings.gotifyUrl.isEmpty,
-              !settings.gotifyToken.isEmpty else {
-            return nil
-        }
+        let wantGotify =
+            settings.gotifyEnabled &&
+            !settings.gotifyUrl.isEmpty &&
+            !settings.gotifyToken.isEmpty &&
+            onGotifyNotify != nil
+        let wantDevice = settings.notifyArtistReleasesOnDevice && onDeviceNotify != nil
+        if !wantGotify && !wantDevice { return nil }
 
         var artistsChanged = false
-        var updatedArtists = snapshot.artists
-        for index in updatedArtists.indices {
-            let artist = updatedArtists[index]
-            guard let artistIdNum = Int(artist.artistId) else { continue }
+        let updatedArtists = snapshot.artists.enumerated().map { _, artist -> Artist in
+            guard let artistIdNum = Int(artist.artistId) else { return artist }
             guard let albums = try? await api.iTunesArtistAlbums(artistId: artistIdNum, limit: 1),
                   let latest = albums.first,
                   let releaseId = Self.stringValue(latest["collectionId"]) else {
-                continue
+                return artist
             }
             let releaseName = latest["collectionName"] as? String ?? "New Release"
-            if releaseId == artist.latestReleaseId { continue }
+            if releaseId == artist.latestReleaseId { return artist }
 
             if artist.latestReleaseId != nil {
-                _ = await onNotify(
-                    "New Release from \(artist.name)",
-                    "\(releaseName) is out now!"
-                )
+                let title = "New Release from \(artist.name)"
+                let message = "\(releaseName) is out now!"
+                if wantGotify {
+                    _ = await onGotifyNotify!(title, message)
+                }
+                if wantDevice {
+                    await onDeviceNotify!(title, message)
+                }
             }
-            updatedArtists[index] = Artist(
+            artistsChanged = true
+            return Artist(
                 artistId: artist.artistId,
                 name: artist.name,
                 artwork: artist.artwork,
                 latestReleaseId: releaseId
             )
-            artistsChanged = true
         }
 
         guard artistsChanged else { return nil }
         var next = snapshot
         next.artists = updatedArtists
         return next
+    }
+
+    func searchAlbumsCatalog(query: String, settings: FireballSettings) async -> [Album] {
+        let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !q.isEmpty, !settings.offlineModeEnabled else { return [] }
+        guard let data = try? await api.iTunesSearchAlbums(term: q),
+              let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let items = root["results"] as? [[String: Any]]
+        else {
+            return []
+        }
+        return items.compactMap { Self.jsonCollectionToAlbum($0) }
+    }
+
+    func catalogAlbumTracks(collectionId: Int) async -> [Track] {
+        guard let rows = try? await api.iTunesAlbumTracks(collectionId: collectionId) else {
+            return []
+        }
+        return rows.compactMap(Self.jsonObjectToCatalogTrack(_:))
+    }
+
+    func browseArtist(library: LibrarySnapshot, artistAppleId: Int?, artistName: String?) async -> ArtistBrowseResult? {
+        let resolvedId: Int
+        if let artistAppleId {
+            resolvedId = artistAppleId
+        } else {
+            let guess = artistName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            guard !guess.isEmpty,
+                  let found = try? await api.iTunesFindArtist(guess),
+                  let sid = Self.stringValue(found["artistId"]),
+                  let idNum = Int(sid) else {
+                return nil
+            }
+            resolvedId = idNum
+        }
+
+        let meta = try? await api.iTunesArtistDetail(artistId: resolvedId)
+        let dnFromMeta = (meta?["artistName"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let dnFromGuess = artistName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let displayName = !dnFromMeta.isEmpty ? dnFromMeta : (!dnFromGuess.isEmpty ? dnFromGuess : "Artist")
+        var artwork =
+            ((meta?["artworkUrl100"] as? String)?
+                .replacingOccurrences(of: "100x100", with: "600x600"))
+        let songRows =
+            ((try? await api.iTunesArtistSongs(artistId: resolvedId, limit: 60)) ?? [])
+                .compactMap(Self.jsonObjectToCatalogTrack(_:))
+
+        let albumRows = (try? await api.iTunesArtistAlbums(artistId: resolvedId, limit: 80)) ?? []
+        var albumSeen = Set<String>()
+        let albums = albumRows.compactMap(Self.jsonCollectionToAlbum(_:)).filter { albumSeen.insert($0.id).inserted }
+
+        if artwork == nil || artwork?.isEmpty == true {
+            artwork =
+                (albumRows.first?["artworkUrl100"] as? String)?
+                .replacingOccurrences(of: "100x100", with: "600x600")
+        }
+
+        let needle = displayName.lowercased()
+        let playlists =
+            library.playlists.filter { pl in
+                pl.videos.contains { row in
+                    let a = row.artist.lowercased()
+                    return a == needle || a.contains(needle) || needle.contains(a)
+                }
+            }
+
+        return ArtistBrowseResult(
+            artistAppleId: resolvedId,
+            displayName: displayName,
+            artworkUrl: artwork,
+            songs: songRows,
+            albums: albums,
+            playlistsContainingArtist: playlists,
+        )
     }
 
     func searchTracks(query: String, settings: FireballSettings) async -> [Track] {
@@ -482,6 +571,51 @@ final class FireballRepository {
             }
         }
         return nil
+    }
+
+    private static func millisToSeconds(_ value: Any?) -> Int? {
+        switch value {
+        case let ms as Int64 where ms > 0: return Int(ms / 1000)
+        case let ms as Int where ms > 0: return ms / 1000
+        case let ms as Double where ms > 0: return Int(ms / 1000)
+        case let s as String where !s.isEmpty:
+            guard let iv = Int64(s), iv > 0 else { return nil }
+            return Int(iv / 1000)
+        default: return nil
+        }
+    }
+
+    private static func jsonObjectToCatalogTrack(_ e: [String: Any]) -> Track? {
+        guard let sid = stringValue(e["trackId"]), !sid.isEmpty else { return nil }
+        let rawArt = e["artworkUrl100"] as? String
+        let artwork = rawArt?.replacingOccurrences(of: "100x100", with: "600x600")
+        let duration = millisToSeconds(e["trackTimeMillis"])
+        return Track(
+            id: sid,
+            videoId: nil,
+            title: e["trackName"] as? String ?? "Unknown",
+            artist: e["artistName"] as? String ?? "Unknown",
+            artwork: artwork,
+            url: nil,
+            duration: duration,
+            album: e["collectionName"] as? String,
+            year: (e["releaseDate"] as? String).map { String($0.prefix(4)) },
+        )
+    }
+
+    private static func jsonCollectionToAlbum(_ e: [String: Any]) -> Album? {
+        guard let cid = stringValue(e["collectionId"]), !cid.isEmpty else { return nil }
+        let yr = (e["releaseDate"] as? String).flatMap { Int(String($0.prefix(4))) }
+        let rawArt = e["artworkUrl100"] as? String
+        let art = rawArt?.replacingOccurrences(of: "100x100", with: "600x600")
+        return Album(
+            id: cid,
+            title: e["collectionName"] as? String ?? "Album",
+            artist: e["artistName"] as? String ?? "",
+            artwork: art,
+            year: yr,
+            tracks: nil,
+        )
     }
 
     private static func stringValue(_ value: Any?) -> String? {

@@ -1,3 +1,5 @@
+@file:OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+
 package com.fireball.nativeapp.ui.screens
 
 import android.content.Intent
@@ -12,6 +14,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -23,6 +26,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items as gridItems
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForwardIos
@@ -41,6 +45,7 @@ import androidx.compose.material.icons.filled.LibraryMusic
 import androidx.compose.material.icons.filled.HeadsetMic
 import androidx.compose.material.icons.filled.Lyrics
 import androidx.compose.material.icons.filled.MusicNote
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.PictureInPicture
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.filled.WifiOff
@@ -51,7 +56,9 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider as M3HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Button
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.Card
 import androidx.compose.material3.LinearProgressIndicator
@@ -67,6 +74,8 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRow
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
@@ -91,8 +100,10 @@ import kotlin.math.roundToInt
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import com.fireball.nativeapp.core.model.Album
 import com.fireball.nativeapp.core.model.FireballSettings
 import com.fireball.nativeapp.core.model.LibrarySnapshot
+import com.fireball.nativeapp.core.model.Playlist
 import com.fireball.nativeapp.core.model.Track
 import com.fireball.nativeapp.player.PlaybackState
 
@@ -114,6 +125,8 @@ fun HomeScreen(
     onSelectLbTopRange: (String) -> Unit = {},
     onFollowArtist: (String, String?) -> Unit = { _, _ -> },
     onRefreshHome: () -> Unit = {},
+    onOpenPlaylist: (Playlist) -> Unit = {},
+    onOverflowTrack: (Track) -> Unit = {},
     onPlay: (Track, List<Track>) -> Unit,
     onTogglePlayPause: () -> Unit,
     onNext: () -> Unit,
@@ -240,7 +253,10 @@ fun HomeScreen(
                             Column(
                                 modifier = Modifier
                                     .width(140.dp)
-                                    .clickable { onPlay(track, trendingTracks) },
+                                    .combinedClickable(
+                                        onClick = { onPlay(track, trendingTracks) },
+                                        onLongClick = { onOverflowTrack(track) },
+                                    ),
                             ) {
                                 Box(
                                     modifier = Modifier
@@ -304,6 +320,7 @@ fun HomeScreen(
                                 track = track,
                                 onPlay = { onPlay(track, lbRecentTracks) },
                                 onFollowArtist = { onFollowArtist(track.artist, track.artwork) },
+                                onLongPressMenu = { onOverflowTrack(track) },
                             )
                         }
                     }
@@ -350,6 +367,7 @@ fun HomeScreen(
                                     track = track,
                                     onPlay = { onPlay(track, lbTopTracks) },
                                     onFollowArtist = { onFollowArtist(track.artist, track.artwork) },
+                                    onLongPressMenu = { onOverflowTrack(track) },
                                 )
                             }
                         }
@@ -439,7 +457,10 @@ fun HomeScreen(
                             Column(
                                 modifier = Modifier
                                     .width(140.dp)
-                                    .clickable { onPlay(track, library.history) }
+                                    .combinedClickable(
+                                        onClick = { onPlay(track, library.history) },
+                                        onLongClick = { onOverflowTrack(track) },
+                                    )
                             ) {
                                 Box(
                                     modifier = Modifier
@@ -543,7 +564,10 @@ fun HomeScreen(
                                 },
                                 modifier = Modifier
                                     .clip(androidx.compose.foundation.shape.RoundedCornerShape(12.dp))
-                                    .clickable { onPlay(track, library.favorites) },
+                                    .combinedClickable(
+                                        onClick = { onPlay(track, library.favorites) },
+                                        onLongClick = { onOverflowTrack(track) },
+                                    ),
                                 colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                             )
                         }
@@ -572,9 +596,7 @@ fun HomeScreen(
                             Card(
                                 modifier = Modifier
                                     .widthIn(min = 160.dp)
-                                    .clickable {
-                                        if (playlist.videos.isNotEmpty()) onPlay(playlist.videos.first(), playlist.videos)
-                                    },
+                                    .clickable { onOpenPlaylist(playlist) },
                                 shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),
                                 colors = androidx.compose.material3.CardDefaults.cardColors(
                                     containerColor = MaterialTheme.colorScheme.secondaryContainer
@@ -629,10 +651,20 @@ fun HomeScreen(
                             Column(
                                 modifier = Modifier
                                     .width(130.dp)
-                                    .clickable {
-                                        val tracks = album.tracks
-                                        if (!tracks.isNullOrEmpty()) onPlay(tracks.first(), tracks)
-                                    }
+                                    .combinedClickable(
+                                        onClick = {
+                                            val tracks = album.tracks
+                                            if (!tracks.isNullOrEmpty()) {
+                                                onPlay(tracks.first(), tracks)
+                                            }
+                                        },
+                                        onLongClick = {
+                                            val first = album.tracks?.firstOrNull()
+                                            if (first != null) {
+                                                onOverflowTrack(first)
+                                            }
+                                        },
+                                    )
                             ) {
                                 Box(
                                     modifier = Modifier
@@ -693,11 +725,15 @@ private fun HomeTrackCarouselCard(
     track: Track,
     onPlay: () -> Unit,
     onFollowArtist: () -> Unit,
+    onLongPressMenu: () -> Unit = {},
 ) {
     Column(
         modifier = Modifier
             .width(140.dp)
-            .clickable(onClick = onPlay),
+            .combinedClickable(
+                onClick = onPlay,
+                onLongClick = onLongPressMenu,
+            ),
     ) {
         Box(
             modifier = Modifier
@@ -733,14 +769,35 @@ private fun HomeTrackCarouselCard(
 fun SearchScreen(
     query: String,
     results: List<Track>,
+    albumResults: List<Album> = emptyList(),
+    searchSuggestions: List<Track>,
     isSearching: Boolean,
     isPlaybackLoading: Boolean,
     isFavorite: (Track) -> Boolean,
     onQueryChange: (String) -> Unit,
     onSearch: () -> Unit,
+    onRefreshSuggestions: () -> Unit,
     onPlay: (Track, List<Track>) -> Unit,
-    onToggleFavorite: (Track) -> Unit
+    onToggleFavorite: (Track) -> Unit,
+    onOpenTrackMenu: (Track) -> Unit,
+    onPlayAlbum: (Album) -> Unit = {},
 ) {
+    LaunchedEffect(Unit) {
+        onRefreshSuggestions()
+    }
+    var searchResultsTab by remember { mutableStateOf(0) }
+    LaunchedEffect(results, albumResults, query.isNotBlank()) {
+        if (!query.isNotBlank()) {
+            searchResultsTab = 0
+            return@LaunchedEffect
+        }
+        searchResultsTab =
+            when {
+                results.isNotEmpty() -> 0
+                albumResults.isNotEmpty() -> 1
+                else -> 0
+            }
+    }
     Column(modifier = Modifier.fillMaxSize()) {
         if (isPlaybackLoading) {
             LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
@@ -786,7 +843,83 @@ fun SearchScreen(
             }
         }
 
-        if (results.isEmpty() && !isSearching && query.isNotBlank()) {
+        if (searchSuggestions.isNotEmpty()) {
+            Text(
+                "Suggestions",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.padding(horizontal = 16.dp),
+            )
+            Spacer(modifier = Modifier.height(6.dp))
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f, fill = false)
+                    .heightIn(max = 220.dp),
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 0.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                items(searchSuggestions, key = { it.effectiveId + it.title }) { track ->
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = androidx.compose.foundation.shape.RoundedCornerShape(14.dp),
+                        colors = androidx.compose.material3.CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f),
+                        ),
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .combinedClickable(
+                                    onClick = {
+                                        onQueryChange("${track.artist} ${track.title}".trim())
+                                        onSearch()
+                                    },
+                                    onLongClick = { onOpenTrackMenu(track) },
+                                )
+                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            Text(
+                                "${track.title} · ${track.artist}",
+                                style = MaterialTheme.typography.bodyMedium,
+                                maxLines = 2,
+                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f),
+                            )
+                        }
+                    }
+                }
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            M3HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+        }
+
+        val hasSongHits = results.isNotEmpty()
+        val hasAlbumHits = albumResults.isNotEmpty()
+        val showResultTabs =
+            query.isNotBlank() && !isSearching && (hasSongHits || hasAlbumHits)
+
+        if (showResultTabs) {
+            TabRow(selectedTabIndex = searchResultsTab) {
+                Tab(
+                    selected = searchResultsTab == 0,
+                    onClick = { searchResultsTab = 0 },
+                    text = { Text("Songs (${results.size})") },
+                    enabled = hasSongHits,
+                )
+                Tab(
+                    selected = searchResultsTab == 1,
+                    onClick = { searchResultsTab = 1 },
+                    text = { Text("Albums (${albumResults.size})") },
+                    enabled = hasAlbumHits,
+                )
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+        }
+
+        if (!isSearching && query.isNotBlank() && !hasSongHits && !hasAlbumHits) {
             Box(
                 modifier = Modifier.weight(1f).fillMaxWidth(),
                 contentAlignment = Alignment.Center,
@@ -800,91 +933,157 @@ fun SearchScreen(
             }
         }
 
-        // Results list
-        LazyColumn(
-            modifier = Modifier.weight(1f).fillMaxWidth(),
-            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
-            items(results) { track ->
-                val idx = results.indexOfFirst { it.effectiveId == track.effectiveId }
-                com.fireball.nativeapp.ui.components.SuvFadeSlideInStaggered(index = idx) {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),
-                    colors = androidx.compose.material3.CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceContainerLow
-                    )
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { onPlay(track, results) }
-                            .padding(10.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        // Artwork thumbnail
-                        Box(
-                            modifier = Modifier
-                                .size(56.dp)
-                                .clip(androidx.compose.foundation.shape.RoundedCornerShape(12.dp))
-                                .background(MaterialTheme.colorScheme.surfaceVariant),
-                            contentAlignment = Alignment.Center
+        if (!isSearching && searchResultsTab == 0 && hasSongHits) {
+            LazyColumn(
+                modifier = Modifier.weight(1f).fillMaxWidth(),
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                items(results) { track ->
+                    val idx = results.indexOfFirst { it.effectiveId == track.effectiveId }
+                    com.fireball.nativeapp.ui.components.SuvFadeSlideInStaggered(index = idx) {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),
+                            colors = androidx.compose.material3.CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                            ),
                         ) {
-                            if (!track.artwork.isNullOrBlank()) {
-                                coil.compose.AsyncImage(
-                                    model = track.artwork,
-                                    contentDescription = track.title,
-                                    modifier = Modifier.fillMaxSize(),
-                                    contentScale = androidx.compose.ui.layout.ContentScale.Crop
-                                )
-                            } else {
-                                Icon(
-                                    Icons.Default.MusicNote,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.size(28.dp)
-                                )
-                            }
-                        }
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .combinedClickable(
+                                        onClick = { onPlay(track, results) },
+                                        onLongClick = { onOpenTrackMenu(track) },
+                                    )
+                                    .padding(10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(56.dp)
+                                        .clip(androidx.compose.foundation.shape.RoundedCornerShape(12.dp))
+                                        .background(MaterialTheme.colorScheme.surfaceVariant),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    if (!track.artwork.isNullOrBlank()) {
+                                        coil.compose.AsyncImage(
+                                            model = track.artwork,
+                                            contentDescription = track.title,
+                                            modifier = Modifier.fillMaxSize(),
+                                            contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                                        )
+                                    } else {
+                                        Icon(
+                                            Icons.Default.MusicNote,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.size(28.dp),
+                                        )
+                                    }
+                                }
 
-                        // Track info
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                track.title,
-                                style = MaterialTheme.typography.titleSmall,
-                                maxLines = 1,
-                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-                            )
-                            Text(
-                                track.artist,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 1,
-                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-                            )
-                            if (!track.album.isNullOrBlank()) {
-                                Text(
-                                    track.album!!,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                                    maxLines = 1,
-                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-                                )
-                            }
-                        }
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        track.title,
+                                        style = MaterialTheme.typography.titleSmall,
+                                        maxLines = 1,
+                                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                    )
+                                    Text(
+                                        track.artist,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 1,
+                                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                    )
+                                    if (!track.album.isNullOrBlank()) {
+                                        Text(
+                                            track.album!!,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                                            maxLines = 1,
+                                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                        )
+                                    }
+                                }
 
-                        val fav = isFavorite(track)
-                        androidx.compose.material3.IconButton(onClick = { onToggleFavorite(track) }) {
-                            Icon(
-                                imageVector = if (fav) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                                contentDescription = if (fav) "Remove from favorites" else "Add to favorites",
-                                tint = if (fav) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
-                            )
+                                val fav = isFavorite(track)
+                                androidx.compose.material3.IconButton(onClick = { onToggleFavorite(track) }) {
+                                    Icon(
+                                        imageVector = if (fav) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                                        contentDescription = if (fav) {
+                                            "Remove from favorites"
+                                        } else {
+                                            "Add to favorites"
+                                        },
+                                        tint = if (fav) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                                    )
+                                }
+                            }
                         }
                     }
                 }
+            }
+        } else if (!isSearching && searchResultsTab == 1 && hasAlbumHits) {
+            LazyColumn(
+                modifier = Modifier.weight(1f).fillMaxWidth(),
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                items(albumResults, key = { it.id }) { album ->
+                    Card(
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .clickable(onClick = { onPlayAlbum(album) }),
+                        shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),
+                        colors = androidx.compose.material3.CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                        ),
+                    ) {
+                        Row(
+                            modifier =
+                                Modifier
+                                    .fillMaxWidth()
+                                    .padding(12.dp),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(56.dp)
+                                    .clip(androidx.compose.foundation.shape.RoundedCornerShape(12.dp))
+                                    .background(MaterialTheme.colorScheme.surfaceVariant),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                if (!album.artwork.isNullOrBlank()) {
+                                    coil.compose.AsyncImage(
+                                        model = album.artwork,
+                                        contentDescription = album.title,
+                                        modifier = Modifier.fillMaxSize(),
+                                        contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                                    )
+                                } else {
+                                    Icon(
+                                        Icons.Default.LibraryMusic,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(28.dp),
+                                    )
+                                }
+                            }
+                            Column(Modifier.weight(1f)) {
+                                Text(album.title, style = MaterialTheme.typography.titleSmall, maxLines = 2)
+                                Text(
+                                    "${album.year ?: "—"} · ${album.artist}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -896,23 +1095,109 @@ fun LibraryScreen(
     library: LibrarySnapshot,
     useGrid: Boolean,
     onPlay: (Track, List<Track>) -> Unit,
+    onOpenPlaylist: (Playlist) -> Unit,
     onUnfollowArtist: (String) -> Unit = {},
+    onCreatePlaylist: (String) -> Unit = {},
+    onFollowArtistByName: (String) -> Unit = {},
+    onOpenTrackMenu: (Track) -> Unit = {},
 ) {
+    var creatingPlaylist by remember { mutableStateOf(false) }
+    var newPlaylistTitle by remember { mutableStateOf("") }
+    var followDialog by remember { mutableStateOf(false) }
+    var followArtistName by remember { mutableStateOf("") }
+
+    if (creatingPlaylist) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { creatingPlaylist = false },
+            title = { Text("Create playlist") },
+            text = {
+                OutlinedTextField(
+                    value = newPlaylistTitle,
+                    onValueChange = { newPlaylistTitle = it },
+                    label = { Text("Name") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        onCreatePlaylist(newPlaylistTitle)
+                        creatingPlaylist = false
+                        newPlaylistTitle = ""
+                    },
+                    enabled = newPlaylistTitle.isNotBlank(),
+                ) {
+                    Text("Create")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { creatingPlaylist = false }) { Text("Cancel") }
+            },
+        )
+    }
+
+    if (followDialog) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { followDialog = false },
+            title = { Text("Follow artist") },
+            text = {
+                OutlinedTextField(
+                    value = followArtistName,
+                    onValueChange = { followArtistName = it },
+                    label = { Text("Artist name") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        onFollowArtistByName(followArtistName)
+                        followDialog = false
+                        followArtistName = ""
+                    },
+                    enabled = followArtistName.isNotBlank(),
+                ) {
+                    Text("Follow")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { followDialog = false }) { Text("Cancel") }
+            },
+        )
+    }
+
+    val libraryActions: @Composable () -> Unit = {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            TextButton(onClick = { creatingPlaylist = true }) {
+                Text("New playlist")
+            }
+            TextButton(onClick = { followDialog = true }) {
+                Text("Follow artist")
+            }
+        }
+    }
+
     if (useGrid) {
         Column(
             modifier = Modifier.fillMaxSize().padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
+            libraryActions()
             if (library.playlists.isNotEmpty()) {
                 Text("Playlists", style = MaterialTheme.typography.headlineSmall)
                 library.playlists.forEach { pl ->
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable(enabled = pl.videos.isNotEmpty()) {
-                                val first = pl.videos.firstOrNull() ?: return@clickable
-                                onPlay(first, pl.videos)
-                            },
+                            .clickable { onOpenPlaylist(pl) },
                     ) {
                         Row(
                             Modifier.padding(12.dp),
@@ -932,7 +1217,11 @@ fun LibraryScreen(
                 modifier = Modifier.weight(1f)
             ) {
                 gridItems(library.favorites) { track ->
-                    TrackRow(track = track, onClick = { onPlay(track, library.favorites) })
+                    TrackRow(
+                        track = track,
+                        onClick = { onPlay(track, library.favorites) },
+                        onLongClick = { onOpenTrackMenu(track) },
+                    )
                 }
             }
             if (library.artists.isNotEmpty()) {
@@ -958,16 +1247,16 @@ fun LibraryScreen(
             modifier = Modifier.fillMaxSize().padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
+            item {
+                libraryActions()
+            }
             if (library.playlists.isNotEmpty()) {
                 item { Text("Playlists", style = MaterialTheme.typography.headlineSmall) }
                 items(library.playlists, key = { it.id }) { pl ->
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable(enabled = pl.videos.isNotEmpty()) {
-                                val first = pl.videos.firstOrNull() ?: return@clickable
-                                onPlay(first, pl.videos)
-                            },
+                            .clickable { onOpenPlaylist(pl) },
                     ) {
                         Row(
                             modifier = Modifier.padding(12.dp),
@@ -990,12 +1279,20 @@ fun LibraryScreen(
                 }
             }
             items(library.favorites) { track ->
-                TrackRow(track = track, onClick = { onPlay(track, library.favorites) })
+                TrackRow(
+                    track = track,
+                    onClick = { onPlay(track, library.favorites) },
+                    onLongClick = { onOpenTrackMenu(track) },
+                )
             }
             if (library.history.isNotEmpty()) {
                 item { Text("History", style = MaterialTheme.typography.headlineSmall) }
                 items(library.history.take(30)) { track ->
-                    TrackRow(track = track, onClick = { onPlay(track, library.history) })
+                    TrackRow(
+                        track = track,
+                        onClick = { onPlay(track, library.history) },
+                        onLongClick = { onOpenTrackMenu(track) },
+                    )
                 }
             }
             if (library.artists.isNotEmpty()) {
@@ -1010,6 +1307,147 @@ fun LibraryScreen(
                             Text(artist.name, style = MaterialTheme.typography.titleMedium)
                             androidx.compose.material3.TextButton(onClick = { onUnfollowArtist(artist.artistId) }) {
                                 Text("Unfollow")
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun PlaylistDetailScreen(
+    playlist: Playlist,
+    isFavorite: (Track) -> Boolean,
+    onBack: () -> Unit,
+    onPlayAllFromPlaylist: () -> Unit,
+    onPlayPlaylistUpNext: () -> Unit,
+    onAddPlaylistToQueue: () -> Unit,
+    onPlaySingleTrackFromPlaylist: (Track) -> Unit,
+    onToggleFavorite: (Track) -> Unit,
+    onOpenTrackMenu: (Track) -> Unit,
+) {
+    Column(modifier = Modifier.fillMaxSize()) {
+        TopAppBar(
+            title = {
+                Text(
+                    playlist.title,
+                    style = MaterialTheme.typography.titleLarge,
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                )
+            },
+            navigationIcon = {
+                androidx.compose.material3.IconButton(onClick = onBack) {
+                    Icon(
+                        Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = "Back",
+                    )
+                }
+            },
+        )
+        if (playlist.videos.isEmpty()) {
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth(),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    "This playlist is empty. Add tracks from Search (long-press a song, then Add to playlist).",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(24.dp),
+                )
+            }
+        } else {
+            Row(
+                modifier = Modifier
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
+                    .fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Button(onClick = onPlayAllFromPlaylist) {
+                    Text("Play")
+                }
+                OutlinedButton(onClick = onPlayPlaylistUpNext) {
+                    Text("Play next")
+                }
+                OutlinedButton(onClick = onAddPlaylistToQueue) {
+                    Text("Add to queue")
+                }
+            }
+
+            LazyColumn(
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(horizontal = 16.dp, vertical = 4.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                items(playlist.videos, key = { it.effectiveId + it.title }) { track ->
+                    Card(
+                        colors = androidx.compose.material3.CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                        ),
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .combinedClickable(
+                                    onClick = { onPlaySingleTrackFromPlaylist(track) },
+                                    onLongClick = { onOpenTrackMenu(track) },
+                                )
+                                .padding(10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(52.dp)
+                                    .clip(androidx.compose.foundation.shape.RoundedCornerShape(12.dp))
+                                    .background(MaterialTheme.colorScheme.surfaceVariant),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                if (!track.artwork.isNullOrBlank()) {
+                                    coil.compose.AsyncImage(
+                                        model = track.artwork,
+                                        contentDescription = track.title,
+                                        modifier = Modifier.fillMaxSize(),
+                                        contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                                    )
+                                } else {
+                                    Icon(
+                                        Icons.Default.MusicNote,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(24.dp),
+                                    )
+                                }
+                            }
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    track.title,
+                                    style = MaterialTheme.typography.titleSmall,
+                                    maxLines = 1,
+                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                )
+                                Text(
+                                    track.artist,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                )
+                            }
+                            val fav = isFavorite(track)
+                            IconButton(onClick = { onToggleFavorite(track) }) {
+                                Icon(
+                                    imageVector = if (fav) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                                    contentDescription = null,
+                                    tint = if (fav) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                                )
                             }
                         }
                     }
@@ -1480,12 +1918,49 @@ private fun SettingsAppearance(
             item {
                 SettingsSectionTitle("Theme")
                 SettingsCard(modifier = Modifier.padding(horizontal = 16.dp)) {
-                    SettingsSwitchRow(
-                        icon = Icons.Default.DarkMode,
-                        title = "Dynamic color",
-                        subtitle = "Use wallpaper colors when available",
-                        checked = settings.useDynamicColorWhenAvailable,
-                        onCheckedChange = { onSettingsChange(settings.copy(useDynamicColorWhenAvailable = it)) },
+                    val effectiveChrome =
+                        settings.appearanceColorSource.trim().lowercase().ifBlank {
+                            if (settings.useDynamicColorWhenAvailable) "material_you" else "scheme"
+                        }
+                    Text(
+                        text = "Chrome color source",
+                        style = MaterialTheme.typography.labelLarge,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                    )
+                    LazyRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        val modes =
+                            listOf(
+                                "material_you" to "Material You",
+                                "music" to "Album art",
+                                "scheme" to "Preset scheme",
+                            )
+                        items(modes.size) { idx ->
+                            val (key, label) = modes[idx]
+                            FilterChip(
+                                selected = effectiveChrome == key,
+                                onClick = {
+                                    onSettingsChange(
+                                        settings.copy(
+                                            appearanceColorSource = key,
+                                            useDynamicColorWhenAvailable = key == "material_you",
+                                        ),
+                                    )
+                                },
+                                label = { Text(label) },
+                            )
+                        }
+                    }
+                    Text(
+                        text = "Persists as appearanceColorSource (music | scheme | material_you).",
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier =
+                            Modifier
+                                .padding(horizontal = 16.dp)
+                                .padding(bottom = 8.dp),
                     )
                     ThinDivider()
                     Text(
@@ -1581,6 +2056,14 @@ private fun SettingsAppearance(
                         subtitle = "Prefer these when multiple options exist",
                         checked = settings.lyricsPreferEnglishHindi,
                         onCheckedChange = { onSettingsChange(settings.copy(lyricsPreferEnglishHindi = it)) },
+                    )
+                    ThinDivider()
+                    SettingsSwitchRow(
+                        icon = Icons.Default.Lyrics,
+                        title = "Always show lyrics panel",
+                        subtitle = "Pinned synced lyrics under transports on Now Playing",
+                        checked = settings.alwaysShowLyricsPanel,
+                        onCheckedChange = { onSettingsChange(settings.copy(alwaysShowLyricsPanel = it)) },
                     )
                 }
                 Spacer(modifier = Modifier.height(24.dp))
@@ -2397,6 +2880,25 @@ private fun SettingsRemoteAndNotifications(
             }
 
             item {
+                SettingsSectionTitle("Artist releases")
+                SettingsCard(modifier = Modifier.padding(horizontal = 16.dp)) {
+                    SettingsSwitchRow(
+                        icon = Icons.Default.Notifications,
+                        title = "Device notifications",
+                        subtitle = "Ping when followed artists publish a new iTunes album row (runs with Gotify when enabled)",
+                        checked = settings.notifyArtistReleasesOnDevice,
+                        onCheckedChange = { onSettingsChange(settings.copy(notifyArtistReleasesOnDevice = it)) },
+                    )
+                    Text(
+                        text = "POST_NOTIFICATIONS is requested when the toggle turns on or at launch on Android 13+.",
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                    )
+                }
+                Spacer(modifier = Modifier.height(24.dp))
+            }
+
+            item {
                 SettingsSectionTitle("Gotify")
                 SettingsCard(modifier = Modifier.padding(horizontal = 16.dp)) {
                     SettingsSwitchRow(
@@ -2758,9 +3260,26 @@ private fun shareText(
 }
 
 @Composable
-private fun TrackRow(track: Track, onClick: () -> Unit) {
+private fun TrackRow(
+    track: Track,
+    onClick: () -> Unit,
+    onLongClick: (() -> Unit)? = null,
+) {
+    val cardModifier =
+        Modifier
+            .fillMaxWidth()
+            .then(
+                if (onLongClick != null) {
+                    Modifier.combinedClickable(
+                        onClick = onClick,
+                        onLongClick = onLongClick,
+                    )
+                } else {
+                    Modifier.clickable(onClick = onClick)
+                },
+            )
     Card(
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
+        modifier = cardModifier,
         shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
         colors = androidx.compose.material3.CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceContainerLow

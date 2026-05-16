@@ -28,6 +28,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -97,6 +98,7 @@ fun PillMiniPlayer(
     onNext: () -> Unit,
     onClose: () -> Unit,
     onTap: () -> Unit,
+    onArtistClick: () -> Unit = {},
     modifier: Modifier = Modifier,
     onPrevious: () -> Unit = {},
     onLongPressMenu: () -> Unit = {},
@@ -273,20 +275,18 @@ fun PillMiniPlayer(
                                 )
                             }
                         }
-                        if (!isPlaying) {
-                            Spacer(modifier = Modifier.height(4.dp))
-                            MiniPlayerButton(
-                                onClick = onClose,
-                                onBackgroundColor = dominantColors.onBackground,
-                                size = 32.dp,
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Close,
-                                    contentDescription = "Close",
-                                    tint = dominantColors.onBackground,
-                                    modifier = Modifier.size(16.dp),
-                                )
-                            }
+                        Spacer(modifier = Modifier.height(4.dp))
+                        MiniPlayerButton(
+                            onClick = onClose,
+                            onBackgroundColor = dominantColors.onBackground,
+                            size = 32.dp,
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "Close player",
+                                tint = dominantColors.onBackground,
+                                modifier = Modifier.size(16.dp),
+                            )
                         }
                     }
                 }
@@ -295,7 +295,8 @@ fun PillMiniPlayer(
                 -> {
                     Row(
                         modifier = Modifier
-                            .fillMaxSize()
+                            .fillMaxWidth()
+                            .wrapContentHeight()
                             .padding(horizontal = 6.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
@@ -305,22 +306,26 @@ fun PillMiniPlayer(
                         Spacer(modifier = Modifier.width(8.dp))
 
                         Column(
-                            modifier = Modifier
-                                .weight(1f)
-                                .then(titleMenuModifier),
+                            modifier = Modifier.weight(1f),
                             verticalArrangement = Arrangement.Center,
                         ) {
-                            Text(
-                                text = song.title,
-                                style = when (layout) {
-                                    PillMiniPlayerLayout.TabletRail -> MaterialTheme.typography.titleMedium
-                                    else -> MaterialTheme.typography.titleSmall
-                                },
-                                color = dominantColors.onBackground,
-                                maxLines = if (layout == PillMiniPlayerLayout.TabletRail) 2 else 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = if (layout == PillMiniPlayerLayout.TabletRail) Modifier else Modifier.basicMarquee(),
-                            )
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .then(titleMenuModifier),
+                            ) {
+                                Text(
+                                    text = song.title,
+                                    style = when (layout) {
+                                        PillMiniPlayerLayout.TabletRail -> MaterialTheme.typography.titleMedium
+                                        else -> MaterialTheme.typography.titleSmall
+                                    },
+                                    color = dominantColors.onBackground,
+                                    maxLines = if (layout == PillMiniPlayerLayout.TabletRail) 2 else 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = if (layout == PillMiniPlayerLayout.TabletRail) Modifier else Modifier.basicMarquee(),
+                                )
+                            }
                             Text(
                                 text = song.artist,
                                 style = if (layout == PillMiniPlayerLayout.TabletRail) {
@@ -331,6 +336,9 @@ fun PillMiniPlayer(
                                 color = dominantColors.onBackground.copy(alpha = 0.7f),
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { onArtistClick() },
                             )
                         }
 
@@ -381,18 +389,16 @@ fun PillMiniPlayer(
                             )
                         }
 
-                        if (!isPlaying) {
-                            MiniPlayerButton(
-                                onClick = onClose,
-                                onBackgroundColor = dominantColors.onBackground,
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Close,
-                                    contentDescription = "Close",
-                                    tint = dominantColors.onBackground,
-                                    modifier = Modifier.size(20.dp),
-                                )
-                            }
+                        MiniPlayerButton(
+                            onClick = onClose,
+                            onBackgroundColor = dominantColors.onBackground,
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "Close player",
+                                tint = dominantColors.onBackground,
+                                modifier = Modifier.size(20.dp),
+                            )
                         }
 
                         Spacer(modifier = Modifier.width(4.dp))
