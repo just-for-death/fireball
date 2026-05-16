@@ -94,5 +94,13 @@
 - [x] Analytics/logging events gated by settings (Android + iOS)
 - [x] Exo disk cache tied to `cacheEnabled` + `localMusicCacheLimit` (Android)
 - [x] Flex/theme mode pickers + artwork dynamic color (Android + iOS)
-- [ ] Full SuvMusic animation parity
-- [ ] Full audio engine parity + OS background media service parity
+- [x] LRC synced lyrics auto-scroll + reduced motion (Android + iOS)
+- [x] Home chart regions, accent seed color, tablet sidebar collapse settings (Android + iOS)
+- [x] Split search vs stream cache settings; Exo hot-reconfigure without full app restart (Android)
+- [x] Home iTunes top charts by region + Gotify new-release check on boot (Android + iOS)
+- [x] Playback/scrobble audit fixes (shuffle-on-end, AI queue append, session persist, scrobble thresholds, previous 3s seek, API 34+ BT receiver)
+- [x] Full SuvMusic animation parity (SuvFadeSlideIn, SuvPressScale, PremiumBackground, staggered lists, mini-player + now-playing transitions)
+- [x] Full audio engine parity + OS background media service parity (Exo wake lock + engine→UI sync, becoming-noisy; iOS route-change pause, stream disk cache, UIBackgroundModes audio, Now Playing + remote commands)
+- [x] ListenBrainz Home feeds (recent + top by range) on Android/iOS
+- [x] Follow artist (iTunes resolve) + Gotify release tracking
+- [x] Now Playing queue panel + Invidious favorites auto-push playlist ID setting

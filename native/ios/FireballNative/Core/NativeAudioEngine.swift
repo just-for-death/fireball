@@ -23,23 +23,37 @@ final class NativeAudioEngine {
     /// Called when the current queue item has no playable URL or load fails.
     var onPlaybackFailed: ((String) -> Void)?
 
+    private var settingsProvider: (() -> FireballSettings)?
+
+    func bindSettings(_ provider: @escaping () -> FireballSettings) {
+        settingsProvider = provider
+    }
+
     init() {
         configureAudioSession()
         setupRemoteCommands()
         setupObservers()
+        setupRouteChangeObserver()
     }
 
-    func playQueue(_ tracks: [Track], startIndex: Int) {
+    @discardableResult
+    func playQueue(_ tracks: [Track], startIndex: Int) -> Bool {
         queue = tracks
         currentIndex = max(0, min(startIndex, max(0, tracks.count - 1)))
-        loadCurrentTrackAndPlay()
+        return loadCurrentTrackAndPlay()
     }
+
+    var isPlaybackActive: Bool { isPlaying }
 
     /// Loads the queue and prepares the current item without starting playback (session restore).
     func prepareQueue(_ tracks: [Track], startIndex: Int) {
         queue = tracks
         currentIndex = max(0, min(startIndex, max(0, tracks.count - 1)))
-        loadCurrentTrackAndPlay()
+        guard prepareCurrentItemWithoutPlay() else { return }
+        refreshNowPlaying()
+    }
+
+    func pausePlayback() {
         player.pause()
         refreshNowPlaying()
     }
@@ -65,22 +79,35 @@ final class NativeAudioEngine {
         }
     }
 
-    private func loadCurrentTrackAndPlay() {
-        guard queue.indices.contains(currentIndex) else { return }
+    private func prepareCurrentItemWithoutPlay() -> Bool {
+        guard queue.indices.contains(currentIndex) else { return false }
         let track = queue[currentIndex]
         guard let urlString = track.url?.trimmingCharacters(in: .whitespacesAndNewlines), !urlString.isEmpty else {
             onPlaybackFailed?("No stream URL for \"\(track.title)\".")
-            return
+            return false
         }
-        guard let url = playbackURL(from: urlString) else {
+        guard let remote = playbackURL(from: urlString) else {
             onPlaybackFailed?("Invalid playback URL for \"\(track.title)\".")
-            return
+            return false
         }
-        player.replaceCurrentItem(with: AVPlayerItem(url: url))
+        let settings = settingsProvider?() ?? FireballSettings()
+        let playURL = StreamPlaybackCache.localPlaybackURL(remoteURL: remote, settings: settings) ?? remote
+        player.replaceCurrentItem(with: AVPlayerItem(url: playURL))
+        if settings.streamCacheEnabled, playURL.isFileURL == false {
+            Task { await StreamPlaybackCache.prefetch(remoteURL: remote, settings: settings) }
+        }
         observeEndOfCurrentItem()
-        player.play()
+        player.pause()
         installTimeObserverIfNeeded()
+        return true
+    }
+
+    @discardableResult
+    private func loadCurrentTrackAndPlay() -> Bool {
+        guard prepareCurrentItemWithoutPlay() else { return false }
+        player.play()
         refreshNowPlaying()
+        return true
     }
 
     private func observeEndOfCurrentItem() {
@@ -151,6 +178,23 @@ final class NativeAudioEngine {
         let session = AVAudioSession.sharedInstance()
         try? session.setCategory(.playback, mode: .default, options: [.allowAirPlay, .allowBluetoothA2DP])
         try? session.setActive(true)
+    }
+
+    private func setupRouteChangeObserver() {
+        NotificationCenter.default.addObserver(
+            forName: AVAudioSession.routeChangeNotification,
+            object: AVAudioSession.sharedInstance(),
+            queue: .main
+        ) { [weak self] note in
+            guard let self else { return }
+            guard let reasonRaw = note.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt,
+                  let reason = AVAudioSession.RouteChangeReason(rawValue: reasonRaw) else { return }
+            if reason == .oldDeviceUnavailable {
+                self.player.pause()
+                self.refreshNowPlaying()
+                self.onInterrupted?(true)
+            }
+        }
     }
 
     private func setupObservers() {

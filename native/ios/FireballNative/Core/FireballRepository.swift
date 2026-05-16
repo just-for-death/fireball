@@ -21,6 +21,89 @@ final class FireballRepository {
         try? store.save(snapshot)
     }
 
+    func resolveArtistForFollow(artistName: String, fallbackArtwork: String? = nil) async -> Artist {
+        var artistId = artistName
+        var name = artistName
+        var artwork = fallbackArtwork
+        if let found = try? await api.iTunesFindArtist(artistName) {
+            if let id = found["artistId"] {
+                artistId = "\(id)"
+            }
+            if let n = found["artistName"] as? String { name = n }
+            if artwork == nil, let idNum = Int(artistId),
+               let albums = try? await api.iTunesArtistAlbums(artistId: idNum, limit: 1),
+               let url = albums.first?["artworkUrl100"] as? String {
+                artwork = url.replacingOccurrences(of: "100x100", with: "600x600")
+            }
+        }
+        return Artist(artistId: artistId, name: name, artwork: artwork, latestReleaseId: nil)
+    }
+
+    func fetchTopSongs(countryCode: String, limit: Int = 20) async -> [Track] {
+        let cc = countryCode.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !cc.isEmpty else { return [] }
+        guard let data = try? await api.iTunesTopSongs(countryCode: cc, limit: limit) else { return [] }
+        let entries = ItunesFeedParser.feedEntries(from: data)
+        return ItunesFeedParser.topCharts(from: entries).map { entry in
+            Track(
+                id: entry.id,
+                videoId: nil,
+                title: entry.title,
+                artist: entry.artist,
+                artwork: entry.artwork,
+                url: nil,
+                duration: nil,
+                album: nil,
+                year: nil
+            )
+        }
+    }
+
+    func checkGotifyNewReleases(
+        snapshot: LibrarySnapshot,
+        onNotify: @escaping (String, String) async -> Bool
+    ) async -> LibrarySnapshot? {
+        let settings = snapshot.settings
+        guard settings.gotifyEnabled,
+              !settings.gotifyUrl.isEmpty,
+              !settings.gotifyToken.isEmpty else {
+            return nil
+        }
+
+        var artistsChanged = false
+        var updatedArtists = snapshot.artists
+        for index in updatedArtists.indices {
+            let artist = updatedArtists[index]
+            guard let artistIdNum = Int(artist.artistId) else { continue }
+            guard let albums = try? await api.iTunesArtistAlbums(artistId: artistIdNum, limit: 1),
+                  let latest = albums.first,
+                  let releaseId = Self.stringValue(latest["collectionId"]) else {
+                continue
+            }
+            let releaseName = latest["collectionName"] as? String ?? "New Release"
+            if releaseId == artist.latestReleaseId { continue }
+
+            if artist.latestReleaseId != nil {
+                _ = await onNotify(
+                    "New Release from \(artist.name)",
+                    "\(releaseName) is out now!"
+                )
+            }
+            updatedArtists[index] = Artist(
+                artistId: artist.artistId,
+                name: artist.name,
+                artwork: artist.artwork,
+                latestReleaseId: releaseId
+            )
+            artistsChanged = true
+        }
+
+        guard artistsChanged else { return nil }
+        var next = snapshot
+        next.artists = updatedArtists
+        return next
+    }
+
     func searchTracks(query: String, settings: FireballSettings) async -> [Track] {
         let normalizedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard !normalizedQuery.isEmpty else {
@@ -334,7 +417,11 @@ final class FireballRepository {
     }
 
     private func isItunesPreviewUrl(_ url: String) -> Bool {
-        url.contains("apple.com") || url.contains("itunes") || url.contains("mzstatic.com")
+        let u = url.lowercased()
+        return u.contains("itunes.apple.com")
+            || u.contains("audio-ssl.itunes.apple.com")
+            || u.contains("audio.itunes.apple.com")
+            || (u.contains("apple.com") && (u.contains(".m4a") || u.contains("/preview")))
     }
 
     /// Proxies `googlevideo.com` stream URLs through Invidious (same idea as Android).
@@ -397,10 +484,27 @@ final class FireballRepository {
         return nil
     }
 
+    private static func stringValue(_ value: Any?) -> String? {
+        switch value {
+        case let s as String where !s.isEmpty: return s
+        case let n as Int: return "\(n)"
+        case let n as Int64: return "\(n)"
+        case let n as Double: return "\(Int(n))"
+        default: return nil
+        }
+    }
+
+    private func searchCacheLimit(_ settings: FireballSettings) -> Int {
+        if settings.searchCacheMaxEntries > 0 {
+            return min(500, max(10, settings.searchCacheMaxEntries))
+        }
+        return min(200, max(10, settings.localMusicCacheLimit * 10))
+    }
+
     private func cache(query: String, tracks: [Track], settings: FireballSettings) {
         guard settings.cacheEnabled, !query.isEmpty, !tracks.isEmpty else { return }
         searchCache[query] = tracks
-        let limit = max(10, min(200, settings.localMusicCacheLimit * 10))
+        let limit = searchCacheLimit(settings)
         if searchCache.count > limit, let first = searchCache.keys.first {
             searchCache.removeValue(forKey: first)
         }

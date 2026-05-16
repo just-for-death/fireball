@@ -15,9 +15,11 @@ class WebDavSyncClient(
         if (baseUrl.isBlank()) return null
         val target = normalizedLibraryPath(baseUrl)
         return runCatching {
-            httpClient.get(target) {
+            val response = httpClient.get(target) {
                 basicAuthHeader(username, password)?.let { header("Authorization", it) }
-            }.bodyAsText()
+            }
+            if (response.status.value !in 200..299) return@runCatching null
+            response.bodyAsText()
         }.getOrNull()
     }
 
@@ -25,11 +27,11 @@ class WebDavSyncClient(
         if (baseUrl.isBlank()) return false
         val target = normalizedLibraryPath(baseUrl)
         return runCatching {
-            httpClient.put(target) {
+            val response = httpClient.put(target) {
                 basicAuthHeader(username, password)?.let { header("Authorization", it) }
                 setBody(json)
             }
-            true
+            response.status.value in 200..299
         }.getOrDefault(false)
     }
 

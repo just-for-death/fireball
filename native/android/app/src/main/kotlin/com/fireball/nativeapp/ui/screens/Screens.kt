@@ -63,6 +63,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
@@ -83,6 +84,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlin.math.roundToInt
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -91,19 +93,48 @@ import com.fireball.nativeapp.core.model.LibrarySnapshot
 import com.fireball.nativeapp.core.model.Track
 import com.fireball.nativeapp.player.PlaybackState
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
     library: LibrarySnapshot,
     playbackState: PlaybackState,
     currentLyrics: String?,
+    homeCountries: List<String> = emptyList(),
+    chartCountryCode: String = "us",
+    trendingTracks: List<Track> = emptyList(),
+    trendingLoading: Boolean = false,
+    lbRecentTracks: List<Track> = emptyList(),
+    lbTopTracks: List<Track> = emptyList(),
+    lbTopRange: String = "month",
+    lbHomeLoading: Boolean = false,
+    onSelectChartCountry: (String) -> Unit = {},
+    onSelectLbTopRange: (String) -> Unit = {},
+    onFollowArtist: (String, String?) -> Unit = { _, _ -> },
+    onRefreshHome: () -> Unit = {},
     onPlay: (Track, List<Track>) -> Unit,
     onTogglePlayPause: () -> Unit,
     onNext: () -> Unit,
-    onPrevious: () -> Unit
+    onPrevious: () -> Unit,
 ) {
     val scrollState = androidx.compose.foundation.lazy.rememberLazyListState()
+    val pullRefreshState = androidx.compose.material3.pulltorefresh.rememberPullToRefreshState()
+    var isRefreshing by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
 
     Box(modifier = Modifier.fillMaxSize()) {
+        androidx.compose.material3.pulltorefresh.PullToRefreshBox(
+            isRefreshing = isRefreshing,
+            onRefresh = {
+                isRefreshing = true
+                onRefreshHome()
+                scope.launch {
+                    kotlinx.coroutines.delay(400)
+                    isRefreshing = false
+                }
+            },
+            state = pullRefreshState,
+            modifier = Modifier.fillMaxSize(),
+        ) {
         LazyColumn(
             state = scrollState,
             modifier = Modifier.fillMaxSize(),
@@ -146,7 +177,181 @@ fun HomeScreen(
                 }
             }
 
-            val isEmptyDashboard = library.history.isEmpty() && library.favorites.isEmpty() && library.playlists.isEmpty() && library.albums.isEmpty()
+            if (homeCountries.isNotEmpty()) {
+                item {
+                    Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) {
+                        Text(
+                            "Top Charts",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            items(homeCountries) { code ->
+                                val label = com.fireball.nativeapp.ui.HomeCountries.all
+                                    .firstOrNull { it.first.equals(code, ignoreCase = true) }
+                                    ?.second
+                                    ?: code
+                                FilterChip(
+                                    selected = code.equals(chartCountryCode, ignoreCase = true),
+                                    onClick = { onSelectChartCountry(code) },
+                                    label = { Text(label) },
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (trendingLoading && trendingTracks.isEmpty()) {
+                item {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(32.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        androidx.compose.material3.CircularProgressIndicator()
+                    }
+                }
+            } else if (trendingTracks.isNotEmpty()) {
+                item {
+                    Text(
+                        "Trending",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+                    )
+                    androidx.compose.foundation.lazy.LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(14.dp),
+                        contentPadding = PaddingValues(horizontal = 20.dp),
+                    ) {
+                        items(trendingTracks, key = { it.effectiveId }) { track ->
+                            val idx = trendingTracks.indexOfFirst { it.effectiveId == track.effectiveId }
+                            com.fireball.nativeapp.ui.components.SuvFadeSlideInStaggered(index = idx) {
+                            Column(
+                                modifier = Modifier
+                                    .width(140.dp)
+                                    .clickable { onPlay(track, trendingTracks) },
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(140.dp)
+                                        .clip(androidx.compose.foundation.shape.RoundedCornerShape(16.dp))
+                                        .background(MaterialTheme.colorScheme.surfaceVariant),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    if (!track.artwork.isNullOrBlank()) {
+                                        coil.compose.AsyncImage(
+                                            model = track.artwork,
+                                            contentDescription = track.title,
+                                            modifier = Modifier.fillMaxSize(),
+                                            contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                                        )
+                                    } else {
+                                        Icon(
+                                            Icons.Default.MusicNote,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.size(40.dp),
+                                        )
+                                    }
+                                }
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    track.title,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.Medium,
+                                    maxLines = 1,
+                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                )
+                                Text(
+                                    track.artist,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                )
+                            }
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (lbRecentTracks.isNotEmpty()) {
+                item {
+                    Text(
+                        "ListenBrainz — Recent",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+                    )
+                    androidx.compose.foundation.lazy.LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(14.dp),
+                        contentPadding = PaddingValues(horizontal = 20.dp),
+                    ) {
+                        items(lbRecentTracks, key = { "lb-recent-${it.effectiveId}" }) { track ->
+                            HomeTrackCarouselCard(
+                                track = track,
+                                onPlay = { onPlay(track, lbRecentTracks) },
+                                onFollowArtist = { onFollowArtist(track.artist, track.artwork) },
+                            )
+                        }
+                    }
+                }
+            }
+
+            if (lbTopTracks.isNotEmpty() || lbHomeLoading) {
+                item {
+                    Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) {
+                        Text(
+                            "ListenBrainz — Top",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            items(listOf("week", "month", "year", "all_time")) { range ->
+                                FilterChip(
+                                    selected = lbTopRange.equals(range, ignoreCase = true),
+                                    onClick = { onSelectLbTopRange(range) },
+                                    label = {
+                                        Text(
+                                            when (range) {
+                                                "all_time" -> "All time"
+                                                else -> range.replaceFirstChar { it.uppercase() }
+                                            },
+                                        )
+                                    },
+                                )
+                            }
+                        }
+                    }
+                    if (lbHomeLoading && lbTopTracks.isEmpty()) {
+                        Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
+                            androidx.compose.material3.CircularProgressIndicator()
+                        }
+                    } else {
+                        androidx.compose.foundation.lazy.LazyRow(
+                            horizontalArrangement = Arrangement.spacedBy(14.dp),
+                            contentPadding = PaddingValues(horizontal = 20.dp),
+                        ) {
+                            items(lbTopTracks, key = { "lb-top-${it.effectiveId}" }) { track ->
+                                HomeTrackCarouselCard(
+                                    track = track,
+                                    onPlay = { onPlay(track, lbTopTracks) },
+                                    onFollowArtist = { onFollowArtist(track.artist, track.artwork) },
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            val isEmptyDashboard = library.history.isEmpty() && library.favorites.isEmpty() &&
+                library.playlists.isEmpty() && library.albums.isEmpty() && trendingTracks.isEmpty() &&
+                lbRecentTracks.isEmpty() && lbTopTracks.isEmpty()
 
             if (isEmptyDashboard) {
                 item {
@@ -431,6 +636,7 @@ fun HomeScreen(
                 }
             }
         }
+        }
 
         // Quick Mix FAB
         if (library.history.isNotEmpty()) {
@@ -445,6 +651,47 @@ fun HomeScreen(
                 text = { Text("Quick Mix") }
             )
         }
+    }
+}
+
+@Composable
+private fun HomeTrackCarouselCard(
+    track: Track,
+    onPlay: () -> Unit,
+    onFollowArtist: () -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .width(140.dp)
+            .clickable(onClick = onPlay),
+    ) {
+        Box(
+            modifier = Modifier
+                .size(140.dp)
+                .clip(androidx.compose.foundation.shape.RoundedCornerShape(16.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant),
+            contentAlignment = Alignment.Center,
+        ) {
+            if (!track.artwork.isNullOrBlank()) {
+                coil.compose.AsyncImage(
+                    model = track.artwork,
+                    contentDescription = track.title,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                )
+            } else {
+                Icon(Icons.Default.MusicNote, contentDescription = null, modifier = Modifier.size(40.dp))
+            }
+        }
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(track.title, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, maxLines = 1)
+        Text(
+            track.artist,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            modifier = Modifier.clickable(onClick = onFollowArtist),
+        )
     }
 }
 
@@ -526,6 +773,8 @@ fun SearchScreen(
             verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             items(results) { track ->
+                val idx = results.indexOfFirst { it.effectiveId == track.effectiveId }
+                com.fireball.nativeapp.ui.components.SuvFadeSlideInStaggered(index = idx) {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),
@@ -602,6 +851,7 @@ fun SearchScreen(
                         }
                     }
                 }
+                }
             }
         }
     }
@@ -611,7 +861,8 @@ fun SearchScreen(
 fun LibraryScreen(
     library: LibrarySnapshot,
     useGrid: Boolean,
-    onPlay: (Track, List<Track>) -> Unit
+    onPlay: (Track, List<Track>) -> Unit,
+    onUnfollowArtist: (String) -> Unit = {},
 ) {
     if (useGrid) {
         Column(
@@ -650,8 +901,23 @@ fun LibraryScreen(
                     TrackRow(track = track, onClick = { onPlay(track, library.favorites) })
                 }
             }
-            Text("Playlists: ${library.playlists.size}")
-            Text("Artists followed: ${library.artists.size}")
+            if (library.artists.isNotEmpty()) {
+                Text("Followed artists", style = MaterialTheme.typography.headlineSmall)
+                library.artists.forEach { artist ->
+                    Card(modifier = Modifier.fillMaxWidth()) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(artist.name, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                            androidx.compose.material3.TextButton(onClick = { onUnfollowArtist(artist.artistId) }) {
+                                Text("Unfollow")
+                            }
+                        }
+                    }
+                }
+            }
         }
     } else {
         LazyColumn(
@@ -698,6 +964,23 @@ fun LibraryScreen(
                     TrackRow(track = track, onClick = { onPlay(track, library.history) })
                 }
             }
+            if (library.artists.isNotEmpty()) {
+                item { Text("Followed artists", style = MaterialTheme.typography.headlineSmall) }
+                items(library.artists, key = { it.artistId }) { artist ->
+                    Card(modifier = Modifier.fillMaxWidth()) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(artist.name, style = MaterialTheme.typography.titleMedium)
+                            androidx.compose.material3.TextButton(onClick = { onUnfollowArtist(artist.artistId) }) {
+                                Text("Unfollow")
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -722,6 +1005,7 @@ fun SettingsScreen(
     onInvidiousLogin: (String, String) -> Unit,
     onInvidiousSyncPlaylist: (String) -> Unit,
     onInvidiousPushPlaylist: (String, String?) -> Unit,
+    onInvidiousSignOut: () -> Unit,
     invidiousPlaylists: List<Pair<String, String>>,
     onGoogleDriveBackup: (String) -> Unit,
     onValidateLastFm: () -> Unit,
@@ -776,6 +1060,7 @@ fun SettingsScreen(
             onInvidiousLogin = onInvidiousLogin,
             onInvidiousSyncPlaylist = onInvidiousSyncPlaylist,
             onInvidiousPushPlaylist = onInvidiousPushPlaylist,
+            onInvidiousSignOut = onInvidiousSignOut,
             invidiousPlaylists = invidiousPlaylists
         )
 
@@ -1029,10 +1314,36 @@ private fun SettingsPlayback(
                     ThinDivider()
                     SettingsSwitchRow(
                         icon = Icons.Default.Sync,
-                        title = "Enable stream cache",
-                        subtitle = "Cache streams for faster replay",
+                        title = "Cache search results",
+                        subtitle = "Keep recent search queries in memory",
                         checked = settings.cacheEnabled,
                         onCheckedChange = { onSettingsChange(settings.copy(cacheEnabled = it)) },
+                    )
+                    ThinDivider()
+                    OutlinedTextField(
+                        value = if (settings.searchCacheMaxEntries > 0) {
+                            settings.searchCacheMaxEntries.toString()
+                        } else {
+                            ""
+                        },
+                        onValueChange = { value ->
+                            val n = value.toIntOrNull()
+                            onSettingsChange(
+                                settings.copy(searchCacheMaxEntries = n ?: 0)
+                            )
+                        },
+                        label = { Text("Search cache max entries (0 = auto)") },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                    )
+                    ThinDivider()
+                    SettingsSwitchRow(
+                        icon = Icons.Default.Sync,
+                        title = "Cache streams on disk",
+                        subtitle = "ExoPlayer disk cache (Android)",
+                        checked = settings.streamCacheEnabled,
+                        onCheckedChange = { onSettingsChange(settings.copy(streamCacheEnabled = it)) },
                     )
                     ThinDivider()
                     Text(
@@ -1060,7 +1371,7 @@ private fun SettingsPlayback(
                         onValueChange = { value ->
                             value.toIntOrNull()?.let { onSettingsChange(settings.copy(localMusicCacheLimit = it)) }
                         },
-                        label = { Text("Local cache limit (GB)") },
+                        label = { Text("Stream disk cache size (GB)") },
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(horizontal = 16.dp, vertical = 8.dp)
@@ -1190,6 +1501,23 @@ private fun SettingsAppearance(
                             )
                         }
                     }
+                    ThinDivider()
+                    OutlinedTextField(
+                        value = settings.accentSeedColor?.let { "0x${it.toUInt().toString(16)}" } ?: "",
+                        onValueChange = { raw ->
+                            val trimmed = raw.trim().removePrefix("0x").removePrefix("#")
+                            val parsed = if (trimmed.isBlank()) {
+                                null
+                            } else {
+                                trimmed.toULongOrNull(16)?.toInt()
+                            }
+                            onSettingsChange(settings.copy(accentSeedColor = parsed))
+                        },
+                        label = { Text("Accent seed color (ARGB hex, optional)") },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                    )
                 }
                 Spacer(modifier = Modifier.height(24.dp))
             }
@@ -1275,6 +1603,40 @@ private fun SettingsGeneral(
                         checked = settings.loggingEnabled,
                         onCheckedChange = { onSettingsChange(settings.copy(loggingEnabled = it)) },
                     )
+                    ThinDivider()
+                    SettingsSwitchRow(
+                        icon = Icons.Default.Tune,
+                        title = "Collapse tablet sidebar",
+                        subtitle = "Icon-only navigation rail on large screens",
+                        checked = settings.ipadSidebarCollapsed,
+                        onCheckedChange = { onSettingsChange(settings.copy(ipadSidebarCollapsed = it)) },
+                    )
+                    ThinDivider()
+                    Text(
+                        text = "Home chart regions",
+                        style = MaterialTheme.typography.labelLarge,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                    )
+                    LazyRow(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        val selected = settings.homeCountries.toSet()
+                        items(com.fireball.nativeapp.ui.HomeCountries.all.size) { index ->
+                            val (code, name) = com.fireball.nativeapp.ui.HomeCountries.all[index]
+                            val isOn = selected.contains(code)
+                            FilterChip(
+                                selected = isOn,
+                                onClick = {
+                                    val next = if (isOn) selected - code else selected + code
+                                    onSettingsChange(settings.copy(homeCountries = next.toList()))
+                                },
+                                label = { Text(name) },
+                            )
+                        }
+                    }
 
                     if (settings.loggingEnabled) {
                         ThinDivider()
@@ -1423,6 +1785,7 @@ private fun SettingsIntegrations(
     onInvidiousLogin: (String, String) -> Unit,
     onInvidiousSyncPlaylist: (String) -> Unit,
     onInvidiousPushPlaylist: (String, String?) -> Unit,
+    onInvidiousSignOut: () -> Unit,
     invidiousPlaylists: List<Pair<String, String>>
 ) {
     var invidiousUser by remember(settings.invidiousUsername) {
@@ -1506,30 +1869,73 @@ private fun SettingsIntegrations(
                             .padding(horizontal = 16.dp, vertical = 8.dp)
                     )
                     ThinDivider()
-                    OutlinedTextField(
-                        value = settings.listenBrainzScrobblePercent.toString(),
-                        onValueChange = { value ->
-                            value.toIntOrNull()?.coerceIn(1, 100)?.let {
-                                onSettingsChange(settings.copy(listenBrainzScrobblePercent = it))
-                            }
-                        },
-                        label = { Text("Scrobble at % of track") },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 8.dp)
+                    SettingsSwitchRow(
+                        icon = Icons.Default.Sync,
+                        title = "Enable scrobbling",
+                        subtitle = "ListenBrainz + Last.fm when configured",
+                        checked = settings.scrobbleEnabled,
+                        onCheckedChange = { onSettingsChange(settings.copy(scrobbleEnabled = it)) },
                     )
                     ThinDivider()
-                    OutlinedTextField(
-                        value = settings.listenBrainzScrobbleMaxSeconds.toString(),
-                        onValueChange = { value ->
-                            value.toIntOrNull()?.coerceIn(1, 600)?.let {
-                                onSettingsChange(settings.copy(listenBrainzScrobbleMaxSeconds = it))
-                            }
+                    Text(
+                        "Scrobble when either threshold is reached first. " +
+                            "Tracks shorter than ${settings.listenBrainzScrobbleMinTrackSeconds}s are skipped " +
+                            "(Last.fm rule). ListenBrainz recommends half the track or 4 min (whichever is lower).",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                    )
+                    Text(
+                        "At ${settings.listenBrainzScrobblePercent}% of track",
+                        style = MaterialTheme.typography.labelLarge,
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                    )
+                    Slider(
+                        value = settings.listenBrainzScrobblePercent.toFloat().coerceIn(5f, 95f),
+                        onValueChange = {
+                            onSettingsChange(
+                                settings.copy(listenBrainzScrobblePercent = it.roundToInt().coerceIn(5, 95))
+                            )
                         },
-                        label = { Text("Scrobble max seconds") },
+                        valueRange = 5f..95f,
+                        steps = 17,
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                    )
+                    Text(
+                        "Or after ${settings.listenBrainzScrobbleMaxSeconds}s",
+                        style = MaterialTheme.typography.labelLarge,
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                    )
+                    Slider(
+                        value = settings.listenBrainzScrobbleMaxSeconds.toFloat().coerceIn(10f, 240f),
+                        onValueChange = {
+                            onSettingsChange(
+                                settings.copy(listenBrainzScrobbleMaxSeconds = it.roundToInt().coerceIn(10, 240))
+                            )
+                        },
+                        valueRange = 10f..240f,
+                        steps = 22,
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                    )
+                    Text(
+                        "Minimum track length: ${settings.listenBrainzScrobbleMinTrackSeconds}s",
+                        style = MaterialTheme.typography.labelLarge,
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                    )
+                    Slider(
+                        value = settings.listenBrainzScrobbleMinTrackSeconds.toFloat().coerceIn(15f, 120f),
+                        onValueChange = {
+                            onSettingsChange(
+                                settings.copy(
+                                    listenBrainzScrobbleMinTrackSeconds = it.roundToInt().coerceIn(15, 120)
+                                )
+                            )
+                        },
+                        valueRange = 15f..120f,
+                        steps = 20,
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 8.dp)
+                            .padding(horizontal = 16.dp)
+                            .padding(bottom = 8.dp),
                     )
                 }
                 Spacer(modifier = Modifier.height(24.dp))
@@ -1548,6 +1954,22 @@ private fun SettingsIntegrations(
                             .padding(horizontal = 16.dp, vertical = 8.dp)
                     )
                     ThinDivider()
+                    ListItem(
+                        headlineContent = { Text("New playlist privacy", fontWeight = FontWeight.Medium) },
+                        supportingContent = {
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                listOf("public", "unlisted", "private").forEach { value ->
+                                    FilterChip(
+                                        selected = settings.invidiousPlaylistPrivacy.equals(value, ignoreCase = true),
+                                        onClick = { onSettingsChange(settings.copy(invidiousPlaylistPrivacy = value)) },
+                                        label = { Text(value.replaceFirstChar { it.uppercase() }) },
+                                    )
+                                }
+                            }
+                        },
+                        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                    )
+                    ThinDivider()
 
                     // Logged-in state — exactly like Flutter
                     if (!settings.invidiousUsername.isNullOrBlank()) {
@@ -1561,9 +1983,7 @@ private fun SettingsIntegrations(
                             },
                             leadingContent = { LeadingIconBox(Icons.Default.AccountCircle) },
                             trailingContent = {
-                                androidx.compose.material3.TextButton(onClick = {
-                                    onSettingsChange(settings.copy(invidiousSid = null, invidiousUsername = null))
-                                }) {
+                                androidx.compose.material3.TextButton(onClick = onInvidiousSignOut) {
                                     Text("Sign out", color = MaterialTheme.colorScheme.error)
                                 }
                             },
@@ -1631,6 +2051,20 @@ private fun SettingsIntegrations(
                         subtitle = "Push local updates to mapped Invidious playlists",
                         checked = settings.invidiousAutoPush,
                         onCheckedChange = { onSettingsChange(settings.copy(invidiousAutoPush = it)) },
+                    )
+                    val favoritesRemoteId = settings.invidiousPlaylistMappings["favorites"].orEmpty()
+                    OutlinedTextField(
+                        value = favoritesRemoteId,
+                        onValueChange = { remote ->
+                            val next = settings.invidiousPlaylistMappings.toMutableMap()
+                            if (remote.isBlank()) next.remove("favorites") else next["favorites"] = remote.trim()
+                            onSettingsChange(settings.copy(invidiousPlaylistMappings = next))
+                        },
+                        label = { Text("Invidious favorites playlist ID") },
+                        placeholder = { Text("Remote playlist id for auto-push") },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
                     )
                     Text(
                         text = "Stream resolution uses your Invidious instance (optional), public mirrors, then on-device YouTube extract. No separate proxy is required.",
@@ -1877,8 +2311,8 @@ private fun SettingsRemoteAndNotifications(
                 SettingsCard(modifier = Modifier.padding(horizontal = 16.dp)) {
                     SettingsSwitchRow(
                         icon = Icons.Default.Tune,
-                        title = "Enable remote server",
-                        subtitle = "Allow LAN remote control",
+                        title = "Remote control (client)",
+                        subtitle = "Send commands to another Fireball device on the LAN (this app does not host a server)",
                         checked = settings.remoteServerEnabled,
                         onCheckedChange = { onSettingsChange(settings.copy(remoteServerEnabled = it)) },
                     )

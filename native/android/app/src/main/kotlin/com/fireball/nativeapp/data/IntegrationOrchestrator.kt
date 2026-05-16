@@ -51,6 +51,29 @@ class IntegrationOrchestrator(
         throw (lastError ?: IllegalStateException("Unknown integration error"))
     }
 
+    suspend fun listenBrainzRecent(settings: FireballSettings, count: Int = 8): List<Track> {
+        if (!settings.listenBrainzEnabled) return emptyList()
+        return listenBrainzClient.recentListens(
+            username = settings.listenBrainzUsername,
+            token = settings.listenBrainzToken,
+            count = count,
+        )
+    }
+
+    suspend fun listenBrainzTop(
+        settings: FireballSettings,
+        range: String = "month",
+        count: Int = 10,
+    ): List<Track> {
+        if (!settings.listenBrainzEnabled) return emptyList()
+        return listenBrainzClient.topRecordings(
+            username = settings.listenBrainzUsername,
+            token = settings.listenBrainzToken,
+            range = range,
+            count = count,
+        )
+    }
+
     suspend fun submitPlayingNow(settings: FireballSettings, track: Track) {
         if (!settings.listenBrainzEnabled || !settings.listenBrainzPlayingNow) return
         listenBrainzClient.submitPlayingNow(
@@ -150,8 +173,21 @@ class IntegrationOrchestrator(
     suspend fun lbdlStatus(settings: FireballSettings): Boolean {
         val status = runCatching {
             withRetry { lbdlClient.authStatus(settings.lbdlUrl, settings.lbdlUsername, settings.lbdlPassword) }
-        }.getOrNull()
-        return status != null
+        }.getOrNull() ?: return false
+        return isLbdlAuthenticated(status)
+    }
+
+    private fun isLbdlAuthenticated(status: kotlinx.serialization.json.JsonObject): Boolean {
+        val keys = listOf("authenticated", "isAuthenticated", "loggedIn", "logged_in")
+        for (key in keys) {
+            val el = status[key] ?: continue
+            if (el is kotlinx.serialization.json.JsonPrimitive) {
+                when (el.content.trim().lowercase()) {
+                    "true", "1" -> return true
+                }
+            }
+        }
+        return false
     }
 
     suspend fun lbdlCreateJob(settings: FireballSettings, links: List<String>): String? {

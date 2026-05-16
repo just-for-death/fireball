@@ -56,6 +56,10 @@ data class FireballSettings(
     val listenBrainzUsername: String = "",
     val highQuality: Boolean = false,
     val cacheEnabled: Boolean = true,
+    /** In-memory search result cache cap (0 = [localMusicCacheLimit] × 10). */
+    val searchCacheMaxEntries: Int = 0,
+    /** Android Exo disk cache; iOS ignores. */
+    val streamCacheEnabled: Boolean = true,
     val localMusicCacheLimit: Int = 10,
     val queueMode: String = "off",
     val invidiousInstance: String = "",
@@ -67,8 +71,11 @@ data class FireballSettings(
     val customDownloadPath: String? = null,
     val listenBrainzEnabled: Boolean = false,
     val listenBrainzPlayingNow: Boolean = false,
-    val listenBrainzScrobblePercent: Int = 25,
-    val listenBrainzScrobbleMaxSeconds: Int = 40,
+    val scrobbleEnabled: Boolean = true,
+    val listenBrainzScrobblePercent: Int = ScrobbleRules.DEFAULT_PERCENT,
+    val listenBrainzScrobbleMaxSeconds: Int = ScrobbleRules.DEFAULT_MAX_SECONDS,
+    /** Tracks shorter than this are never scrobbled (Last.fm minimum; default 30s). */
+    val listenBrainzScrobbleMinTrackSeconds: Int = ScrobbleRules.DEFAULT_MIN_TRACK_SECONDS,
     val invidiousPlaylistPrivacy: String = "private",
     val invidiousAutoPush: Boolean = false,
     val invidiousPlaylistMappings: Map<String, String> = emptyMap(),

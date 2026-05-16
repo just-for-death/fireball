@@ -36,6 +36,7 @@ fun SuvMusicTheme(
     pureBlack: Boolean = false,
     appTheme: AppTheme = AppTheme.DEFAULT,
     albumArtColors: DominantColors? = null,
+    accentSeedArgb: Int? = null,
     content: @Composable () -> Unit,
 ) {
     // M3E Fast Expressive animation — when album art changes, smoothly
@@ -105,6 +106,15 @@ fun SuvMusicTheme(
             surfaceContainerLow = Color.Black,
             surfaceContainerLowest = Color.Black,
             scrim = Color.Black,
+        )
+    }
+
+    if (accentSeedArgb != null && animatedColors == null && dynamicScheme == null) {
+        val seed = Color(accentSeedArgb)
+        colorScheme = colorScheme.copy(
+            primary = seed,
+            tertiary = seed,
+            secondary = seed.copy(alpha = 0.72f),
         )
     }
 

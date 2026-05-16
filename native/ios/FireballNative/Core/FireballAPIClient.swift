@@ -57,6 +57,50 @@ final class FireballAPIClient {
         return data
     }
 
+    func iTunesFindArtist(_ artistName: String) async throws -> [String: Any]? {
+        var components = URLComponents(string: "https://itunes.apple.com/search")!
+        components.queryItems = [
+            URLQueryItem(name: "term", value: artistName),
+            URLQueryItem(name: "entity", value: "musicArtist"),
+            URLQueryItem(name: "limit", value: "5"),
+        ]
+        var request = URLRequest(url: components.url!)
+        applyDefaultHeaders(&request)
+        let data = try await session.data(for: request).0
+        guard let root = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let results = root["results"] as? [[String: Any]],
+              let first = results.first else { return nil }
+        return first
+    }
+
+    func iTunesTopSongs(countryCode: String, limit: Int = 20) async throws -> Data {
+        let cc = countryCode.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard let url = URL(string: "https://itunes.apple.com/\(cc)/rss/topsongs/limit=\(limit)/json") else {
+            throw URLError(.badURL)
+        }
+        var request = URLRequest(url: url)
+        applyDefaultHeaders(&request)
+        return try await session.data(for: request).0
+    }
+
+    func iTunesArtistAlbums(artistId: Int, limit: Int = 1) async throws -> [[String: Any]] {
+        var components = URLComponents(string: "https://itunes.apple.com/lookup")!
+        components.queryItems = [
+            URLQueryItem(name: "id", value: "\(artistId)"),
+            URLQueryItem(name: "entity", value: "album"),
+            URLQueryItem(name: "limit", value: "\(limit)"),
+            URLQueryItem(name: "sort", value: "recent"),
+        ]
+        var request = URLRequest(url: components.url!)
+        applyDefaultHeaders(&request)
+        let data = try await session.data(for: request).0
+        guard let root = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let results = root["results"] as? [[String: Any]] else {
+            return []
+        }
+        return results.filter { ($0["wrapperType"] as? String) == "collection" }
+    }
+
     func invidiousSearch(instanceURL: String, query: String, sid: String? = nil) async throws -> Data {
         let base = trimTrailingSlashes(instanceURL)
         var c = URLComponents(string: "\(base)/api/v1/search")!

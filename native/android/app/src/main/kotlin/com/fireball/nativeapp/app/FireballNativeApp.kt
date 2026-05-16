@@ -71,9 +71,25 @@ fun FireballNativeApp(viewModel: MainViewModel) {
         viewModel.dismissError()
     }
     val isTablet = LocalConfiguration.current.smallestScreenWidthDp >= 700
-    val startRoute = when (settings.startTab) {
-        "search", "library", "settings" -> settings.startTab
+    val startRoute = when (settings.startTab.trim().lowercase()) {
+        "search", "library", "settings" -> settings.startTab.trim().lowercase()
         else -> "home"
+    }
+    var startTabNavReady by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+    LaunchedEffect(settings.startTab) {
+        if (!startTabNavReady) {
+            startTabNavReady = true
+            return@LaunchedEffect
+        }
+        val route = when (settings.startTab.trim().lowercase()) {
+            "search", "library", "settings" -> settings.startTab.trim().lowercase()
+            else -> "home"
+        }
+        navController.navigate(route) {
+            popUpTo(navController.graph.startDestinationId) { saveState = true }
+            launchSingleTop = true
+            restoreState = true
+        }
     }
     var isPlayerOpen by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
 
@@ -89,13 +105,16 @@ fun FireballNativeApp(viewModel: MainViewModel) {
     val albumArtColors = rememberAlbumArtColors(currentTrack?.artwork, darkTheme)
     val dominantColors = albumArtColors ?: rememberDominantColors(currentTrack?.artwork, darkTheme)
 
+    val railCollapsed = isTablet && settings.ipadSidebarCollapsed
+
     SuvMusicTheme(
         darkTheme = darkTheme,
         dynamicColor = settings.useDynamicColorWhenAvailable,
         appTheme = flexSchemeToAppTheme(settings.flexScheme),
         albumArtColors = albumArtColors,
+        accentSeedArgb = settings.accentSeedColor,
     ) {
-        Box(modifier = Modifier.fillMaxSize()) {
+        com.fireball.nativeapp.ui.components.PremiumBackground {
             Row(modifier = Modifier.fillMaxSize()) {
                 if (isTablet) {
                     val navBackStackEntry by navController.currentBackStackEntryAsState()
@@ -116,7 +135,11 @@ fun FireballNativeApp(viewModel: MainViewModel) {
                                     }
                                 },
                                 icon = item.icon,
-                                label = { Text(item.label) }
+                                label = if (railCollapsed) {
+                                    {}
+                                } else {
+                                    { Text(item.label) }
+                                },
                             )
                         }
                         androidx.compose.foundation.layout.Spacer(Modifier.weight(1f))
@@ -147,9 +170,18 @@ fun FireballNativeApp(viewModel: MainViewModel) {
                     bottomBar = {
                         if (!isTablet) {
                             androidx.compose.foundation.layout.Column {
-                                if (currentTrack != null) {
+                                androidx.compose.animation.AnimatedVisibility(
+                                    visible = currentTrack != null,
+                                    enter = androidx.compose.animation.slideInVertically(
+                                        initialOffsetY = { it / 2 },
+                                    ) + androidx.compose.animation.fadeIn(),
+                                    exit = androidx.compose.animation.slideOutVertically(
+                                        targetOffsetY = { it / 2 },
+                                    ) + androidx.compose.animation.fadeOut(),
+                                ) {
+                                    val track = currentTrack ?: return@AnimatedVisibility
                                     com.fireball.nativeapp.ui.components.PillMiniPlayer(
-                                        song = currentTrack,
+                                        song = track,
                                         isPlaying = playback.isPlaying,
                                         dominantColors = dominantColors,
                                         progress = if (playback.durationMs > 0) {
@@ -200,10 +232,24 @@ fun FireballNativeApp(viewModel: MainViewModel) {
                                 library = uiState.library,
                                 playbackState = playback,
                                 currentLyrics = uiState.currentLyrics,
+                                homeCountries = com.fireball.nativeapp.ui.HomeCountries.visibleCodes(
+                                    settings.homeCountries
+                                ),
+                                chartCountryCode = uiState.chartCountryCode,
+                                trendingTracks = uiState.trendingTracks,
+                                trendingLoading = uiState.trendingLoading,
+                                onSelectChartCountry = viewModel::selectChartCountry,
+                                lbRecentTracks = uiState.lbRecentTracks,
+                                lbTopTracks = uiState.lbTopTracks,
+                                lbTopRange = uiState.lbTopRange,
+                                lbHomeLoading = uiState.lbHomeLoading,
+                                onSelectLbTopRange = viewModel::selectLbTopRange,
+                                onFollowArtist = viewModel::followArtist,
+                                onRefreshHome = { viewModel.refreshHome() },
                                 onPlay = viewModel::play,
                                 onTogglePlayPause = viewModel::togglePlayPause,
                                 onNext = viewModel::next,
-                                onPrevious = viewModel::previous
+                                onPrevious = viewModel::previous,
                             )
                         }
                         composable("search") {
@@ -223,7 +269,8 @@ fun FireballNativeApp(viewModel: MainViewModel) {
                             LibraryScreen(
                                 library = uiState.library,
                                 useGrid = settings.libraryUseGrid,
-                                onPlay = viewModel::play
+                                onPlay = viewModel::play,
+                                onUnfollowArtist = viewModel::unfollowArtist,
                             )
                         }
                         composable("settings") {
@@ -246,6 +293,7 @@ fun FireballNativeApp(viewModel: MainViewModel) {
                                 onInvidiousLogin = viewModel::invidiousLogin,
                                 onInvidiousSyncPlaylist = viewModel::invidiousSyncPlaylist,
                                 onInvidiousPushPlaylist = viewModel::invidiousPushPlaylist,
+                                onInvidiousSignOut = viewModel::signOutInvidious,
                                 invidiousPlaylists = uiState.invidiousPlaylists,
                                 onGoogleDriveBackup = viewModel::backupToGoogleDrive,
                                 onValidateLastFm = {
@@ -263,12 +311,22 @@ fun FireballNativeApp(viewModel: MainViewModel) {
             androidx.compose.animation.AnimatedVisibility(
                 visible = isPlayerOpen,
                 modifier = Modifier.fillMaxSize(),
-                enter = androidx.compose.animation.slideInVertically(initialOffsetY = { it }),
-                exit = androidx.compose.animation.slideOutVertically(targetOffsetY = { it })
+                enter = androidx.compose.animation.slideInVertically(
+                    initialOffsetY = { it },
+                    animationSpec = com.fireball.nativeapp.ui.theme.MotionTokens.springGentle(),
+                ) + androidx.compose.animation.fadeIn(
+                    animationSpec = com.fireball.nativeapp.ui.theme.MotionTokens.tweenStandard(),
+                ),
+                exit = androidx.compose.animation.slideOutVertically(
+                    targetOffsetY = { it },
+                    animationSpec = com.fireball.nativeapp.ui.theme.MotionTokens.tweenEmphasized(),
+                ) + androidx.compose.animation.fadeOut(),
             ) {
                 com.fireball.nativeapp.ui.screens.NowPlayingScreen(
                     playbackState = playback,
                     currentLyrics = uiState.currentLyrics,
+                    lyricsAutoScroll = settings.lyricsAutoScroll,
+                    lyricsReducedMotion = settings.lyricsReducedMotion,
                     onPlayPause = viewModel::togglePlayPause,
                     onNext = viewModel::next,
                     onPrevious = viewModel::previous,
@@ -280,6 +338,8 @@ fun FireballNativeApp(viewModel: MainViewModel) {
                     },
                     onToggleShuffle = viewModel::toggleShuffle,
                     onToggleRepeatMode = viewModel::toggleRepeatMode,
+                    onPlayQueueIndex = viewModel::playQueueIndex,
+                    onFollowArtist = viewModel::followArtist,
                     onCollapse = { isPlayerOpen = false }
                 )
             }

@@ -48,6 +48,9 @@ struct FireballSettings: Codable, Hashable {
     var listenBrainzUsername = ""
     var highQuality = false
     var cacheEnabled = true
+    /// In-memory search cache cap (0 = localMusicCacheLimit × 10).
+    var searchCacheMaxEntries = 0
+    var streamCacheEnabled = true
     var localMusicCacheLimit = 10
     var queueMode = "off"
     var invidiousInstance = ""
@@ -59,8 +62,10 @@ struct FireballSettings: Codable, Hashable {
     var customDownloadPath: String?
     var listenBrainzEnabled = false
     var listenBrainzPlayingNow = false
-    var listenBrainzScrobblePercent = 25
-    var listenBrainzScrobbleMaxSeconds = 40
+    var scrobbleEnabled = true
+    var listenBrainzScrobblePercent = ScrobbleRules.defaultPercent
+    var listenBrainzScrobbleMaxSeconds = ScrobbleRules.defaultMaxSeconds
+    var listenBrainzScrobbleMinTrackSeconds = ScrobbleRules.defaultMinTrackSeconds
     var invidiousPlaylistPrivacy = "private"
     var invidiousAutoPush = false
     var invidiousPlaylistMappings: [String: String] = [:]

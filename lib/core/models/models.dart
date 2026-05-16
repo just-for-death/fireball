@@ -220,8 +220,10 @@ class FireballSettings {
   // ListenBrainz
   final bool listenBrainzEnabled;
   final bool listenBrainzPlayingNow;
+  final bool scrobbleEnabled;
   final int listenBrainzScrobblePercent;
   final int listenBrainzScrobbleMaxSeconds;
+  final int listenBrainzScrobbleMinTrackSeconds;
   // Invidious
   final String invidiousPlaylistPrivacy;
   final bool invidiousAutoPush;
@@ -298,8 +300,10 @@ class FireballSettings {
     this.customDownloadPath,
     this.listenBrainzEnabled = false,
     this.listenBrainzPlayingNow = false,
+    this.scrobbleEnabled = true,
     this.listenBrainzScrobblePercent = 25,
     this.listenBrainzScrobbleMaxSeconds = 40,
+    this.listenBrainzScrobbleMinTrackSeconds = 30,
     this.invidiousPlaylistPrivacy = 'private',
     this.invidiousAutoPush = false,
     this.invidiousPlaylistMappings = const {},
@@ -374,12 +378,17 @@ class FireballSettings {
       customDownloadPath: j['customDownloadPath']?.toString(),
       listenBrainzEnabled: toBool(j['listenBrainzEnabled'], false),
       listenBrainzPlayingNow: toBool(j['listenBrainzPlayingNow'], false),
+      scrobbleEnabled: toBool(j['scrobbleEnabled'], true),
       listenBrainzScrobblePercent: j['listenBrainzScrobblePercent'] is num
           ? (j['listenBrainzScrobblePercent'] as num).toInt()
-          : 50,
+          : 25,
       listenBrainzScrobbleMaxSeconds: j['listenBrainzScrobbleMaxSeconds'] is num
           ? (j['listenBrainzScrobbleMaxSeconds'] as num).toInt()
-          : 240,
+          : 40,
+      listenBrainzScrobbleMinTrackSeconds:
+          j['listenBrainzScrobbleMinTrackSeconds'] is num
+              ? (j['listenBrainzScrobbleMinTrackSeconds'] as num).toInt()
+              : 30,
       invidiousPlaylistPrivacy:
           j['invidiousPlaylistPrivacy']?.toString() ?? 'private',
       invidiousAutoPush: toBool(j['invidiousAutoPush'], false),
@@ -439,8 +448,10 @@ class FireballSettings {
           'customDownloadPath': customDownloadPath,
         'listenBrainzEnabled': listenBrainzEnabled,
         'listenBrainzPlayingNow': listenBrainzPlayingNow,
+        'scrobbleEnabled': scrobbleEnabled,
         'listenBrainzScrobblePercent': listenBrainzScrobblePercent,
         'listenBrainzScrobbleMaxSeconds': listenBrainzScrobbleMaxSeconds,
+        'listenBrainzScrobbleMinTrackSeconds': listenBrainzScrobbleMinTrackSeconds,
         'invidiousPlaylistPrivacy': invidiousPlaylistPrivacy,
         'invidiousAutoPush': invidiousAutoPush,
         'invidiousPlaylistMappings': invidiousPlaylistMappings,
@@ -493,8 +504,10 @@ class FireballSettings {
     bool clearCustomDownloadPath = false,
     bool? listenBrainzEnabled,
     bool? listenBrainzPlayingNow,
+    bool? scrobbleEnabled,
     int? listenBrainzScrobblePercent,
     int? listenBrainzScrobbleMaxSeconds,
+    int? listenBrainzScrobbleMinTrackSeconds,
     String? invidiousPlaylistPrivacy,
     bool? invidiousAutoPush,
     Map<String, String>? invidiousPlaylistMappings,
@@ -551,10 +564,13 @@ class FireballSettings {
         listenBrainzEnabled: listenBrainzEnabled ?? this.listenBrainzEnabled,
         listenBrainzPlayingNow:
             listenBrainzPlayingNow ?? this.listenBrainzPlayingNow,
+        scrobbleEnabled: scrobbleEnabled ?? this.scrobbleEnabled,
         listenBrainzScrobblePercent:
             listenBrainzScrobblePercent ?? this.listenBrainzScrobblePercent,
         listenBrainzScrobbleMaxSeconds: listenBrainzScrobbleMaxSeconds ??
             this.listenBrainzScrobbleMaxSeconds,
+        listenBrainzScrobbleMinTrackSeconds: listenBrainzScrobbleMinTrackSeconds ??
+            this.listenBrainzScrobbleMinTrackSeconds,
         invidiousPlaylistPrivacy:
             invidiousPlaylistPrivacy ?? this.invidiousPlaylistPrivacy,
         invidiousAutoPush: invidiousAutoPush ?? this.invidiousAutoPush,

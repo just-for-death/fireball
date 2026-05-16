@@ -1318,6 +1318,19 @@ class SettingsScreen extends HookConsumerWidget {
                         ),
                         if (settings.listenBrainzEnabled) ...[
                           const SizedBox(height: 12),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: _SettingsLabel('ENABLE SCROBBLING'),
+                              ),
+                              Switch(
+                                value: settings.scrobbleEnabled,
+                                onChanged: (v) =>
+                                    saveSettings({'scrobbleEnabled': v}),
+                                activeThumbColor: cs.primary,
+                              ),
+                            ],
+                          ),
                           _SettingsLabel(
                             'SCROBBLE THRESHOLD: ${settings.listenBrainzScrobblePercent}%',
                           ),
@@ -1349,8 +1362,25 @@ class SettingsScreen extends HookConsumerWidget {
                               'listenBrainzScrobbleMaxSeconds': v.round(),
                             }),
                           ),
+                          const SizedBox(height: 4),
+                          _SettingsLabel(
+                            'MIN TRACK LENGTH: ${settings.listenBrainzScrobbleMinTrackSeconds}s',
+                          ),
+                          Slider(
+                            value: settings.listenBrainzScrobbleMinTrackSeconds
+                                .toDouble()
+                                .clamp(15, 120),
+                            min: 15,
+                            max: 120,
+                            divisions: 20,
+                            activeColor: cs.primary,
+                            onChanged: (v) => saveSettings({
+                              'listenBrainzScrobbleMinTrackSeconds': v.round(),
+                            }),
+                          ),
                           Text(
-                            'Scrobble when either threshold is reached first.',
+                            'Scrobble when either threshold is reached first. '
+                            'Tracks shorter than the minimum are skipped (Last.fm).',
                             style: TextStyle(
                               fontSize: 11,
                               color: Colors.white.withValues(alpha: 0.45),
