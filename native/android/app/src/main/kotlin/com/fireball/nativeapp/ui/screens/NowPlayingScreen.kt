@@ -74,6 +74,7 @@ import com.fireball.nativeapp.ui.components.SyncedLyricsView
 import com.fireball.nativeapp.ui.components.seekbar.Seekbar
 import com.fireball.nativeapp.ui.components.seekbar.SeekbarStyle
 import com.fireball.nativeapp.ui.theme.DominantColors
+import com.fireball.nativeapp.ui.theme.defaultDominantColors
 import com.fireball.nativeapp.ui.theme.rememberDominantColors
 
 private val PlayerSplitBreakpoint = 840.dp
@@ -103,6 +104,7 @@ fun NowPlayingScreen(
     onToggleFavoriteFromMenu: () -> Unit = {},
     onSeeArtistFromMenu: () -> Unit = {},
     onFollowArtistFromMenu: () -> Unit = {},
+    appearanceChrome: String = "music",
 ) {
     var queueExpanded by remember { mutableStateOf(false) }
     var lyricsOverlay by remember { mutableStateOf(false) }
@@ -115,7 +117,11 @@ fun NowPlayingScreen(
     val shuffleEnabled = playbackState.shuffled
 
     val isDark = isSystemInDarkTheme()
-    val dominant = rememberDominantColors(currentSong?.artwork, isDark)
+    val dominant =
+        when (appearanceChrome) {
+            "music" -> rememberDominantColors(currentSong?.artwork, isDark)
+            else -> remember(isDark) { defaultDominantColors(isDark) }
+        }
     val progress = if (durationMs > 0) positionMs.toFloat() / durationMs.toFloat() else 0f
 
     if (lyricsOverlay && !currentLyrics.isNullOrBlank()) {

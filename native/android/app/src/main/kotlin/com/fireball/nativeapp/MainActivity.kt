@@ -147,6 +147,13 @@ class MainActivity : ComponentActivity() {
         setContent { FireballNativeApp(viewModel = viewModel) }
     }
 
+    override fun onResume() {
+        super.onResume()
+        if (::viewModel.isInitialized) {
+            viewModel.refreshFollowedArtistReleasesOnForeground()
+        }
+    }
+
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
         if (!::viewModel.isInitialized) return

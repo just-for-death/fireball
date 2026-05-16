@@ -7,6 +7,8 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import androidx.core.app.NotificationCompat
+import androidx.core.content.ContextCompat
+import android.content.pm.PackageManager
 import com.fireball.nativeapp.MainActivity
 import kotlin.random.Random
 
@@ -31,6 +33,12 @@ object ArtistReleaseNotifier {
     }
 
     fun show(context: Context, title: String, message: String) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS) !=
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            return
+        }
         ensureChannel(context)
         val appContext = context.applicationContext
         val launch =

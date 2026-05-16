@@ -186,6 +186,11 @@ private struct RootShellView: View {
                     Task { await viewModel.refreshFollowedArtistReleaseChecksFromForeground() }
                 }
             }
+            .onChange(of: viewModel.currentTrack?.effectiveId) { trackId in
+                if trackId == nil {
+                    isPlayerOpen = false
+                }
+            }
             .fullScreenCover(
                 item: $viewModel.artistOpenRequest,
                 onDismiss: { viewModel.consumeArtistOpenRequest() }

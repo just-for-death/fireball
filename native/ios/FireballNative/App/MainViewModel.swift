@@ -94,6 +94,7 @@ final class MainViewModel: ObservableObject {
     private var sponsorSkippedUUIDs = Set<String>()
     private var activePlayTask: Task<Void, Never>?
     private var suggestionCancellable: AnyCancellable?
+    private var suggestionTask: Task<Void, Never>?
 
     init(repository: FireballRepository) {
         self.repository = repository
@@ -123,8 +124,9 @@ final class MainViewModel: ObservableObject {
                 return
             }
             if self.repeatMode == .one {
-                self.isPlaying = true
                 self.audioEngine.seek(to: 0)
+                self.audioEngine.resumeIfPaused()
+                self.isPlaying = true
                 return
             }
             Task { await self.advanceAfterTrackFinished() }
@@ -175,7 +177,8 @@ final class MainViewModel: ObservableObject {
             .removeDuplicates()
             .sink { [weak self] raw in
                 guard let self else { return }
-                Task { await self.refreshSearchSuggestionsLocked(raw) }
+                self.suggestionTask?.cancel()
+                self.suggestionTask = Task { await self.refreshSearchSuggestionsLocked(raw) }
             }
     }
 
@@ -211,6 +214,8 @@ final class MainViewModel: ObservableObject {
             $0.title.lowercased().contains(needle) || $0.artist.lowercased().contains(needle)
         }
         let remote = await repository.searchTracks(query: q, settings: settings).prefix(8)
+        guard !Task.isCancelled else { return }
+        guard q == query.trimmingCharacters(in: .whitespacesAndNewlines) else { return }
         searchSuggestions =
             (localMatches + remote)
                 .uniqued(by: \.effectiveId)
@@ -1143,8 +1148,12 @@ final class MainViewModel: ObservableObject {
         savePlaybackSession()
         persist()
         let settings = library.settings
+        let lyricsTrackId = track.effectiveId
         if !settings.offlineModeEnabled && !settings.privacyModeEnabled {
-            currentLyrics = await lyricsAi.fetchLyrics(track: track, settings: settings)
+            let lyrics = await lyricsAi.fetchLyrics(track: track, settings: settings)
+            if currentIndex == index, queue.indices.contains(index), queue[index].effectiveId == lyricsTrackId {
+                currentLyrics = lyrics
+            }
         }
         await loadSponsorSegmentsAfterPlay(for: track)
         if !settings.offlineModeEnabled && !settings.privacyModeEnabled {
@@ -1244,8 +1253,9 @@ final class MainViewModel: ObservableObject {
     private func userPressedNext() async {
         guard let idx = currentIndex else { return }
         if repeatMode == .one {
-            isPlaying = true
             audioEngine.seek(to: 0)
+            audioEngine.resumeIfPaused()
+            isPlaying = true
             return
         }
         if shuffled, queue.count > 1 {
@@ -1259,11 +1269,19 @@ final class MainViewModel: ObservableObject {
             await openQueueIndex(idx + 1)
         } else if repeatMode == .all {
             await openQueueIndex(0)
+        } else if library.settings.queueMode.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "repeat" {
+            await openQueueIndex(0)
         }
     }
 
     private func userPressedPrevious() async {
         guard let idx = currentIndex else { return }
+        if repeatMode == .one {
+            audioEngine.seek(to: 0)
+            audioEngine.resumeIfPaused()
+            isPlaying = true
+            return
+        }
         if positionSeconds > 3 {
             audioEngine.seek(to: 0)
             return
