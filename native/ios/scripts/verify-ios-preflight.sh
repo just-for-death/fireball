@@ -57,6 +57,12 @@ scan_swift() {
   if rg -q 'playTrackUpNext\([^t]|appendTrackToQueue\([^t]' "$dir" --glob '*.swift' 2>/dev/null; then
     err "$label: queue helpers need track: label"
   fi
+  if rg -q 'Int\(bitPattern: value\)' "$dir" --glob '*.swift' 2>/dev/null; then
+    err "$label: use Int(bitPattern: UInt(value)) for UInt32 hex seeds"
+  fi
+  if rg -q 'List\([A-Za-z]+\.allCases, selection:' "$dir" --glob '*.swift' 2>/dev/null; then
+    err "$label: List(Data, selection:) unavailable on iOS — use List(selection:) { ForEach … .tag() }"
+  fi
 }
 
 scan_swift "app" "$APP"

@@ -22,7 +22,7 @@ struct FireballNativeApp: App {
     }
 }
 
-private enum RootTab: String, CaseIterable, Identifiable {
+private enum RootTab: String, CaseIterable, Identifiable, Hashable {
     case home, search, library, settings
     var id: String { rawValue }
 }
@@ -108,8 +108,11 @@ private struct RootShellView: View {
 
     private var tabletShell: some View {
         NavigationSplitView(columnVisibility: $splitVisibility) {
-            List(RootTab.allCases, selection: $selectedTab) { tab in
-                Label(tab.rawValue.capitalized, systemImage: icon(for: tab))
+            List(selection: $selectedTab) {
+                ForEach(RootTab.allCases) { tab in
+                    Label(tab.rawValue.capitalized, systemImage: icon(for: tab))
+                        .tag(tab)
+                }
             }
             .safeAreaInset(edge: .bottom) {
                 miniPlayerInset(chrome: .ipadSidebarRail, horizontalPadding: 10)

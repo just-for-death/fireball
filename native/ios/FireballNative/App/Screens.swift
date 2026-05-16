@@ -1567,7 +1567,7 @@ struct SettingsScreen: View {
                 if trimmed.isEmpty {
                     onUpdateSettings { $0.accentSeedColor = nil }
                 } else if let value = UInt32(trimmed, radix: 16) {
-                    onUpdateSettings { $0.accentSeedColor = Int(bitPattern: value) }
+                    onUpdateSettings { $0.accentSeedColor = Int(bitPattern: UInt(value)) }
                 }
             }
         ))
