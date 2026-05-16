@@ -1,5 +1,7 @@
 # Fireball x SuvMusic Migration Matrix
 
+**Fireball 6.0** — native-only (`native/android`, `native/ios`). Flutter was removed in v6.0.0.
+
 ## Source-of-Truth Rules
 
 - Backend/services/contracts: **Fireball**

@@ -2,11 +2,13 @@
   <img src="assets/icon.png" alt="Fireball" width="120" height="120">
 </p>
 
-# 🔥 Fireball
+# Fireball 6.0
 
-**Your music, anywhere.** A standalone, server-free music player for iOS and Android built with Flutter.
+**Your music, anywhere.** A standalone, server-free music player for **Android** and **iOS/iPadOS**, built with **Kotlin (Jetpack Compose)** and **Swift (SwiftUI)**.
 
-Fireball streams music through [Invidious](https://invidious.io), discovers lyrics via [LRCLIB](https://lrclib.net), tracks your listening with [ListenBrainz](https://listenbrainz.org), and keeps your library backed up to Google Drive or any WebDAV / Nextcloud server — all without a backend of its own.
+Fireball streams via [Invidious](https://invidious.io) and on-device YouTube resolution, discovers lyrics through [LRCLIB](https://lrclib.net), scrobbles with [ListenBrainz](https://listenbrainz.org) and [Last.fm](https://www.last.fm), and keeps your library in a portable `fireball_library.json` — with optional WebDAV and Google Drive backup. **No Flutter. No backend of your own.**
+
+The UI and motion language follow patterns from **[SuvMusic](https://github.com/suvojeet-sengupta/SuvMusic)**; playback, contracts, and integrations remain **Fireball-native**.
 
 ---
 
@@ -14,131 +16,151 @@ Fireball streams music through [Invidious](https://invidious.io), discovers lyri
 
 | Category | Details |
 |---|---|
-| **Playback** | Stream audio via any Invidious instance · background playback (lock screen controls) · shuffle, repeat, queue management |
-| **Downloads & Offline** | Download tracks for offline playback · custom download folder support · sidecar metadata (`.json`) + local lyrics (`.lrc`) · embedded audio tags/artwork during download |
-| **Caching** | Automatic stream cache with configurable cache size limit and cleanup |
-| **Discovery** | iTunes trending charts by country · search across Invidious · AI-generated queue via local Ollama |
-| **Lyrics** | Synced (LRC) + plain lyrics from LRCLIB with structured multi-step fallback · NetEase fallback for Asian tracks |
-| **Library** | Local-first JSON store (`path_provider`) · favorites, playlists, artists, albums · full play history |
-| **Scrobbling** | Direct ListenBrainz scrobbling · Last.fm API key validation |
-| **Backup & Sync** | Google Drive (`appDataFolder`) backup/restore · WebDAV / Nextcloud backup/restore · optional **live sync** with merge across devices |
-| **Widgets** | Android home-screen playback widget · iOS widget target integration for media controls |
-| **Tablet UI** | iPad glass sidebar · Android NavigationRail · two-pane player and library on large screens |
-| **Remote** | Dedicated **Remote** tab · single QR · bidirectional LAN pairing (`/pair`) · control without re-entering IPs |
-| **Theming** | Material 3 · FlexColorScheme · dynamic color (Android 12+) · true-black dark mode option |
+| **Playback** | Invidious + direct stream resolution · ExoPlayer (Android) / AVFoundation (iOS) · shuffle, repeat, queue · session restore **without autoplay** on cold start |
+| **Discovery** | iTunes charts by region · search (songs + albums) · artist catalog (iTunes songs/albums) |
+| **Lyrics** | LRCLIB + NetEase fallback · synced LRC · **long-press artwork** to toggle lyrics in the art slot · optional pinned lyrics panel |
+| **Library** | Favorites, playlists, artists, albums, history · local JSON store |
+| **Scrobbling** | ListenBrainz + Last.fm |
+| **Integrations** | WebDAV live sync · Google Drive backup · Gotify · lbdl · LAN remote · Ollama AI queue |
+| **Tablet / iPad** | Navigation rail / split view · pill mini-player variants · two-column Now Playing |
+| **Platform** | Android foreground media service · iOS Now Playing + Live Activity widget extension |
+
+See [`native/MIGRATION_MATRIX.md`](native/MIGRATION_MATRIX.md) for the full parity checklist.
 
 ---
 
-## What's New in v5.0.0
+## What's new in v6.0.0
 
-- **UI cleanup + interaction polish**
-  - Removed dead/non-functional desktop header controls and placeholder actions.
-  - Improved collapsed sidebar/rail geometry for smoother curved selection states.
-  - Fixed mini-player to full-player navigation behavior on desktop/tablet.
+- **Native-only:** Flutter app removed; `native/android` and `native/ios` are the product.
+- **UI parity:** SuvMusic-inspired motion (`SuvFadeSlideIn`, `SuvPressScale`), pill mini-player, adaptive shell, bottom-sheet track actions.
+- **Now Playing:** Long-press album art ↔ lyrics; overflow sheet; artist catalog from player; multi-artist picker.
+- **Artist screen:** Songs + Albums tabs (no local Playlists tab — use Library).
+- **Reliability:** Lyrics race guards, deduped track-started hooks, pinned-lyrics panel logic, release notifications (optional).
 
-- **Theming accuracy**
-  - Removed forced green accents from primary actions/surfaces and aligned to `colorScheme.primary`.
-  - Improved `onPrimary` contrast usage for filled actions across themes.
-  - Dynamic color and Material You behavior now applies consistently when enabled.
-
-- **Background playback + media notification improvements**
-  - Improved Android background media service behavior for stable OS media controls.
-  - Added Android 13+ notification permission declaration support.
-  - Kept iOS background audio mode and media session behavior aligned.
-
-- **Branding/code consistency**
-  - Migrated runtime naming from Spotify-style symbols to Fireball-native symbols.
-  - Removed extra compatibility dead code/no-op handlers and placeholder controls.
+Full notes: [`CHANGELOG.md`](CHANGELOG.md).
 
 ---
 
 ## Releases
 
-Official binaries are published on **[GitHub Releases](https://github.com/just-for-death/fireball/releases)** (not stored in git). **Changelog:** [`CHANGELOG.md`](CHANGELOG.md).
+Official binaries: **[GitHub Releases](https://github.com/just-for-death/fireball/releases)**.
 
 | Version | Android | iOS |
 |--------|---------|-----|
-| **v5.0.0** (current) | `Fireball-5.0.0-android.apk` | `Fireball-5.0.0-ios-unsigned.ipa` — **unsigned** |
+| **v6.0.0** (current) | `Fireball-6.0.0-android.apk` | `Fireball-6.0.0-ios-unsigned.ipa` (unsigned) |
 
-- **Android**: Open the APK on device, or `adb install …`. You may need to allow installs from your file manager or developer options.
-- **iOS**: IPAs are **not** signed for App Store distribution. Install with AltStore / Sideloadly, or sign with your Apple Developer account / CI.
-- **Integrity**: Each release includes `SHA256SUMS.txt`. Verify with `sha256sum -c SHA256SUMS.txt` after downloading.
+Verify with `SHA256SUMS.txt` on each release. iOS IPAs must be signed before device install (AltStore, Xcode, etc.).
 
 ---
 
-## Getting Started
+## Getting started
 
 ### Prerequisites
 
-- Flutter 3.x (stable channel)
-- An [Invidious](https://api.invidious.io) instance URL (required for streaming)
-- Optional: ListenBrainz user token, Ollama running locally
+| Platform | Tooling |
+|----------|---------|
+| **Android** | JDK **17 or 21**, Android SDK 36, Gradle (wrapper in `native/android`) |
+| **iOS** | macOS + Xcode 15+ for device builds; **Swift 5.9+** on Linux for Core tests only |
+| **Optional** | Invidious instance URL, ListenBrainz token, Ollama for AI queue |
 
-### Build
+### Clone and run
 
 ```bash
 git clone https://github.com/just-for-death/fireball.git
 cd fireball
-flutter pub get
-flutter run                    # attach a device or emulator
-./scripts/build_apk.sh --build-name=5.0.0 --build-number=5
-./scripts/build_unsigned_ipa.sh build/ios/ipa_unsigned/fireball_unsigned.ipa   # macOS + Xcode
+
+# Android (device or emulator)
+cd native/android && ./gradlew :app:installDebug
+
+# iOS (macOS): generate Xcode project then open
+cd native/ios && xcodegen generate && open FireballNative.xcodeproj
 ```
 
-**Android / Gradle:** Use **JDK 17 or 21** for release builds. JDK 26+ can break Gradle’s Kotlin DSL (`IllegalArgumentException` parsing the Java version). On Arch Linux, for example: `export JAVA_HOME=/usr/lib/jvm/java-21-openjdk`. If the NDK error `CXX1101` / missing `source.properties` appears, remove the broken NDK folder under your Android SDK and rebuild so Gradle re-downloads it (see `android/gradle.properties` comments).
+### Release builds
 
-### First Run
+```bash
+# Android APK (from repo root)
+./scripts/build_native_apk.sh
 
-1. Open **Settings → Invidious** and enter an instance URL (e.g. `https://invidious.snopyta.org`)
-2. Optionally add your **ListenBrainz** token to enable scrobbling and personalized top tracks
-3. Optionally sign in to **Google Drive** or configure **WebDAV** for library backups
-4. Head to **Home** — trending charts load automatically
+# iOS unsigned IPA (macOS only)
+./scripts/build_native_unsigned_ipa.sh dist/Fireball-6.0.0-ios-unsigned.ipa
+
+# Automated tests (Linux-friendly for CI)
+./scripts/qa.sh
+```
+
+**Codemagic:** [`codemagic.yaml`](codemagic.yaml) — workflows `fireball-android-release`, `fireball-native-ios`, `fireball-ios-unsigned-ipa`.
+
+**JDK:** Use 17–21 for Android release builds. JDK 22+ can break Gradle’s Kotlin DSL.
+
+### First run
+
+1. **Settings → Invidious** — instance URL  
+2. Optional: ListenBrainz, Last.fm, WebDAV / Google Drive  
+3. **Home** — charts load by region  
+
+Smoke test: [`native/SMOKE_TEST_CHECKLIST.md`](native/SMOKE_TEST_CHECKLIST.md).
+
+**App icons:** generated from [`assets/icon.png`](assets/icon.png). After changing artwork, run `./scripts/generate_app_icons.sh`.
 
 ---
 
-## Architecture
+## Repository layout
 
 ```
-lib/
-├── core/
-│   ├── api/          fireball_api.dart   — direct calls to iTunes, LRCLIB, Invidious, LB, Ollama
-│   ├── models/       track, playlist, artist, album, settings
-│   ├── store/        local_store.dart (path_provider JSON) + Riverpod providers
-│   └── widgets/      GlassCard, GlassPill, PremiumBackground
-├── features/
-│   ├── home/         trending grid, history, favorites, ListenBrainz sections
-│   ├── search/       Invidious + iTunes search
-│   ├── library/      favorites, playlists, artists, albums (tablet two-pane)
-│   ├── player/       full-screen player, synced lyrics, queue (tablet side-by-side)
-│   └── settings/     Invidious, ListenBrainz, Last.fm, Ollama, Backup & Sync
-├── sync/
-│   ├── gdrive_sync.dart    Google Drive appDataFolder backup/restore
-│   └── webdav_sync.dart    WebDAV / Nextcloud PUT/GET
-└── widgets/
-    ├── shell_scaffold.dart  platform-adaptive nav (glass tab bar / sidebar / rail)
-    └── mini_player.dart     floating now-playing bar (tablet-aware)
+fireball/
+├── native/
+│   ├── android/          Kotlin + Jetpack Compose app (:app, :core-model, :core-data)
+│   ├── ios/              SwiftUI app + FireballWidgets (XcodeGen)
+│   ├── MIGRATION_MATRIX.md
+│   └── SMOKE_TEST_CHECKLIST.md
+├── assets/               App icon & branding
+├── scripts/              build_native_apk.sh, qa.sh, …
+├── VERSION               6.0.0
+├── codemagic.yaml
+└── CHANGELOG.md
 ```
 
-No server required. All data lives in `fireball_library.json` in the app's documents directory.
+Data contract: `fireball_library.json` (`version`, `settings`, `history`, `favorites`, `playlists`, `artists`, `albums`, `playbackSession`).
 
 ---
 
-## Dependencies
+## Architecture (native)
 
-| Package | Purpose |
-|---|---|
-| `media_kit` + `audio_service` | Streaming playback + background / lock screen |
-| `hooks_riverpod` + `flutter_hooks` | State management |
-| `go_router` | Declarative navigation |
-| `path_provider` | Local JSON library store |
-| `google_sign_in` + `googleapis` | Google Drive backup |
-| `webdav_client` | WebDAV / Nextcloud backup |
-| `flex_color_scheme` + `dynamic_color` | Theming |
-| `cached_network_image` + `shimmer` | Image loading & skeletons |
-| `http` | Direct API calls |
+| Layer | Android | iOS |
+|-------|---------|-----|
+| UI | Compose screens, `FireballNativeApp` | SwiftUI `FireballNativeApp`, split/tab shell |
+| State | `MainViewModel` + `PlayerManager` | `MainViewModel` + `NativeAudioEngine` |
+| Domain | `:core-model` | `FireballNative/Core` |
+| Services | `:core-data` (API, Invidious, lyrics, sync) | `FireballRepository`, `FireballAPIClient` |
+
+Playback resolution order (Fireball): downloaded file → disk cache → direct URL → Invidious / InnerTube.
 
 ---
 
 ## License
 
 MIT — see [LICENSE](LICENSE).
+
+---
+
+## Acknowledgements
+
+Fireball 6.0 combines a **Fireball** backend and library model with **SuvMusic**-inspired UI/UX. We thank the authors of these projects and services:
+
+| Project / service | Role in Fireball | Link |
+|-------------------|------------------|------|
+| **SuvMusic** | UI shell, motion, player chrome, adaptive layout patterns | [github.com/suvojeet-sengupta/SuvMusic](https://github.com/suvojeet-sengupta/SuvMusic) |
+| **Invidious** | Privacy-oriented YouTube front-end / streaming API | [invidious.io](https://invidious.io) · [github.com/iv-org/invidious](https://github.com/iv-org/invidious) |
+| **LRCLIB** | Synced and plain lyrics | [lrclib.net](https://lrclib.net) · [github.com/tranxuanthang/lrclib](https://github.com/tranxuanthang/lrclib) |
+| **ListenBrainz** | Scrobbling and home feeds | [listenbrainz.org](https://listenbrainz.org) · [github.com/metabrainz/listenbrainz-server](https://github.com/metabrainz/listenbrainz-server) |
+| **Last.fm** | Scrobble API | [last.fm](https://www.last.fm) · [last.fm/api](https://www.last.fm/api) |
+| **iTunes Search API** | Charts, search, artist/album metadata | [Apple iTunes Search](https://developer.apple.com/library/archive/documentation/AudioVideo/Conceptual/iTuneSearchAPI/) |
+| **YouTubeKit** | Optional iOS stream metadata (Swift package) | [github.com/alexeichhorn/YouTubeKit](https://github.com/alexeichhorn/YouTubeKit) |
+| **NewPipe Extractor** | Android YouTube stream extraction patterns | [github.com/TeamNewPipe/NewPipeExtractor](https://github.com/TeamNewPipe/NewPipeExtractor) |
+| **Material 3 / Jetpack Compose** | Android design system | [m3.material.io](https://m3.material.io) |
+| **SwiftUI** | iOS interface | [developer.apple.com/swiftui](https://developer.apple.com/swiftui/) |
+| **ExoPlayer (Media3)** | Android playback engine | [developer.android.com/media/media3](https://developer.android.com/media/media3) |
+| **Ollama** | Optional local AI queue generation | [ollama.com](https://ollama.com) · [github.com/ollama/ollama](https://github.com/ollama/ollama) |
+
+NetEase lyrics and other providers are used only where configured in settings and subject to their respective terms.

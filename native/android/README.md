@@ -1,14 +1,20 @@
-# Fireball Android Native
+# Fireball Android (6.0)
 
-Kotlin + Jetpack Compose app that uses:
+Kotlin + Jetpack Compose · Media3 · `com.fireball.nativeapp`
 
-- SuvMusic-inspired UI shell and interaction patterns.
-- Fireball backend/service contracts.
+## Modules
 
-## Planned modules
+- **`app`** — UI, `MainViewModel`, playback service, navigation  
+- **`core-model`** — `Track`, `FireballSettings`, scrobble/advance rules  
+- **`core-data`** — API clients, persistence, Invidious, lyrics  
 
-- `app`: Compose UI, navigation, viewmodels.
-- `core-model`: Fireball domain models and settings schema.
-- `core-data`: persistence + service clients.
+## Build
 
-This folder currently includes baseline source files for the migration foundation.
+```bash
+./gradlew :app:installDebug
+./gradlew :app:assembleRelease
+```
+
+From repo root: `../scripts/build_native_apk.sh`
+
+**Version:** `6.0.0` (`versionCode` 600) in `app/build.gradle.kts`.

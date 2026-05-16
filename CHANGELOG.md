@@ -2,7 +2,47 @@
 
 All notable changes to **Fireball** are documented here. Release binaries live on [GitHub Releases](https://github.com/just-for-death/fireball/releases).
 
+## [6.0.0] — 2026-05-16
+
+### Native-first rewrite
+
+- **Removed Flutter** (`lib/`, root `android/` & `ios/` Runner, `pubspec.yaml`). The app is **Kotlin + Swift only** under `native/`.
+- **Android:** Jetpack Compose, Media3/ExoPlayer, modular `:core-model` / `:core-data`, WorkManager artist-release checks.
+- **iOS / iPad:** SwiftUI, AVFoundation engine, XcodeGen project, **FireballWidgets** Live Activity extension, Core package testable on Linux.
+
+### UI / UX (SuvMusic-inspired, Fireball brain)
+
+- Adaptive shell: phone tabs, tablet/iPad rail + split Now Playing.
+- Pill mini-player with dashed progress ring; long-press → track overflow sheet.
+- Now Playing: long-press **artwork ↔ lyrics**; `alwaysShowLyricsPanel` secondary strip when art shows cover.
+- Artist catalog: iTunes songs + albums; follow / notify on new releases.
+- Search: songs + albums segments; debounced suggestions.
+
+### Playback & data
+
+- Preserved `fireball_library.json` contract and Fireball settings keys.
+- Session restore without autoplay; lyrics prefetch with race guards.
+- Invidious + InnerTube/YouTubeKit stream resolution; shuffle/repeat/sleep/AI queue parity.
+
+### CI / tooling
+
+- Version **6.0.0** (`versionCode` / build **600**).
+- Codemagic: `fireball-android-release`, `fireball-native-ios`, `fireball-ios-unsigned-ipa`.
+- Scripts: `scripts/build_native_apk.sh`, `scripts/build_native_unsigned_ipa.sh`, `scripts/qa.sh`.
+
+### Release assets (v6.0.0)
+
+| Platform | Asset name |
+|----------|------------|
+| Android | `Fireball-6.0.0-android.apk` |
+| iOS | `Fireball-6.0.0-ios-unsigned.ipa` (unsigned) |
+
+---
+
 ## [5.0.0] — 2026-04-26
+
+> **Note:** v5.x was the last **Flutter** release. v6.0+ is native-only; see [README.md](README.md).
+
 
 ### UI & Navigation Polish
 

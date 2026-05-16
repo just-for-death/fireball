@@ -13,8 +13,10 @@ android {
         applicationId = "com.fireball.nativeapp"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode =
+            (project.findProperty("fireballVersionCode") as String?)?.toIntOrNull() ?: 600
+        versionName =
+            (project.findProperty("fireballVersionName") as String?) ?: "6.0.0"
     }
 
     buildFeatures {

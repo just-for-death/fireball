@@ -1,51 +1,66 @@
-# Codemagic CI/CD — Fireball unsigned iOS IPA only
-# Marketing version: FLUTTER_BUILD_NAME (5.0.0). Build number: CM_BUILD_NUMBER.
+# Codemagic CI/CD — Fireball 6.0 native (Kotlin + Swift)
+# Marketing version: FIREBALL_VERSION (6.0.0). Build number: CM_BUILD_NUMBER.
 #
-# Docs: https://docs.codemagic.io/yaml-quick-start/building-a-flutter-app/
+# Docs: https://docs.codemagic.io/yaml-quick-start/yaml-getting-started/
 #
-# No Apple signing / TestFlight upload is configured in this file.
-#
-# Monorepo: if this file lives above the Flutter app, add to the workflow:
-#   working_directory: fireball
-#
-# Unsigned IPA: use workflow `fireball-ios-unsigned-ipa` (no Apple signing; artifact is not
-# installable on real devices until you sign it yourself).
+# Workflows:
+#   fireball-android-release  — release APK from native/android
+#   fireball-native-ios       — XcodeGen + build (simulator or device destination)
+#   fireball-ios-unsigned-ipa — unsigned .ipa for sideloading (macOS only; sign locally)
 
 workflows:
-  fireball-ios-unsigned-ipa:
-    name: Fireball iOS unsigned IPA
-    max_build_duration: 120
-    instance_type: mac_mini_m2
+  fireball-android-release:
+    name: Fireball 6.0 Android APK
+    max_build_duration: 60
+    instance_type: linux_x2
     environment:
-      flutter: stable
-      xcode: latest
-      cocoapods: default
+      java: 21
       vars:
-        FLUTTER_BUILD_NAME: "5.0.0"
+        FIREBALL_VERSION: "6.0.0"
     scripts:
-      - name: Build unsigned iOS app and package IPA
+      - name: Build release APK
         script: |
           set -e
-          export FLUTTER_BUILD_NAME="${FLUTTER_BUILD_NAME:-5.0.0}"
-          export FLUTTER_BUILD_NUMBER="${CM_BUILD_NUMBER:-1}"
-          ./scripts/build_unsigned_ipa.sh "build/ios/ipa_unsigned/fireball_unsigned.ipa"
-
+          export FIREBALL_VERSION="${FIREBALL_VERSION:-6.0.0}"
+          export FIREBALL_BUILD_NUMBER="${CM_BUILD_NUMBER:-600}"
+          ./scripts/build_native_apk.sh
     artifacts:
-      - build/ios/ipa_unsigned/fireball_unsigned.ipa
+      - native/android/app/build/outputs/apk/release/*.apk
 
-  # SwiftUI native app (native/ios) — InnerTube + YouTubeKit fallback; no local Mac needed.
   fireball-native-ios:
-    name: Fireball Native iOS (Swift)
+    name: Fireball 6.0 Native iOS (Swift)
     max_build_duration: 60
     instance_type: mac_mini_m2
     environment:
       xcode: latest
+      vars:
+        FIREBALL_VERSION: "6.0.0"
     scripts:
       - name: Build native Fireball iOS app
         script: |
           set -e
+          export FIREBALL_VERSION="${FIREBALL_VERSION:-6.0.0}"
+          export FIREBALL_BUILD_NUMBER="${CM_BUILD_NUMBER:-600}"
           cd native/ios
           chmod +x scripts/build-ios-codemagic.sh
           ./scripts/build-ios-codemagic.sh "generic/platform=iOS Simulator"
     artifacts:
       - native/ios/build/DerivedData/**/*.app
+
+  fireball-ios-unsigned-ipa:
+    name: Fireball 6.0 iOS unsigned IPA
+    max_build_duration: 90
+    instance_type: mac_mini_m2
+    environment:
+      xcode: latest
+      vars:
+        FIREBALL_VERSION: "6.0.0"
+    scripts:
+      - name: Package unsigned IPA
+        script: |
+          set -e
+          export FIREBALL_VERSION="${FIREBALL_VERSION:-6.0.0}"
+          export FIREBALL_BUILD_NUMBER="${CM_BUILD_NUMBER:-600}"
+          ./scripts/build_native_unsigned_ipa.sh "dist/Fireball-${FIREBALL_VERSION}-ios-unsigned.ipa"
+    artifacts:
+      - dist/Fireball-*-ios-unsigned.ipa
