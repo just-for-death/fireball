@@ -62,7 +62,10 @@ private struct RootShellView: View {
                                     onTap: { isPlayerOpen = true },
                                     onLongPressMenu: { overflowDraft = OverflowTrackDraft(track: track) },
                                     onArtistTap: { viewModel.requestArtistDetail(artistDisplayName: track.artist) },
-                                    onClose: { viewModel.stopPlaybackAndDismissMiniPlayer() },
+                                    onClose: {
+                                        isPlayerOpen = false
+                                        viewModel.stopPlaybackAndDismissMiniPlayer()
+                                    },
                                     chrome: .ipadSidebarRail
                                 )
                                 .padding(.horizontal, 10)
@@ -106,7 +109,10 @@ private struct RootShellView: View {
                                 onTap: { isPlayerOpen = true },
                                 onLongPressMenu: { overflowDraft = OverflowTrackDraft(track: track) },
                                 onArtistTap: { viewModel.requestArtistDetail(artistDisplayName: track.artist) },
-                                onClose: { viewModel.stopPlaybackAndDismissMiniPlayer() },
+                                onClose: {
+                                    isPlayerOpen = false
+                                    viewModel.stopPlaybackAndDismissMiniPlayer()
+                                },
                                 chrome: .phone
                             )
                             .padding(.horizontal)
@@ -295,6 +301,7 @@ private struct RootShellView: View {
                 isFavorite: viewModel.isFavorite,
                 onPlay: viewModel.play,
                 onFavorite: viewModel.toggleFavorite,
+                onOverflowTrack: { overflowDraft = OverflowTrackDraft(track: $0) },
                 onUnfollowArtist: viewModel.unfollowArtist
             )
         case .settings:

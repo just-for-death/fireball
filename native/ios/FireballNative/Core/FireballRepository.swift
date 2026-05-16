@@ -84,15 +84,24 @@ final class FireballRepository {
         if !wantGotify && !wantDevice { return nil }
 
         var artistsChanged = false
-        let updatedArtists = snapshot.artists.enumerated().map { _, artist -> Artist in
-            guard let artistIdNum = Int(artist.artistId) else { return artist }
+        var updatedArtists: [Artist] = []
+        for artist in snapshot.artists {
+            guard let artistIdNum = Int(artist.artistId) else {
+                updatedArtists.append(artist)
+                continue
+            }
             guard let albums = try? await api.iTunesArtistAlbums(artistId: artistIdNum, limit: 1),
                   let latest = albums.first,
-                  let releaseId = Self.stringValue(latest["collectionId"]) else {
-                return artist
+                  let releaseId = Self.stringValue(latest["collectionId"])
+            else {
+                updatedArtists.append(artist)
+                continue
             }
             let releaseName = latest["collectionName"] as? String ?? "New Release"
-            if releaseId == artist.latestReleaseId { return artist }
+            if releaseId == artist.latestReleaseId {
+                updatedArtists.append(artist)
+                continue
+            }
 
             if artist.latestReleaseId != nil {
                 let title = "New Release from \(artist.name)"
@@ -105,11 +114,13 @@ final class FireballRepository {
                 }
             }
             artistsChanged = true
-            return Artist(
-                artistId: artist.artistId,
-                name: artist.name,
-                artwork: artist.artwork,
-                latestReleaseId: releaseId
+            updatedArtists.append(
+                Artist(
+                    artistId: artist.artistId,
+                    name: artist.name,
+                    artwork: artist.artwork,
+                    latestReleaseId: releaseId
+                )
             )
         }
 

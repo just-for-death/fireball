@@ -378,44 +378,19 @@ struct HomeScreen: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 16) {
                         ForEach(library.albums, id: \.id) { album in
-                            Button {
-                                guard let tracks = album.tracks, let first = tracks.first else { return }
-                                onPlay(first, tracks)
-                            } label: {
-                                VStack(alignment: .leading, spacing: 6) {
-                                    ZStack {
-                                        RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                            .fill(dominantColors.secondary.opacity(0.55))
-                                        if let art = album.artwork, let u = URL(string: art), !art.isEmpty {
-                                            AsyncImage(url: u) { phase in
-                                                if let image = phase.image {
-                                                    image.resizable().aspectRatio(contentMode: .fill)
-                                                } else {
-                                                    Image(systemName: "square.stack")
-                                                        .font(.title)
-                                                        .foregroundStyle(dominantColors.onBackground.opacity(0.45))
-                                                }
-                                            }
-                                        } else {
-                                            Image(systemName: "square.stack")
-                                                .font(.title)
-                                                .foregroundStyle(dominantColors.onBackground.opacity(0.45))
-                                        }
+                            HomeAlbumCard(
+                                album: album,
+                                onPlay: {
+                                    guard let tracks = album.tracks, let first = tracks.first else { return }
+                                    onPlay(first, tracks)
+                                },
+                                onOverflow: {
+                                    if let first = album.tracks?.first {
+                                        onOverflowTrack(first)
                                     }
-                                    .frame(width: 130, height: 130)
-                                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                                    Text(album.title)
-                                        .font(.subheadline.weight(.semibold))
-                                        .foregroundStyle(dominantColors.onBackground)
-                                        .lineLimit(1)
-                                    Text(album.artist)
-                                        .font(.caption)
-                                        .foregroundStyle(dominantColors.onBackground.opacity(0.72))
-                                        .lineLimit(1)
-                                }
-                                .frame(width: 130, alignment: .leading)
-                            }
-                            .buttonStyle(.plain)
+                                },
+                                onArtistTap: { onOpenArtist(album.artist, album.artwork) }
+                            )
                             .disabled(album.tracks?.isEmpty != false)
                         }
                     }
@@ -487,6 +462,114 @@ private struct HomeTrackCard: View {
                 .accessibilityLabel("Open artist \(track.artist)")
         }
         .frame(width: 140, alignment: .leading)
+    }
+}
+
+private struct HomeAlbumCard: View {
+    let album: Album
+    let onPlay: () -> Void
+    let onOverflow: () -> Void
+    let onArtistTap: () -> Void
+    @Environment(\.dominantColors) var dominantColors
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            ZStack {
+                VStack(alignment: .leading, spacing: 6) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .fill(dominantColors.secondary.opacity(0.55))
+                        if let art = album.artwork, let u = URL(string: art), !art.isEmpty {
+                            AsyncImage(url: u) { phase in
+                                if let image = phase.image {
+                                    image.resizable().aspectRatio(contentMode: .fill)
+                                } else {
+                                    Image(systemName: "square.stack")
+                                        .font(.title)
+                                        .foregroundStyle(dominantColors.onBackground.opacity(0.45))
+                                }
+                            }
+                        } else {
+                            Image(systemName: "square.stack")
+                                .font(.title)
+                                .foregroundStyle(dominantColors.onBackground.opacity(0.45))
+                        }
+                    }
+                    .frame(width: 130, height: 130)
+                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    Text(album.title)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(dominantColors.onBackground)
+                        .lineLimit(1)
+                }
+                .frame(width: 130, alignment: .leading)
+                TapOrLongPressHostingView(onTap: onPlay, onLongPress: onOverflow)
+            }
+            Text(album.artist)
+                .font(.caption)
+                .foregroundStyle(dominantColors.onBackground.opacity(0.72))
+                .lineLimit(1)
+                .frame(maxWidth: 130, alignment: .leading)
+                .contentShape(Rectangle())
+                .onTapGesture(perform: onArtistTap)
+                .accessibilityLabel("Open artist \(album.artist)")
+        }
+        .frame(width: 130, alignment: .leading)
+    }
+}
+
+private struct LibraryTrackRow: View {
+    let track: Track
+    let onPlay: () -> Void
+    let onOverflow: () -> Void
+    var onArtistTap: (() -> Void)? = nil
+    var showFavoriteButton: Bool = false
+    var isFavorite: Bool = false
+    var onFavorite: (() -> Void)? = nil
+    var useMaterialBackground: Bool = true
+    @Environment(\.dominantColors) var dominantColors
+
+    var body: some View {
+        ZStack {
+            HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(track.title)
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(useMaterialBackground ? .primary : dominantColors.onBackground)
+                        .lineLimit(useMaterialBackground ? 2 : 1)
+                    Text(track.artist)
+                        .font(.caption)
+                        .foregroundStyle(useMaterialBackground ? .secondary : dominantColors.onBackground.opacity(0.7))
+                        .lineLimit(1)
+                        .onTapGesture {
+                            onArtistTap?()
+                        }
+                }
+                Spacer(minLength: 0)
+                if showFavoriteButton, let onFavorite {
+                    Button(action: onFavorite) {
+                        Image(systemName: isFavorite ? "heart.fill" : "heart")
+                            .foregroundStyle(isFavorite ? .red : .secondary)
+                    }
+                    .buttonStyle(.borderless)
+                } else if !useMaterialBackground {
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(dominantColors.onBackground.opacity(0.35))
+                }
+            }
+            .padding(.horizontal, useMaterialBackground ? 10 : 12)
+            .padding(.vertical, useMaterialBackground ? 10 : 8)
+            .background {
+                if useMaterialBackground {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous).fill(.thinMaterial)
+                } else {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(dominantColors.secondary.opacity(0.32))
+                }
+            }
+            TapOrLongPressHostingView(onTap: onPlay, onLongPress: onOverflow)
+        }
     }
 }
 
@@ -590,10 +673,7 @@ struct SearchScreen: View {
                     ScrollView {
                         LazyVStack(alignment: .leading, spacing: 0) {
                             ForEach(searchSuggestions, id: \.effectiveId) { t in
-                                Button {
-                                    query = t.title
-                                    Task { await onSearch() }
-                                } label: {
+                                ZStack {
                                     HStack {
                                         VStack(alignment: .leading, spacing: 2) {
                                             Text(t.title)
@@ -602,12 +682,13 @@ struct SearchScreen: View {
                                         Spacer()
                                     }
                                     .padding(.vertical, 8)
-                                }
-                                .buttonStyle(.plain)
-                                .contextMenu {
-                                    Button("Track actions…") {
-                                        onOverflowTrack(t)
-                                    }
+                                    TapOrLongPressHostingView(
+                                        onTap: {
+                                            query = t.title
+                                            Task { await onSearch() }
+                                        },
+                                        onLongPress: { onOverflowTrack(t) }
+                                    )
                                 }
                             }
                         }
@@ -642,31 +723,17 @@ struct SearchScreen: View {
             emptyState(icon: "magnifyingglass", title: "No song results yet", subtitle: "Run search or tap a suggestion.")
         } else {
             List(results, id: \.effectiveId) { track in
-                Button {
-                    onPlay(track, results)
-                } label: {
-                    HStack {
-                        VStack(alignment: .leading) {
-                            Text(track.title)
-                            Text(track.artist).font(.caption).foregroundStyle(.secondary)
-                        }
-                        Spacer()
-                        Button {
-                            onFavorite(track)
-                        } label: {
-                            Image(systemName: isFavorite(track) ? "heart.fill" : "heart")
-                                .foregroundStyle(isFavorite(track) ? .red : .secondary)
-                        }
-                        .buttonStyle(.borderless)
-                    }
-                }
-                .buttonStyle(.plain)
-                .contextMenu {
-                    Button("Track actions…") {
-                        onOverflowTrack(track)
-                    }
-                }
+                LibraryTrackRow(
+                    track: track,
+                    onPlay: { onPlay(track, results) },
+                    onOverflow: { onOverflowTrack(track) },
+                    showFavoriteButton: true,
+                    isFavorite: isFavorite(track),
+                    onFavorite: { onFavorite(track) },
+                    useMaterialBackground: false
+                )
             }
+            .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
         }
     }
 
@@ -768,6 +835,7 @@ struct LibraryScreen: View {
     let isFavorite: (Track) -> Bool
     let onPlay: (Track, [Track]) -> Void
     let onFavorite: (Track) -> Void
+    var onOverflowTrack: (Track) -> Void = { _ in }
     var onUnfollowArtist: (String) -> Void = { _ in }
 
     @EnvironmentObject private var viewModel: MainViewModel
@@ -803,17 +871,15 @@ struct LibraryScreen: View {
                             ScrollView(.horizontal, showsIndicators: false) {
                                 HStack(spacing: 12) {
                                     ForEach(library.history.prefix(20), id: \.effectiveId) { track in
-                                        Button {
-                                            onPlay(track, library.history)
-                                        } label: {
-                                            VStack(alignment: .leading, spacing: 4) {
-                                                Text(track.title).lineLimit(1)
-                                                Text(track.artist).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                                        LibraryTrackRow(
+                                            track: track,
+                                            onPlay: { onPlay(track, library.history) },
+                                            onOverflow: { onOverflowTrack(track) },
+                                            onArtistTap: {
+                                                viewModel.requestArtistDetail(artistDisplayName: track.artist)
                                             }
-                                            .frame(width: 140, alignment: .leading)
-                                            .padding(10)
-                                            .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12))
-                                        }
+                                        )
+                                        .frame(width: 140)
                                     }
                                 }
                                 .padding(.horizontal)
@@ -838,22 +904,17 @@ struct LibraryScreen: View {
                     }
                     LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
                         ForEach(library.favorites, id: \.effectiveId) { track in
-                            Button {
-                                onPlay(track, library.favorites)
-                            } label: {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(track.title).lineLimit(2)
-                                    Text(track.artist).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                                }
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(10)
-                                .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12))
-                            }
-                            .contextMenu {
-                                Button(isFavorite(track) ? "Remove favorite" : "Add favorite") {
-                                    onFavorite(track)
-                                }
-                            }
+                            LibraryTrackRow(
+                                track: track,
+                                onPlay: { onPlay(track, library.favorites) },
+                                onOverflow: { onOverflowTrack(track) },
+                                onArtistTap: {
+                                    viewModel.requestArtistDetail(artistDisplayName: track.artist)
+                                },
+                                showFavoriteButton: true,
+                                isFavorite: isFavorite(track),
+                                onFavorite: { onFavorite(track) }
+                            )
                         }
                     }
                     .padding()
@@ -880,36 +941,32 @@ struct LibraryScreen: View {
                                 .foregroundStyle(.secondary)
                         }
                         ForEach(library.favorites, id: \.effectiveId) { track in
-                            HStack {
-                                Button {
-                                    onPlay(track, library.favorites)
-                                } label: {
-                                    VStack(alignment: .leading) {
-                                        Text(track.title)
-                                        Text(track.artist).font(.caption).foregroundStyle(.secondary)
-                                    }
-                                }
-                                Spacer()
-                                Button {
-                                    onFavorite(track)
-                                } label: {
-                                    Image(systemName: "heart.fill").foregroundStyle(.red)
-                                }
-                                .buttonStyle(.borderless)
-                            }
+                            LibraryTrackRow(
+                                track: track,
+                                onPlay: { onPlay(track, library.favorites) },
+                                onOverflow: { onOverflowTrack(track) },
+                                onArtistTap: {
+                                    viewModel.requestArtistDetail(artistDisplayName: track.artist)
+                                },
+                                showFavoriteButton: true,
+                                isFavorite: true,
+                                onFavorite: { onFavorite(track) },
+                                useMaterialBackground: false
+                            )
                         }
                     }
                     if !library.history.isEmpty {
                         Section("History") {
                             ForEach(library.history.prefix(30), id: \.effectiveId) { track in
-                                Button {
-                                    onPlay(track, library.history)
-                                } label: {
-                                    VStack(alignment: .leading) {
-                                        Text(track.title)
-                                        Text(track.artist).font(.caption).foregroundStyle(.secondary)
-                                    }
-                                }
+                                LibraryTrackRow(
+                                    track: track,
+                                    onPlay: { onPlay(track, library.history) },
+                                    onOverflow: { onOverflowTrack(track) },
+                                    onArtistTap: {
+                                        viewModel.requestArtistDetail(artistDisplayName: track.artist)
+                                    },
+                                    useMaterialBackground: false
+                                )
                             }
                         }
                     }
