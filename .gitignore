@@ -12,41 +12,43 @@
 .swiftpm/
 migrate_working_dir/
 
-# IntelliJ related
+# IntelliJ / IDE
 *.iml
 *.ipr
 *.iws
 .idea/
 
-# The .vscode folder contains launch configuration and tasks you configure in
-# VS Code which you may wish to be included in version control, so this line
-# is commented out by default.
-#.vscode/
-
-# Flutter/Dart/Pub related
+# Dart / Flutter (legacy — removed in v6; keep ignores for old checkouts)
 **/doc/api/
-**/ios/Flutter/.last_build_id
 .dart_tool/
 .flutter-plugins-dependencies
 .pub-cache/
 .pub/
-/build/
 /coverage/
 
-# Symbolication related
+# Symbolication / obfuscation
 app.*.symbols
-
-# Obfuscation related
 app.*.map.json
 
-# Android Studio will place build artifacts here
-/android/app/debug
-/android/app/profile
-/android/app/release
-
-# Local release staging / large binaries (official downloads live on GitHub Releases)
+# Local release staging / large binaries (GitHub Releases is canonical)
 /dist/
 fireball_unsigned.ipa
 Fireball-*-android.apk
 Fireball-*-ios-unsigned.ipa
 SHA256SUMS.txt
+
+# Android native
+native/android/.gradle/
+native/android/**/build/
+native/android/local.properties
+native/android/.kotlin/
+
+# iOS native
+native/ios/build/
+native/ios/DerivedData/
+native/ios/FireballNative.xcodeproj/
+native/ios/FireballNative.xcworkspace/
+native/ios/.swiftpm/xcode/
+
+# Generic build output
+/build/

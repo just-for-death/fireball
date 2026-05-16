@@ -1,58 +1,46 @@
-# Fireball QA Checklist
+# Fireball 6.0 QA Checklist
 
-Use this checklist after major feature merges.
+Use after major merges. Native app only (`native/android`, `native/ios`).
 
 ## Automated
 
-- [ ] `flutter analyze` passes
-- [ ] `flutter test` passes
+- [ ] `./scripts/qa.sh` passes (Android unit tests + iOS Core `swift test` on Linux)
+- [ ] `cd native/android && ./gradlew :app:compileDebugKotlin` (optional sanity)
 
-## Settings Persistence
+## Settings persistence
 
-- [ ] Change `Invidious playlist privacy` and restart app -> value persists
-- [ ] Change `ListenBrainz scrobble percent` and restart app -> value persists
-- [ ] Change `ListenBrainz scrobble max seconds` and restart app -> value persists
-- [ ] Change `Queue mode` (`off` / `repeat` / `ai`) and restart app -> value persists
+- [ ] Invidious instance URL survives restart
+- [ ] ListenBrainz scrobble percent / max seconds persist
+- [ ] Queue mode (`off` / `repeat` / `ai`) persists
+- [ ] `alwaysShowLyricsPanel` and appearance chrome source persist
 
-## Queue Mode Behavior
+## Playback
 
-- [ ] `off`: queue ends -> playback stops
-- [ ] `repeat`: queue ends -> playback loops to first track
-- [ ] `ai`: queue ends -> AI track is appended and playback continues (with valid Ollama config)
-- [ ] `ai`: with invalid/missing Ollama config -> graceful failure, no crash
+- [ ] Cold start: restored session does **not** autoplay
+- [ ] Play / pause / next / previous; lock-screen controls (Android notification, iOS Control Center)
+- [ ] Shuffle and repeat modes
+- [ ] Sleep timer and sleep-after-current
 
-## Follow Artist Flows
+## Now Playing & lyrics
 
-- [ ] Artist screen follow/unfollow updates library correctly
-- [ ] Player menu follow/unfollow updates library correctly
-- [ ] Track options sheet follow/unfollow updates library correctly
+- [ ] Long-press artwork toggles lyrics in art slot; long-press again shows art
+- [ ] With `alwaysShowLyricsPanel`: extra strip when art visible; no duplicate when lyrics in slot
+- [ ] ⋮ / ⋯ opens overflow sheet (play next, queue, favorite, playlists, artist)
 
-## ListenBrainz
+## Library & artist
 
-- [ ] Valid token: "Submit Playing Now" works
-- [ ] Valid token: scrobble fires using configured thresholds
-- [ ] Invalid token/offline: no crash, clear error feedback
-- [ ] Home "Recently Played" section renders correctly
-- [ ] Home "My Top Tracks" section renders correctly
+- [ ] Artist screen: Songs + Albums only
+- [ ] Follow / unfollow artist; optional release notifications
+- [ ] Playlist detail: no autoplay on open
 
-## Invidious Playlist Privacy
+## Integrations (smoke)
 
-- [ ] `private` applies when creating/pushing playlist
-- [ ] `unlisted` applies when creating/pushing playlist
-- [ ] `public` applies when creating/pushing playlist
+- [ ] ListenBrainz playing now / scrobble (valid token)
+- [ ] WebDAV or Google Drive backup round-trip (if configured)
 
-## Core Regression Smoke
+## Device matrix (recommended)
 
-- [ ] Home loads and plays tracks
-- [ ] Search works and plays tracks
-- [ ] Artist screen loads and plays tracks
-- [ ] Library tabs work (favorites/playlists/artists/albums/downloads/cached)
-- [ ] Player controls work (play/pause, prev/next, seek, shuffle/repeat)
-- [ ] WebDAV sync still works
-- [ ] Remote pairing/control still works
-- [ ] Downloads and cache behavior unchanged
-
-## Final Signoff
-
-- [ ] No blocker issues found
-- [ ] Any known non-blockers documented
+- [ ] Android phone (API 26+)
+- [ ] Android tablet or foldable (rail layout)
+- [ ] iPhone
+- [ ] iPad (split Now Playing)

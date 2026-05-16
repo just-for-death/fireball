@@ -15,7 +15,10 @@ if ! command -v xcodegen >/dev/null 2>&1; then
   brew install xcodegen
 fi
 
-echo "==> Generating Xcode project…"
+export MARKETING_VERSION="${FIREBALL_VERSION:-6.0.0}"
+export CURRENT_PROJECT_VERSION="${FIREBALL_BUILD_NUMBER:-600}"
+
+echo "==> Generating Xcode project (Fireball $MARKETING_VERSION / $CURRENT_PROJECT_VERSION)…"
 xcodegen generate
 
 SCHEME="FireballNative"
