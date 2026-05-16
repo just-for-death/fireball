@@ -138,12 +138,12 @@ private struct RootShellView: View {
                 splitVisibility = viewModel.library.settings.ipadSidebarCollapsed ? .detailOnly : .doubleColumn
                 ArtistReleaseBackgroundRefresh.scheduleIfNeeded(settings: viewModel.library.settings)
             }
-            .onChange(of: viewModel.library.settings.startTab) { newValue in
+            .onChange(of: viewModel.library.settings.startTab) { _, newValue in
                 if let tab = RootTab(rawValue: newValue.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()) {
                     selectedTab = tab
                 }
             }
-            .onChange(of: viewModel.library.settings.ipadSidebarCollapsed) { collapsed in
+            .onValueChange(of: viewModel.library.settings.ipadSidebarCollapsed) { collapsed in
                 splitVisibility = collapsed ? .detailOnly : .doubleColumn
             }
             .sheet(item: $overflowDraft) { draft in
@@ -182,24 +182,24 @@ private struct RootShellView: View {
                 )
             }
 
-            .onChange(of: viewModel.searchFocusRequest) { newValue in
+            .onChange(of: viewModel.searchFocusRequest) { _, newValue in
                 guard let q = newValue, !q.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
                 selectedTab = .search
                 viewModel.query = q
                 Task { await viewModel.search() }
                 viewModel.consumeSearchFocusRequest()
             }
-            .onChange(of: scenePhase) { phase in
+            .onChange(of: scenePhase) { _, phase in
                 if phase == .active {
                     Task { await viewModel.refreshFollowedArtistReleaseChecksFromForeground() }
                 }
             }
-            .onChange(of: viewModel.currentTrack?.effectiveId) { trackId in
+            .onChange(of: viewModel.currentTrack?.effectiveId) { _, trackId in
                 if trackId == nil {
                     isPlayerOpen = false
                 }
             }
-            .onChange(of: viewModel.artistOpenRequest) { req in
+            .onChange(of: viewModel.artistOpenRequest) { _, req in
                 if req != nil {
                     isPlayerOpen = false
                 }

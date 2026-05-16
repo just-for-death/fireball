@@ -37,7 +37,7 @@ workflows:
     max_build_duration: 90
     instance_type: mac_mini_m2
     environment:
-      xcode: latest
+      xcode: 16.4
       vars:
         FIREBALL_VERSION: "6.0.0"
     scripts:
@@ -66,7 +66,7 @@ workflows:
     max_build_duration: 90
     instance_type: mac_mini_m2
     environment:
-      xcode: latest
+      xcode: 16.4
       vars:
         FIREBALL_VERSION: "6.0.0"
     scripts:
@@ -94,7 +94,7 @@ workflows:
     max_build_duration: 60
     instance_type: mac_mini_m2
     environment:
-      xcode: latest
+      xcode: 16.4
       vars:
         FIREBALL_VERSION: "6.0.0"
     scripts:

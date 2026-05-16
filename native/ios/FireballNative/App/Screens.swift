@@ -1198,7 +1198,7 @@ struct SettingsScreen: View {
                     Text("Album artwork").tag("music")
                     Text("Preset scheme").tag("scheme")
                 }
-                Text("Synced as `appearanceColorSource` (`music` | `scheme`). Android’s Material You maps to preset scheme here.")
+                Text("appearanceColorSource: music or scheme. On Android, Material You maps to scheme.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 TextField("Accent seed (ARGB hex)", text: .init(

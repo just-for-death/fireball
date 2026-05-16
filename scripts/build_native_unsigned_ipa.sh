@@ -31,6 +31,9 @@ rm -rf build/FireballNative.xcarchive build/ipa_payload
 mkdir -p build
 
 echo "==> xcodebuild archive (unsigned)"
+ARCHIVE_LOG="$IOS/build/xcode-archive.log"
+rm -f "$ARCHIVE_LOG"
+set +e
 xcodebuild \
   -project FireballNative.xcodeproj \
   -scheme FireballNative \
@@ -40,7 +43,14 @@ xcodebuild \
   CODE_SIGNING_ALLOWED=NO \
   CODE_SIGN_IDENTITY="" \
   CODE_SIGNING_REQUIRED=NO \
-  archive
+  archive 2>&1 | tee "$ARCHIVE_LOG"
+ARCHIVE_STATUS=${PIPESTATUS[0]}
+set -e
+if [[ "$ARCHIVE_STATUS" -ne 0 ]]; then
+  echo "==> xcodebuild failed; compiler errors:" >&2
+  grep -E 'error:' "$ARCHIVE_LOG" | head -40 >&2 || true
+  exit "$ARCHIVE_STATUS"
+fi
 
 # Prefer archived .app; fall back to derived data layout if Xcode moves outputs.
 if [[ -d "$ARCHIVE_PATH/Products/Applications/FireballNative.app" ]]; then
