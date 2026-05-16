@@ -3,12 +3,15 @@ import SwiftUI
 @main
 struct FireballNativeApp: App {
     @StateObject private var viewModel: MainViewModel
+    private let libraryStore: LibraryStore
 
     init() {
         let baseDir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
         let store = LibraryStore(baseDirectory: baseDir)
+        libraryStore = store
         let repository = FireballRepository(api: FireballAPIClient(), store: store)
         _viewModel = StateObject(wrappedValue: MainViewModel(repository: repository))
+        ArtistReleaseBackgroundRefresh.register(store: store)
     }
 
     var body: some Scene {
@@ -126,6 +129,7 @@ private struct RootShellView: View {
                     selectedTab = tab
                 }
                 splitVisibility = viewModel.library.settings.ipadSidebarCollapsed ? .detailOnly : .doubleColumn
+                ArtistReleaseBackgroundRefresh.scheduleIfNeeded(settings: viewModel.library.settings)
             }
             .onChange(of: viewModel.library.settings.startTab) { newValue in
                 if let tab = RootTab(rawValue: newValue.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()) {
@@ -212,12 +216,26 @@ private struct RootShellView: View {
             currentIndex: viewModel.currentIndex,
             onPlayQueueIndex: viewModel.playQueueIndex,
             onFollowArtist: viewModel.followArtist,
+            onOpenArtist: { name, _ in
+                viewModel.requestArtistDetail(artistDisplayName: name)
+            },
             onClose: { isPlayerOpen = false },
             onOpenTrackMenu: {
                 if let t = viewModel.currentTrack {
                     overflowDraft = OverflowTrackDraft(track: t)
                 }
-            }
+            },
+            isFavorite: viewModel.isFavorite(track),
+            onPlayNext: { viewModel.playTrackUpNext(track) },
+            onAddToQueue: { viewModel.appendTrackToQueue(track) },
+            onToggleFavorite: { viewModel.toggleFavorite(track) },
+            onSeeArtist: {
+                viewModel.requestArtistDetail(artistDisplayName: track.artist)
+            },
+            onFollowArtistFromMenu: {
+                viewModel.followArtist(track.artist, artwork: track.artwork)
+            },
+            onOverflowQueueTrack: { overflowDraft = OverflowTrackDraft(track: $0) }
         )
     }
 
@@ -247,7 +265,11 @@ private struct RootShellView: View {
                 onPlayPause: viewModel.togglePlayPause,
                 onPrevious: viewModel.previous,
                 onNext: viewModel.next,
-                isPlaying: viewModel.isPlaying
+                isPlaying: viewModel.isPlaying,
+                onOverflowTrack: { overflowDraft = OverflowTrackDraft(track: $0) },
+                onOpenArtist: { name, _ in
+                    viewModel.requestArtistDetail(artistDisplayName: name)
+                }
             )
         case .search:
             SearchScreen(

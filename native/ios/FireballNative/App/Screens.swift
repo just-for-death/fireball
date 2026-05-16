@@ -23,6 +23,8 @@ struct HomeScreen: View {
     let onPrevious: () -> Void
     let onNext: () -> Void
     let isPlaying: Bool
+    var onOverflowTrack: (Track) -> Void = { _ in }
+    var onOpenArtist: (String, String?) -> Void = { _, _ in }
 
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.dominantColors) var dominantColors
@@ -150,31 +152,12 @@ struct HomeScreen: View {
                                 HStack(spacing: 16) {
                                     ForEach(Array(trendingTracks.enumerated()), id: \.offset) { index, track in
                                         SuvFadeSlideIn.staggered(index: index) {
-                                            Button {
-                                                onPlay(track, trendingTracks)
-                                            } label: {
-                                                VStack(alignment: .leading, spacing: 6) {
-                                                    AsyncImage(url: URL(string: track.artwork ?? "")) { phase in
-                                                        if let image = phase.image {
-                                                            image.resizable().aspectRatio(contentMode: .fill)
-                                                        } else {
-                                                            Rectangle().fill(dominantColors.secondary)
-                                                        }
-                                                    }
-                                                    .frame(width: 140, height: 140)
-                                                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                                                    Text(track.title)
-                                                        .font(.headline)
-                                                        .foregroundStyle(dominantColors.onBackground)
-                                                        .lineLimit(1)
-                                                    Text(track.artist)
-                                                        .font(.caption)
-                                                        .foregroundStyle(dominantColors.onBackground.opacity(0.72))
-                                                        .lineLimit(1)
-                                                }
-                                                .frame(width: 140, alignment: .leading)
-                                            }
-                                            .buttonStyle(.plain)
+                                            HomeTrackCard(
+                                                track: track,
+                                                onPlay: { onPlay(track, trendingTracks) },
+                                                onOverflow: { onOverflowTrack(track) },
+                                                onArtistTap: { onOpenArtist(track.artist, track.artwork) }
+                                            )
                                         }
                                     }
                                 }
@@ -195,7 +178,8 @@ struct HomeScreen: View {
                                         HomeTrackCard(
                                             track: track,
                                             onPlay: { onPlay(track, lbRecentTracks) },
-                                            onFollowArtist: { onFollowArtist(track.artist, track.artwork) }
+                                            onOverflow: { onOverflowTrack(track) },
+                                            onArtistTap: { onOpenArtist(track.artist, track.artwork) }
                                         )
                                     }
                                 }
@@ -241,7 +225,8 @@ struct HomeScreen: View {
                                             HomeTrackCard(
                                                 track: track,
                                                 onPlay: { onPlay(track, lbTopTracks) },
-                                                onFollowArtist: { onFollowArtist(track.artist, track.artwork) }
+                                                onOverflow: { onOverflowTrack(track) },
+                                                onArtistTap: { onOpenArtist(track.artist, track.artwork) }
                                             )
                                         }
                                     }
@@ -308,31 +293,12 @@ struct HomeScreen: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 16) {
                         ForEach(Array(library.history.prefix(20)), id: \.effectiveId) { track in
-                            Button {
-                                onPlay(track, library.history)
-                            } label: {
-                                VStack(alignment: .leading, spacing: 6) {
-                                    AsyncImage(url: URL(string: track.artwork ?? "")) { phase in
-                                        if let image = phase.image {
-                                            image.resizable().aspectRatio(contentMode: .fill)
-                                        } else {
-                                            Rectangle().fill(dominantColors.secondary)
-                                        }
-                                    }
-                                    .frame(width: 140, height: 140)
-                                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                                    Text(track.title)
-                                        .font(.headline)
-                                        .foregroundStyle(dominantColors.onBackground)
-                                        .lineLimit(1)
-                                    Text(track.artist)
-                                        .font(.caption)
-                                        .foregroundStyle(dominantColors.onBackground.opacity(0.72))
-                                        .lineLimit(1)
-                                }
-                                .frame(width: 140, alignment: .leading)
-                            }
-                            .buttonStyle(.plain)
+                            HomeTrackCard(
+                                track: track,
+                                onPlay: { onPlay(track, library.history) },
+                                onOverflow: { onOverflowTrack(track) },
+                                onArtistTap: { onOpenArtist(track.artist, track.artwork) }
+                            )
                         }
                     }
                     .padding(.horizontal, contentGutter)
@@ -351,39 +317,12 @@ struct HomeScreen: View {
                     .padding(.horizontal, contentGutter)
                 VStack(spacing: 6) {
                     ForEach(Array(library.favorites.prefix(8)), id: \.effectiveId) { track in
-                        Button {
-                            onPlay(track, library.favorites)
-                        } label: {
-                            HStack(spacing: 12) {
-                                AsyncImage(url: URL(string: track.artwork ?? "")) { phase in
-                                    if let image = phase.image {
-                                        image.resizable().aspectRatio(contentMode: .fill)
-                                    } else {
-                                        Rectangle().fill(dominantColors.tertiary)
-                                    }
-                                }
-                                .frame(width: 48, height: 48)
-                                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(track.title)
-                                        .font(.body.weight(.semibold))
-                                        .foregroundStyle(dominantColors.onBackground)
-                                        .lineLimit(1)
-                                    Text(track.artist)
-                                        .font(.caption)
-                                        .foregroundStyle(dominantColors.onBackground.opacity(0.7))
-                                        .lineLimit(1)
-                                }
-                                Spacer(minLength: 0)
-                                Image(systemName: "chevron.right")
-                                    .font(.caption.weight(.semibold))
-                                    .foregroundStyle(dominantColors.onBackground.opacity(0.35))
-                            }
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 8)
-                            .background(dominantColors.secondary.opacity(0.32), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                        }
-                        .buttonStyle(.plain)
+                        HomeFavoriteRow(
+                            track: track,
+                            onPlay: { onPlay(track, library.favorites) },
+                            onOverflow: { onOverflowTrack(track) },
+                            onArtistTap: { onOpenArtist(track.artist, track.artwork) }
+                        )
                     }
                 }
                 .padding(.horizontal, contentGutter)
@@ -517,12 +456,13 @@ struct HomeScreen: View {
 private struct HomeTrackCard: View {
     let track: Track
     let onPlay: () -> Void
-    let onFollowArtist: () -> Void
+    let onOverflow: () -> Void
+    let onArtistTap: () -> Void
     @Environment(\.dominantColors) var dominantColors
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Button(action: onPlay) {
+            ZStack {
                 VStack(alignment: .leading, spacing: 8) {
                     AsyncImage(url: URL(string: track.artwork ?? "")) { phase in
                         if let image = phase.image {
@@ -539,18 +479,61 @@ private struct HomeTrackCard: View {
                         .lineLimit(1)
                 }
                 .frame(width: 140, alignment: .leading)
+                TapOrLongPressHostingView(onTap: onPlay, onLongPress: onOverflow)
             }
-            .buttonStyle(.plain)
             Text(track.artist)
                 .font(.caption)
                 .foregroundStyle(dominantColors.onBackground.opacity(0.72))
                 .lineLimit(1)
                 .frame(maxWidth: 140, alignment: .leading)
                 .contentShape(Rectangle())
-                .onTapGesture { onFollowArtist() }
-                .accessibilityLabel("Follow \(track.artist)")
+                .onTapGesture(perform: onArtistTap)
+                .accessibilityLabel("Open artist \(track.artist)")
         }
         .frame(width: 140, alignment: .leading)
+    }
+}
+
+private struct HomeFavoriteRow: View {
+    let track: Track
+    let onPlay: () -> Void
+    let onOverflow: () -> Void
+    let onArtistTap: () -> Void
+    @Environment(\.dominantColors) var dominantColors
+
+    var body: some View {
+        ZStack {
+            HStack(spacing: 12) {
+                AsyncImage(url: URL(string: track.artwork ?? "")) { phase in
+                    if let image = phase.image {
+                        image.resizable().aspectRatio(contentMode: .fill)
+                    } else {
+                        Rectangle().fill(dominantColors.tertiary)
+                    }
+                }
+                .frame(width: 48, height: 48)
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(track.title)
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(dominantColors.onBackground)
+                        .lineLimit(1)
+                    Text(track.artist)
+                        .font(.caption)
+                        .foregroundStyle(dominantColors.onBackground.opacity(0.7))
+                        .lineLimit(1)
+                        .onTapGesture(perform: onArtistTap)
+                }
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(dominantColors.onBackground.opacity(0.35))
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(dominantColors.secondary.opacity(0.32), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            TapOrLongPressHostingView(onTap: onPlay, onLongPress: onOverflow)
+        }
     }
 }
 struct SearchScreen: View {

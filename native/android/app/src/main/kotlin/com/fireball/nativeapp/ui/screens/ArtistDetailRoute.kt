@@ -26,8 +26,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import com.fireball.nativeapp.core.model.FireballSettings
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -60,6 +62,7 @@ fun ArtistDetailRoute(
     onBack: () -> Unit,
     onOpenPlaylist: (Playlist) -> Unit,
     onOverflowTrack: (Track) -> Unit,
+    onSettingsChange: (FireballSettings) -> Unit,
 ) {
     val fallbackDisplay = Uri.decode(encodedName).ifBlank { "Artist" }
     val appleId =
@@ -194,6 +197,43 @@ fun ArtistDetailRoute(
                             )
                         }
                         Spacer(Modifier.height(12.dp))
+                        val isFollowed =
+                            library.artists.any { artist ->
+                                artist.name.equals(b.displayName, ignoreCase = true) ||
+                                    (appleId != null && artist.artistId == appleId.toString())
+                            }
+                        if (isFollowed) {
+                            Row(
+                                modifier =
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .padding(bottom = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                            ) {
+                                Column(Modifier.weight(1f)) {
+                                    Text(
+                                        text = "Notify on new releases",
+                                        style = MaterialTheme.typography.titleSmall,
+                                    )
+                                    Text(
+                                        text = "Device alerts when this artist ships a new album. Gotify uses Settings.",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                                Switch(
+                                    checked = library.settings.notifyArtistReleasesOnDevice,
+                                    onCheckedChange = { enabled ->
+                                        onSettingsChange(
+                                            library.settings.copy(
+                                                notifyArtistReleasesOnDevice = enabled,
+                                            ),
+                                        )
+                                    },
+                                )
+                            }
+                        }
                         TabRow(selectedTabIndex = tab) {
                             titles.forEachIndexed { i, title ->
                                 Tab(

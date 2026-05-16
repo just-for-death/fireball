@@ -34,8 +34,16 @@ public struct NowPlayingScreen: View {
     var currentIndex: Int? = nil
     var onPlayQueueIndex: (Int) -> Void = { _ in }
     var onFollowArtist: (String, String?) -> Void = { _, _ in }
+    var onOpenArtist: (String, String?) -> Void = { _, _ in }
     let onClose: () -> Void
     var onOpenTrackMenu: () -> Void = {}
+    var onOverflowQueueTrack: (Track) -> Void = { _ in }
+    var isFavorite: Bool = false
+    var onPlayNext: () -> Void = {}
+    var onAddToQueue: () -> Void = {}
+    var onToggleFavorite: () -> Void = {}
+    var onSeeArtist: () -> Void = {}
+    var onFollowArtistFromMenu: () -> Void = {}
 
     @Environment(\.dominantColors) var dominantColors
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
@@ -141,6 +149,12 @@ public struct NowPlayingScreen: View {
                 .foregroundStyle(dominantColors.onBackground.opacity(0.82))
             Spacer()
             Menu {
+                Button("Play next", action: onPlayNext)
+                Button("Add to queue", action: onAddToQueue)
+                Button(isFavorite ? "Remove from favorites" : "Add to favorites", action: onToggleFavorite)
+                Button("View artist catalog", action: onSeeArtist)
+                Button("Follow artist", action: onFollowArtistFromMenu)
+                Button("More options…", action: onOpenTrackMenu)
                 if #available(iOS 16.0, *) {
                     if let lyrics = currentLyrics, !lyrics.isEmpty {
                         ShareLink(item: lyrics) {
@@ -420,24 +434,17 @@ public struct NowPlayingScreen: View {
                 VStack(spacing: 8) {
                     ForEach(Array(queue.enumerated()), id: \.element.effectiveId) { index, item in
                         let selected = index == (currentIndex ?? -1)
-                        Button {
-                            onPlayQueueIndex(index)
-                        } label: {
+                        ZStack {
                             HStack {
                                 VStack(alignment: .leading, spacing: 4) {
                                     Text(item.title)
                                         .fontWeight(selected ? .semibold : .regular)
                                         .foregroundStyle(dominantColors.onBackground)
 
-                                    Button {
-                                        onFollowArtist(item.artist, item.artwork)
-                                    } label: {
-                                        Text(item.artist)
-                                            .font(.caption)
-                                            .foregroundStyle(dominantColors.onBackground.opacity(0.74))
-                                            .underline(false)
-                                    }
-                                    .buttonStyle(.plain)
+                                    Text(item.artist)
+                                        .font(.caption)
+                                        .foregroundStyle(dominantColors.onBackground.opacity(0.74))
+                                        .lineLimit(1)
                                 }
                                 Spacer()
                             }
@@ -446,8 +453,24 @@ public struct NowPlayingScreen: View {
                                 RoundedRectangle(cornerRadius: 12)
                                     .fill(selected ? dominantColors.accent.opacity(0.26) : dominantColors.secondary.opacity(0.2))
                             )
+                            TapOrLongPressHostingView(
+                                onTap: { onPlayQueueIndex(index) },
+                                onLongPress: { onOverflowQueueTrack(item) }
+                            )
                         }
-                        .buttonStyle(.plain)
+                        .contentShape(RoundedRectangle(cornerRadius: 12))
+                        .overlay(alignment: .bottomTrailing) {
+                            Button {
+                                onOpenArtist(item.artist, item.artwork)
+                            } label: {
+                                Image(systemName: "person.crop.circle")
+                                    .font(.caption)
+                                    .foregroundStyle(dominantColors.onBackground.opacity(0.55))
+                                    .padding(10)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Open artist")
+                        }
                     }
                 }
                 .padding(.horizontal, splitLayoutEnabled ? 0 : 8)

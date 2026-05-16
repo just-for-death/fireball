@@ -107,3 +107,23 @@
 - [x] Appearance chrome source persisted as `appearanceColorSource` (`music` \| `scheme` \| Material You mapped on Android); album-art dynamic colors gated to `music` mode where applicable
 - [x] Now Playing lyrics: pinned inline panel toggle (`alwaysShowLyricsPanel`) + long-press artwork lyrics overlay sheet (Android + iOS parity)
 - [x] Now Playing queue panel + Invidious favorites auto-push playlist ID setting
+
+## Native parity checklist (Android + iOS)
+
+- [x] Search suggestions while typing (debounced, offline + remote)
+- [x] Post-search **Songs / Albums** segmented results (iTunes album search)
+- [x] **Artist catalog** screen: iTunes songs + albums; **Playlists** = local library playlists containing artist
+- [x] **Navigate to artist** when name/id known (`requestArtistDetail`); Search prefill as fallback only
+- [x] **Playlist detail** navigation (no autoplay on open); Play / Play next / Add to queue
+- [x] Mini-player **Close** clears playback session + queue
+- [x] Library toolbar: **New playlist** + **Follow artist**
+- [x] Track overflow: **Follow artist** + **View artist catalog** (not “Search”)
+- [x] **Long-press overflow** on Home rows, Search results/suggestions, Library lists, Now Playing queue (iOS + Android)
+- [x] Overflow sheet stays open for non-current queue tracks (no auto-dismiss on track change)
+- [x] **Appearance** `appearanceColorSource`: Android `material_you` \| `music` \| `scheme`; iOS `music` \| `scheme` (`material_you` → scheme)
+- [x] Now Playing **⋮ menu**: play next, queue, favorite, view artist, follow, full overflow sheet
+- [x] Lyrics: **long-press artwork** overlay default; **`alwaysShowLyricsPanel`** pins inline panel
+- [x] Followed-artist **release alerts**: optional Gotify + optional device notifications; Android WorkManager ~15h; iOS foreground + optional `BGAppRefresh`
+- [x] Artist screen **Notify on new releases** toggle when artist is followed
+- [x] iPad split layout: playlist push, mini-player chrome, Now Playing parity
+- [x] Album-only release probe (v1); song-level alerts out of scope
