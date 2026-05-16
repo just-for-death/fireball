@@ -341,10 +341,7 @@ struct HomeScreen: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 16) {
                         ForEach(library.playlists, id: \.id) { playlist in
-                            Button {
-                                guard let first = playlist.videos.first else { return }
-                                onPlay(first, playlist.videos)
-                            } label: {
+                            NavigationLink(destination: PlaylistDetailScreen(playlist: playlist)) {
                                 VStack(alignment: .leading, spacing: 6) {
                                     Image(systemName: "music.note.list")
                                         .font(.title3)
@@ -362,7 +359,6 @@ struct HomeScreen: View {
                                 .background(dominantColors.secondary.opacity(0.42), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                             }
                             .buttonStyle(.plain)
-                            .disabled(playlist.videos.isEmpty)
                         }
                     }
                     .padding(.horizontal, contentGutter)
