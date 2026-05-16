@@ -13,6 +13,6 @@ Regenerate launcher icons for **both platforms** after changing artwork:
 ./scripts/generate_app_icons.sh
 ```
 
-Source: `assets/icon.png` (1024×1024) and `assets/icon-monochrome.png` (Android 13+ themed icon).
+Source: `assets/icon.png` (1024×1024, red mark for README/social) and `assets/icon-monochrome.png` (white mark for launcher foregrounds and Android 13+ themed icon). The generator composites the white mark on `#BF2026` so adaptive icons do not show a black box on a red tile.
 
 **Version:** see [`VERSION`](../VERSION) and `native/android/app/build.gradle.kts` / `native/ios/project.yml`.

@@ -6,7 +6,9 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
@@ -31,6 +33,24 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 
+/** Vertical gap between separate pill rows so corners do not visually merge. */
+val ActionSheetRowSpacing = 8.dp
+
+/** Extra space between sheet sections (after dividers / labels). */
+val ActionSheetSectionSpacing = 16.dp
+
+@Composable
+fun ActionSheetRowGroup(
+    modifier: Modifier = Modifier,
+    content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit,
+) {
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(ActionSheetRowSpacing),
+        content = content,
+    )
+}
+
 @Composable
 fun ActionSheetSectionLabel(text: String, modifier: Modifier = Modifier) {
     Text(
@@ -38,7 +58,7 @@ fun ActionSheetSectionLabel(text: String, modifier: Modifier = Modifier) {
         style = MaterialTheme.typography.labelMedium,
         fontWeight = FontWeight.SemiBold,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = modifier.padding(top = 8.dp, bottom = 4.dp, start = 4.dp),
+        modifier = modifier.padding(top = ActionSheetSectionSpacing, bottom = 6.dp, start = 4.dp),
     )
 }
 
@@ -194,9 +214,50 @@ fun ActionSheetChipRow(
 }
 
 @Composable
+fun ActionSheetToggleRow(
+    title: String,
+    subtitle: String?,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+    ) {
+        Row(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(text = title, style = MaterialTheme.typography.bodyLarge)
+                if (subtitle != null) {
+                    Text(
+                        text = subtitle,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+            androidx.compose.material3.Switch(
+                checked = checked,
+                onCheckedChange = onCheckedChange,
+            )
+        }
+    }
+}
+
+@Composable
 fun ActionSheetDivider(modifier: Modifier = Modifier) {
+    Spacer(modifier = Modifier.height(ActionSheetSectionSpacing))
     HorizontalDivider(
-        modifier = modifier.padding(vertical = 6.dp),
+        modifier = modifier.fillMaxWidth(),
         color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f),
     )
+    Spacer(modifier = Modifier.height(8.dp))
 }

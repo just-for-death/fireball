@@ -61,8 +61,10 @@ fun CreatePlaylistSheet(
             ) {
                 Text("Create")
             }
-            Spacer(Modifier.height(8.dp))
-            ActionSheetRow(Icons.Default.Close, "Cancel", onDismiss)
+            Spacer(Modifier.height(ActionSheetSectionSpacing))
+            ActionSheetRowGroup {
+                ActionSheetRow(Icons.Default.Close, "Cancel", onDismiss)
+            }
         }
     }
 }
@@ -106,8 +108,10 @@ fun FollowArtistSheet(
             ) {
                 Text("Follow")
             }
-            Spacer(Modifier.height(8.dp))
-            ActionSheetRow(Icons.Default.Close, "Cancel", onDismiss)
+            Spacer(Modifier.height(ActionSheetSectionSpacing))
+            ActionSheetRowGroup {
+                ActionSheetRow(Icons.Default.Close, "Cancel", onDismiss)
+            }
         }
     }
 }
