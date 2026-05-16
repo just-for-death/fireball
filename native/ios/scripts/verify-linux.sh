@@ -11,8 +11,9 @@ if ! command -v swift >/dev/null 2>&1; then
 fi
 
 echo "==> Swift: $(swift --version | head -1)"
-chmod +x scripts/verify-swift-string-literals.sh
+chmod +x scripts/verify-swift-string-literals.sh scripts/verify-ios-preflight.sh
 ./scripts/verify-swift-string-literals.sh
+./scripts/verify-ios-preflight.sh
 echo "==> Resolving packages…"
 swift package resolve
 

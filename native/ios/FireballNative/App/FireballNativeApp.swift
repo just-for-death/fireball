@@ -44,184 +44,195 @@ private struct RootShellView: View {
 
     var body: some View {
         PremiumBackground {
-            Group {
-                if horizontalSizeClass == .regular {
-                    NavigationSplitView(columnVisibility: $splitVisibility) {
-                        List(RootTab.allCases, selection: $selectedTab) { tab in
-                            Label(tab.rawValue.capitalized, systemImage: icon(for: tab))
-                        }
-                        .safeAreaInset(edge: .bottom) {
-                            if let track = viewModel.currentTrack {
-                                PillMiniPlayer(
-                                    track: track,
-                                    isPlaying: viewModel.isPlaying,
-                                    progress: viewModel.durationSeconds > 0 ? viewModel.positionSeconds / viewModel.durationSeconds : 0.0,
-                                    isLoading: viewModel.isPlaybackLoading,
-                                    onPlayPause: viewModel.togglePlayPause,
-                                    onNext: viewModel.next,
-                                    onPrevious: { viewModel.previous() },
-                                    onTap: { isPlayerOpen = true },
-                                    onLongPressMenu: { overflowDraft = OverflowTrackDraft(track: track) },
-                                    onArtistTap: { handleOpenArtist(track.artist, artwork: track.artwork) },
-                                    onClose: {
-                                        isPlayerOpen = false
-                                        viewModel.stopPlaybackAndDismissMiniPlayer()
-                                    },
-                                    chrome: .ipadSidebarRail
-                                )
-                                .padding(.horizontal, 10)
-                                .padding(.bottom, 8)
-                            }
-                        }
-                        .navigationTitle("Fireball")
-                    } detail: {
-                        NavigationStack {
-                            screen(for: selectedTab)
-                                .navigationTitle(selectedTab.rawValue.capitalized)
-                        }
-                        .sheet(isPresented: $isPlayerOpen, onDismiss: { isPlayerOpen = false }) {
-                            if let track = viewModel.currentTrack {
-                                fullPlayer(track: track)
-                                    .modifier(PlayerSheetChrome())
-                            }
-                        }
-                    }
-                } else {
-                    TabView(selection: $selectedTab) {
-                        ForEach(RootTab.allCases) { tab in
-                            NavigationStack {
-                                screen(for: tab)
-                                    .navigationTitle(tab.rawValue.capitalized)
-                            }
-                            .tabItem { Label(tab.rawValue.capitalized, systemImage: icon(for: tab)) }
-                            .tag(tab)
-                        }
-                    }
-                    .safeAreaInset(edge: .bottom) {
-                        if let track = viewModel.currentTrack {
-                            PillMiniPlayer(
-                                track: track,
-                                isPlaying: viewModel.isPlaying,
-                                progress: viewModel.durationSeconds > 0 ? viewModel.positionSeconds / viewModel.durationSeconds : 0.0,
-                                isLoading: viewModel.isPlaybackLoading,
-                                onPlayPause: viewModel.togglePlayPause,
-                                onNext: viewModel.next,
-                                onPrevious: {},
-                                onTap: { isPlayerOpen = true },
-                                onLongPressMenu: { overflowDraft = OverflowTrackDraft(track: track) },
-                                onArtistTap: { handleOpenArtist(track.artist, artwork: track.artwork) },
-                                onClose: {
-                                    isPlayerOpen = false
-                                    viewModel.stopPlaybackAndDismissMiniPlayer()
-                                },
-                                chrome: .phone
-                            )
-                            .padding(.horizontal)
-                            .padding(.bottom, 8)
-                        }
-                    }
-                    .fullScreenCover(isPresented: $isPlayerOpen, onDismiss: { isPlayerOpen = false }) {
-                        if let track = viewModel.currentTrack {
-                            fullPlayer(track: track)
-                        }
-                    }
-                }
-            }
-            .dynamicTheme(
-                artworkUrl: viewModel.currentTrack?.artwork,
-                settings: viewModel.library.settings
-            )
-            .onAppear {
-                if let tab = RootTab(rawValue: viewModel.library.settings.startTab.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()) {
-                    selectedTab = tab
-                }
-                splitVisibility = viewModel.library.settings.ipadSidebarCollapsed ? .detailOnly : .doubleColumn
-                ArtistReleaseBackgroundRefresh.scheduleIfNeeded(settings: viewModel.library.settings)
-            }
-            .onChange(of: viewModel.library.settings.startTab) { _, newValue in
-                if let tab = RootTab(rawValue: newValue.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()) {
-                    selectedTab = tab
-                }
-            }
-            .onChange(of: viewModel.library.settings.ipadSidebarCollapsed) { _, collapsed in
-                splitVisibility = collapsed ? .detailOnly : .doubleColumn
-            }
-            .sheet(item: $overflowDraft) { draft in
-                PlayerTrackOverflowSheet(
-                    track: draft.track,
-                    onPlayNext: {
-                        viewModel.playTrackUpNext(track: draft.track)
-                        overflowDraft = nil
-                    },
-                    onAddToQueue: {
-                        viewModel.appendTrackToQueue(track: draft.track)
-                        overflowDraft = nil
-                    },
-                    onToggleFavorite: {
-                        viewModel.toggleFavorite(draft.track)
-                        overflowDraft = nil
-                    },
-                    onAddToPlaylist: { pid in
-                        viewModel.addTrackToPlaylist(track: draft.track, playlistId: pid)
-                    },
-                    onSeeArtist: {
-                        handleOpenArtist(draft.track.artist, artwork: draft.track.artwork)
-                        overflowDraft = nil
-                    },
-                    onFollowArtist: {
-                        viewModel.followArtist(
-                            name: viewModel.primaryArtistName(draft.track.artist),
-                            artwork: draft.track.artwork
-                        )
-                        overflowDraft = nil
-                    },
-                    onUnfollowArtist: {
-                        viewModel.unfollowFirstFollowedArtistFromDisplayLine(draft.track.artist)
-                        overflowDraft = nil
-                    }
-                )
-            }
+            shellRoot
+        }
+    }
 
-            .onChange(of: viewModel.searchFocusRequest) { _, newValue in
-                guard let q = newValue, !q.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
-                selectedTab = .search
-                viewModel.query = q
-                Task { await viewModel.search() }
-                viewModel.consumeSearchFocusRequest()
+    @ViewBuilder
+    private var shellRoot: some View {
+        Group {
+            if horizontalSizeClass == .regular {
+                tabletShell
+            } else {
+                phoneShell
             }
-            .onChange(of: scenePhase) { _, phase in
-                if phase == .active {
-                    Task { await viewModel.refreshFollowedArtistReleaseChecksFromForeground() }
-                }
+        }
+        .dynamicTheme(
+            artworkUrl: viewModel.currentTrack?.artwork,
+            settings: viewModel.library.settings
+        )
+        .onAppear(perform: applyInitialShellState)
+        .onChange(of: viewModel.library.settings.startTab) { _, newValue in
+            if let tab = RootTab(rawValue: newValue.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()) {
+                selectedTab = tab
             }
-            .onChange(of: viewModel.currentTrack?.effectiveId) { _, trackId in
-                if trackId == nil {
-                    isPlayerOpen = false
-                }
+        }
+        .onChange(of: viewModel.library.settings.ipadSidebarCollapsed) { _, collapsed in
+            splitVisibility = collapsed ? .detailOnly : .doubleColumn
+        }
+        .sheet(item: $overflowDraft, content: overflowSheet)
+        .onChange(of: viewModel.searchFocusRequest) { _, newValue in
+            guard let q = newValue, !q.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+            selectedTab = .search
+            viewModel.query = q
+            Task { await viewModel.search() }
+            viewModel.consumeSearchFocusRequest()
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active {
+                Task { await viewModel.refreshFollowedArtistReleaseChecksFromForeground() }
             }
-            .onChange(of: viewModel.artistOpenRequest) { _, req in
-                if req != nil {
-                    isPlayerOpen = false
-                }
+        }
+        .onChange(of: viewModel.currentTrack?.effectiveId) { _, trackId in
+            if trackId == nil {
+                isPlayerOpen = false
             }
-            .fullScreenCover(
-                item: $viewModel.artistOpenRequest,
-                onDismiss: { viewModel.consumeArtistOpenRequest() }
-            ) { req in
-                ArtistCatalogScreen(
-                    appleArtistId: req.appleId,
-                    fallbackDisplayName: req.fallbackDisplayName,
-                    onOverflowTrack: { overflowDraft = OverflowTrackDraft(track: $0) }
-                )
-                .environmentObject(viewModel)
+        }
+        .onChange(of: viewModel.artistOpenRequest) { _, req in
+            if req != nil {
+                isPlayerOpen = false
             }
-            .sheet(item: $artistPickerContext) { ctx in
-                ArtistPickerSheet(context: ctx) { name in
-                    viewModel.requestArtistDetail(artistDisplayName: name)
-                    artistPickerContext = nil
+        }
+        .fullScreenCover(
+            item: $viewModel.artistOpenRequest,
+            onDismiss: { viewModel.consumeArtistOpenRequest() },
+            content: artistCatalogCover
+        )
+        .sheet(item: $artistPickerContext) { ctx in
+            ArtistPickerSheet(context: ctx) { name in
+                viewModel.requestArtistDetail(artistDisplayName: name)
+                artistPickerContext = nil
+            }
+        }
+    }
+
+    private var tabletShell: some View {
+        NavigationSplitView(columnVisibility: $splitVisibility) {
+            List(RootTab.allCases, selection: $selectedTab) { tab in
+                Label(tab.rawValue.capitalized, systemImage: icon(for: tab))
+            }
+            .safeAreaInset(edge: .bottom) {
+                miniPlayerInset(chrome: .ipadSidebarRail, horizontalPadding: 10)
+            }
+            .navigationTitle("Fireball")
+        } detail: {
+            NavigationStack {
+                screen(for: selectedTab)
+                    .navigationTitle(selectedTab.rawValue.capitalized)
+            }
+            .sheet(isPresented: $isPlayerOpen, onDismiss: { isPlayerOpen = false }) {
+                if let track = viewModel.currentTrack {
+                    fullPlayer(track: track)
+                        .modifier(PlayerSheetChrome())
                 }
             }
         }
+    }
+
+    private var phoneShell: some View {
+        TabView(selection: $selectedTab) {
+            ForEach(RootTab.allCases) { tab in
+                NavigationStack {
+                    screen(for: tab)
+                        .navigationTitle(tab.rawValue.capitalized)
+                }
+                .tabItem { Label(tab.rawValue.capitalized, systemImage: icon(for: tab)) }
+                .tag(tab)
+            }
+        }
+        .safeAreaInset(edge: .bottom) {
+            miniPlayerInset(chrome: .phone, horizontalPadding: 0)
+        }
+        .fullScreenCover(isPresented: $isPlayerOpen, onDismiss: { isPlayerOpen = false }) {
+            if let track = viewModel.currentTrack {
+                fullPlayer(track: track)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func miniPlayerInset(chrome: PillMiniPlayerChrome, horizontalPadding: CGFloat) -> some View {
+        if let track = viewModel.currentTrack {
+            PillMiniPlayer(
+                track: track,
+                isPlaying: viewModel.isPlaying,
+                progress: playbackProgress,
+                isLoading: viewModel.isPlaybackLoading,
+                onPlayPause: viewModel.togglePlayPause,
+                onNext: viewModel.next,
+                onPrevious: { viewModel.previous() },
+                onTap: { isPlayerOpen = true },
+                onLongPressMenu: { overflowDraft = OverflowTrackDraft(track: track) },
+                onArtistTap: { handleOpenArtist(track.artist, artwork: track.artwork) },
+                onClose: {
+                    isPlayerOpen = false
+                    viewModel.stopPlaybackAndDismissMiniPlayer()
+                },
+                chrome: chrome
+            )
+            .padding(.horizontal, horizontalPadding > 0 ? horizontalPadding : 16)
+            .padding(.bottom, 8)
+        }
+    }
+
+    private var playbackProgress: Double {
+        let d = viewModel.durationSeconds
+        guard d > 0 else { return 0 }
+        return viewModel.positionSeconds / d
+    }
+
+    private func applyInitialShellState() {
+        if let tab = RootTab(rawValue: viewModel.library.settings.startTab.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()) {
+            selectedTab = tab
+        }
+        splitVisibility = viewModel.library.settings.ipadSidebarCollapsed ? .detailOnly : .doubleColumn
+        ArtistReleaseBackgroundRefresh.scheduleIfNeeded(settings: viewModel.library.settings)
+    }
+
+    @ViewBuilder
+    private func overflowSheet(draft: OverflowTrackDraft) -> some View {
+        PlayerTrackOverflowSheet(
+            track: draft.track,
+            onPlayNext: {
+                viewModel.playTrackUpNext(track: draft.track)
+                overflowDraft = nil
+            },
+            onAddToQueue: {
+                viewModel.appendTrackToQueue(track: draft.track)
+                overflowDraft = nil
+            },
+            onToggleFavorite: {
+                viewModel.toggleFavorite(draft.track)
+                overflowDraft = nil
+            },
+            onAddToPlaylist: { pid in
+                viewModel.addTrackToPlaylist(track: draft.track, playlistId: pid)
+            },
+            onSeeArtist: {
+                handleOpenArtist(draft.track.artist, artwork: draft.track.artwork)
+                overflowDraft = nil
+            },
+            onFollowArtist: {
+                viewModel.followArtist(
+                    name: viewModel.primaryArtistName(draft.track.artist),
+                    artwork: draft.track.artwork
+                )
+                overflowDraft = nil
+            },
+            onUnfollowArtist: {
+                viewModel.unfollowFirstFollowedArtistFromDisplayLine(draft.track.artist)
+                overflowDraft = nil
+            }
+        )
+    }
+
+    private func artistCatalogCover(req: ArtistOpenRequest) -> some View {
+        ArtistCatalogScreen(
+            appleArtistId: req.appleId,
+            fallbackDisplayName: req.fallbackDisplayName,
+            onOverflowTrack: { overflowDraft = OverflowTrackDraft(track: $0) }
+        )
+        .environmentObject(viewModel)
     }
 
     private func handleOpenArtist(_ raw: String, artwork: String? = nil) {

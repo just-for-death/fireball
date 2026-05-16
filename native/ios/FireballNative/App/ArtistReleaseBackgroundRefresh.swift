@@ -27,7 +27,7 @@ enum ArtistReleaseBackgroundRefresh {
     }
 
     private static func run(refreshTask: BGAppRefreshTask, store: LibraryStore) {
-        let work = Task<Bool, Never> {
+        let work = Task<Bool, Never> { @MainActor in
             let snapshot = store.load()
             scheduleIfNeeded(settings: snapshot.settings)
             guard snapshot.settings.notifyArtistReleasesOnDevice else { return true }

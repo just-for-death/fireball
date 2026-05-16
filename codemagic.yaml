@@ -47,6 +47,13 @@ workflows:
           if ! command -v xcodegen >/dev/null 2>&1; then
             brew install xcodegen
           fi
+      - name: iOS static preflight
+        script: |
+          set -euo pipefail
+          cd native/ios
+          chmod +x scripts/verify-swift-string-literals.sh scripts/verify-ios-preflight.sh
+          ./scripts/verify-swift-string-literals.sh
+          ./scripts/verify-ios-preflight.sh
       - name: Package unsigned IPA
         script: |
           set -euo pipefail
@@ -76,6 +83,13 @@ workflows:
           if ! command -v xcodegen >/dev/null 2>&1; then
             brew install xcodegen
           fi
+      - name: iOS static preflight
+        script: |
+          set -euo pipefail
+          cd native/ios
+          chmod +x scripts/verify-swift-string-literals.sh scripts/verify-ios-preflight.sh
+          ./scripts/verify-swift-string-literals.sh
+          ./scripts/verify-ios-preflight.sh
       - name: Package unsigned IPA
         script: |
           set -euo pipefail
@@ -104,6 +118,13 @@ workflows:
           if ! command -v xcodegen >/dev/null 2>&1; then
             brew install xcodegen
           fi
+      - name: iOS static preflight
+        script: |
+          set -euo pipefail
+          cd native/ios
+          chmod +x scripts/verify-swift-string-literals.sh scripts/verify-ios-preflight.sh
+          ./scripts/verify-swift-string-literals.sh
+          ./scripts/verify-ios-preflight.sh
       - name: Build for iOS Simulator
         script: |
           set -euo pipefail
