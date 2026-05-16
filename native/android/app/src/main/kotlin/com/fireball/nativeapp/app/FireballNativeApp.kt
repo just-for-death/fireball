@@ -464,11 +464,6 @@ fun FireballNativeApp(viewModel: MainViewModel) {
                                 library = uiState.library,
                                 viewModel = viewModel,
                                 onBack = { navController.popBackStack() },
-                                onOpenPlaylist = { pl ->
-                                    navController.navigate(
-                                        "library/playlist/" + Uri.encode(pl.id),
-                                    )
-                                },
                                 onOverflowTrack = { overflowTrack = it },
                                 onSettingsChange = { updated ->
                                     viewModel.updateSettings { _ -> updated }

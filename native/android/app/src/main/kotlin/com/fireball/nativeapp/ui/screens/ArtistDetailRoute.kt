@@ -47,7 +47,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.fireball.nativeapp.data.ArtistBrowseResult
-import com.fireball.nativeapp.core.model.Playlist
 import com.fireball.nativeapp.core.model.Track
 import com.fireball.nativeapp.ui.MainViewModel
 import kotlinx.coroutines.Dispatchers
@@ -61,7 +60,6 @@ fun ArtistDetailRoute(
     library: com.fireball.nativeapp.core.model.LibrarySnapshot,
     viewModel: MainViewModel,
     onBack: () -> Unit,
-    onOpenPlaylist: (Playlist) -> Unit,
     onOverflowTrack: (Track) -> Unit,
     onSettingsChange: (FireballSettings) -> Unit,
 ) {
@@ -75,7 +73,7 @@ fun ArtistDetailRoute(
     var albumLoadingId by remember { mutableStateOf<String?>(null) }
     var albumTracksPick by remember { mutableStateOf<List<Track>?>(null) }
     var tab by remember { mutableIntStateOf(0) }
-    val titles = listOf("Songs", "Albums", "Playlists")
+    val titles = listOf("Songs", "Albums")
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(parsedKey, encodedName, library.artists.size, library.playlists.size) {
@@ -272,7 +270,7 @@ fun ArtistDetailRoute(
                                 )
                             }
                         }
-                        1 -> {
+                        else -> {
                             items(b.albums, key = { it.id }) { album ->
                                 Row(
                                     Modifier
@@ -319,29 +317,6 @@ fun ArtistDetailRoute(
                                         },
                                     ) {
                                         Text(if (albumLoadingId == album.id) "…" else "Tracks")
-                                    }
-                                }
-                                HorizontalDivider()
-                            }
-                        }
-                        else -> {
-                            items(b.playlistsContainingArtist, key = { it.id }) { pl ->
-                                Row(
-                                    Modifier
-                                        .fillMaxWidth()
-                                        .padding(vertical = 10.dp),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically,
-                                ) {
-                                    Column(Modifier.weight(1f)) {
-                                        Text(pl.title)
-                                        Text(
-                                            "${pl.videos.size} tracks",
-                                            style = MaterialTheme.typography.bodySmall,
-                                        )
-                                    }
-                                    TextButton(onClick = { onOpenPlaylist(pl) }) {
-                                        Text("Open")
                                     }
                                 }
                                 HorizontalDivider()
