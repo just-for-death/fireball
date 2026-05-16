@@ -4,6 +4,14 @@ import SwiftUI
 
 enum RepeatMode: String, CaseIterable {
     case off, all, one
+
+    var playbackRepeatMode: PlaybackRepeatMode {
+        switch self {
+        case .off: return .off
+        case .all: return .all
+        case .one: return .one
+        }
+    }
 }
 
 struct ArtistOpenRequest: Identifiable, Hashable {
@@ -95,6 +103,8 @@ final class MainViewModel: ObservableObject {
     private var activePlayTask: Task<Void, Never>?
     private var suggestionCancellable: AnyCancellable?
     private var suggestionTask: Task<Void, Never>?
+    private var playbackPersistTask: Task<Void, Never>?
+    private var artistDetailLookupTask: Task<Void, Never>?
 
     init(repository: FireballRepository) {
         self.repository = repository
@@ -362,6 +372,8 @@ final class MainViewModel: ObservableObject {
             queue = session.queue
             if session.currentIndex >= 0, session.currentIndex < session.queue.count {
                 currentIndex = session.currentIndex
+            } else {
+                currentIndex = nil
             }
         }
         shuffled = session.shuffled
@@ -377,7 +389,7 @@ final class MainViewModel: ObservableObject {
         } else if let idx = currentIndex, queue.indices.contains(idx) {
             persistedIndex = idx
         } else {
-            persistedIndex = 0
+            persistedIndex = -1
         }
         library.playbackSession = PlaybackSession(
             queue: queue,
@@ -444,7 +456,8 @@ final class MainViewModel: ObservableObject {
                 isPlaying = false
                 audioEngine.pausePlayback()
                 if !offline {
-                    currentLyrics = await lyricsAi.fetchLyrics(track: resolvedTrack, settings: settings)
+                    let lyrics = await lyricsAi.fetchLyrics(track: resolvedTrack, settings: settings)
+                    if !Task.isCancelled { currentLyrics = lyrics }
                 } else {
                     currentLyrics = nil
                 }
@@ -465,7 +478,12 @@ final class MainViewModel: ObservableObject {
             await loadSponsorSegmentsAfterPlay(for: resolvedTrack)
 
             if !offline {
-                currentLyrics = await lyricsAi.fetchLyrics(track: resolvedTrack, settings: settings)
+                let lyricsTrackId = resolvedTrack.effectiveId
+                let lyrics = await lyricsAi.fetchLyrics(track: resolvedTrack, settings: settings)
+                guard !Task.isCancelled else { return }
+                if currentIndex == idx, queue.indices.contains(idx), queue[idx].effectiveId == lyricsTrackId {
+                    currentLyrics = lyrics
+                }
             } else {
                 currentLyrics = nil
             }
@@ -595,10 +613,20 @@ final class MainViewModel: ObservableObject {
     func requestArtistDetail(artistDisplayName: String) {
         let trimmed = artistDisplayName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
-        let appleId =
-            library.artists.first(where: { $0.name.caseInsensitiveCompare(trimmed) == .orderedSame })
-                .flatMap { Int($0.artistId.trimmingCharacters(in: .whitespacesAndNewlines)) }
-        navigateArtistDetailInternal(appleArtistId: appleId, fallback: trimmed)
+        if let followed = library.artists.first(where: { $0.name.caseInsensitiveCompare(trimmed) == .orderedSame }),
+           let appleId = Int(followed.artistId.trimmingCharacters(in: .whitespacesAndNewlines)) {
+            navigateArtistDetailInternal(appleArtistId: appleId, fallback: trimmed)
+            return
+        }
+        artistDetailLookupTask?.cancel()
+        artistDetailLookupTask = Task {
+            let browse = await repository.browseArtist(library: library, artistAppleId: nil, artistName: trimmed)
+            guard !Task.isCancelled else { return }
+            navigateArtistDetailInternal(
+                appleArtistId: browse?.artistAppleId,
+                fallback: browse?.displayName ?? trimmed
+            )
+        }
     }
 
     func requestArtistDetail(appleArtistId: Int?, fallbackDisplayName: String) {
@@ -853,11 +881,14 @@ final class MainViewModel: ObservableObject {
 
     private func persistPlaybackSessionDebounced() {
         savePlaybackSession()
-        let now = Date()
-        guard now.timeIntervalSince(lastLibraryPersistAt) >= 3 else { return }
-        lastLibraryPersistAt = now
-        repository.saveLibrary(library)
-        scheduleWebDavLivePushIfNeeded()
+        playbackPersistTask?.cancel()
+        playbackPersistTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            guard !Task.isCancelled else { return }
+            lastLibraryPersistAt = Date()
+            repository.saveLibrary(library)
+            scheduleWebDavLivePushIfNeeded()
+        }
     }
 
     private func scheduleWebDavLivePushIfNeeded() {
@@ -886,7 +917,14 @@ final class MainViewModel: ObservableObject {
                     togglePlayPause()
                 }
             }
-            if sleepAfterCurrent && isPlaying && durationSeconds > 0 && positionSeconds >= durationSeconds - 1 {
+            let effectiveDuration = max(
+                durationSeconds,
+                audioEngine.lastReportedDurationSeconds
+            )
+            if sleepAfterCurrent,
+               isPlaying,
+               effectiveDuration > 0,
+               positionSeconds >= effectiveDuration - 1 {
                 togglePlayPause()
                 setSleepAfterCurrent(false)
             }
@@ -971,9 +1009,19 @@ final class MainViewModel: ObservableObject {
                 year: nil
             )
         }
-        queue.append(contentsOf: generated)
+        let settings = library.settings
+        var resolved: [Track] = []
+        for track in generated {
+            guard !Task.isCancelled else { return }
+            resolved.append(await repository.resolvePlayableTrack(track, settings: settings))
+        }
+        guard !resolved.isEmpty else { return }
+        queue.append(contentsOf: resolved)
         savePlaybackSession()
-        persistAIQueue(generated)
+        persistAIQueue(resolved)
+        if let idx = currentIndex, queue.indices.contains(idx) {
+            audioEngine.applyQueueMutation(queue, currentIndex: idx)
+        }
     }
 
     private func persistAIQueue(_ generated: [Track]) {
@@ -1225,75 +1273,64 @@ final class MainViewModel: ObservableObject {
 
     private func advanceAfterTrackFinished() async {
         guard let idx = currentIndex else { return }
-        let mode = library.settings.queueMode.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        if repeatMode == .one {
-            isPlaying = true
-            audioEngine.seek(to: 0)
-            return
-        }
-        if shuffled, queue.count > 1 {
-            let choices = queue.indices.filter { $0 != idx }
-            if let next = choices.randomElement() {
-                await openQueueIndex(next)
-                return
-            }
-        }
-        if idx + 1 < queue.count {
-            await openQueueIndex(idx + 1)
-        } else if repeatMode == .all {
-            await openQueueIndex(0)
-        } else if mode == "repeat" {
-            await openQueueIndex(0)
-        } else {
-            isPlaying = false
-            audioEngine.pausePlayback()
-        }
+        await applyPlaybackAdvance(
+            PlaybackAdvanceRules.afterTrackFinished(
+                currentIndex: idx,
+                queueSize: queue.count,
+                repeatMode: repeatMode.playbackRepeatMode,
+                shuffled: shuffled,
+                queueModeRepeat: queueModeIsRepeat,
+                pickShuffleIndex: { $0.randomElement() }
+            )
+        )
     }
 
     private func userPressedNext() async {
         guard let idx = currentIndex else { return }
-        if repeatMode == .one {
-            audioEngine.seek(to: 0)
-            audioEngine.resumeIfPaused()
-            isPlaying = true
-            return
-        }
-        if shuffled, queue.count > 1 {
-            let choices = queue.indices.filter { $0 != idx }
-            if let next = choices.randomElement() {
-                await openQueueIndex(next)
-                return
-            }
-        }
-        if idx + 1 < queue.count {
-            await openQueueIndex(idx + 1)
-        } else if repeatMode == .all {
-            await openQueueIndex(0)
-        } else if library.settings.queueMode.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "repeat" {
-            await openQueueIndex(0)
-        }
+        await applyPlaybackAdvance(
+            PlaybackAdvanceRules.userPressedNext(
+                currentIndex: idx,
+                queueSize: queue.count,
+                repeatMode: repeatMode.playbackRepeatMode,
+                shuffled: shuffled,
+                queueModeRepeat: queueModeIsRepeat,
+                pickShuffleIndex: { $0.randomElement() }
+            )
+        )
     }
 
     private func userPressedPrevious() async {
         guard let idx = currentIndex else { return }
-        if repeatMode == .one {
+        await applyPlaybackAdvance(
+            PlaybackAdvanceRules.userPressedPrevious(
+                currentIndex: idx,
+                positionSeconds: positionSeconds,
+                repeatMode: repeatMode.playbackRepeatMode,
+                shuffled: shuffled,
+                queueSize: queue.count,
+                pickShuffleIndex: { $0.randomElement() }
+            )
+        )
+    }
+
+    private var queueModeIsRepeat: Bool {
+        library.settings.queueMode.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "repeat"
+    }
+
+    private func applyPlaybackAdvance(_ decision: PlaybackAdvanceDecision) async {
+        switch decision {
+        case .restartCurrent:
             audioEngine.seek(to: 0)
             audioEngine.resumeIfPaused()
             isPlaying = true
-            return
+        case .jumpTo(let index):
+            await openQueueIndex(index)
+        case .stopPlayback:
+            isPlaying = false
+            audioEngine.pausePlayback()
+        case .noOp:
+            break
         }
-        if positionSeconds > 3 {
-            audioEngine.seek(to: 0)
-            return
-        }
-        if shuffled, queue.count > 1 {
-            let choices = queue.indices.filter { $0 != idx }
-            if let pick = choices.randomElement() {
-                await openQueueIndex(pick)
-                return
-            }
-        }
-        await openQueueIndex(max(0, idx - 1))
     }
 
     func clearError() {

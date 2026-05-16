@@ -86,42 +86,54 @@ final class FireballRepository {
         var artistsChanged = false
         var updatedArtists: [Artist] = []
         for artist in snapshot.artists {
-            guard let artistIdNum = Int(artist.artistId) else {
-                updatedArtists.append(artist)
-                continue
+            var lookupId: Int?
+            if Int(artist.artistId) == nil,
+               let found = try? await api.iTunesFindArtist(artist.name),
+               let idStr = Self.stringValue(found["artistId"]),
+               let resolved = Int(idStr) {
+                lookupId = resolved
             }
-            guard let albums = try? await api.iTunesArtistAlbums(artistId: artistIdNum, limit: 1),
-                  let latest = albums.first,
-                  let releaseId = Self.stringValue(latest["collectionId"])
-            else {
-                updatedArtists.append(artist)
-                continue
-            }
-            let releaseName = latest["collectionName"] as? String ?? "New Release"
-            if releaseId == artist.latestReleaseId {
+            let artistIdNum = ArtistReleaseProbe.resolveNumericItunesArtistId(
+                storedArtistId: artist.artistId,
+                artistName: artist.name,
+                lookupByName: { _ in lookupId }
+            )
+            guard let artistIdNum else {
                 updatedArtists.append(artist)
                 continue
             }
 
-            if artist.latestReleaseId != nil {
-                let title = "New Release from \(artist.name)"
-                let message = "\(releaseName) is out now!"
+            let albums = (try? await api.iTunesArtistAlbums(artistId: artistIdNum, limit: 1)) ?? []
+            let hit: ArtistReleaseProbe.AlbumHit? = {
+                guard let latest = albums.first,
+                      let releaseId = Self.stringValue(latest["collectionId"]) else { return nil }
+                let releaseName = latest["collectionName"] as? String ?? "New Release"
+                return ArtistReleaseProbe.AlbumHit(collectionId: releaseId, collectionName: releaseName)
+            }()
+
+            let eval = ArtistReleaseProbe.evaluateNewRelease(
+                artist: artist,
+                resolvedArtistId: String(artistIdNum),
+                latestAlbum: hit
+            )
+            switch eval.outcome {
+            case .unchanged:
+                updatedArtists.append(eval.artist)
+            case .baselineStored:
+                artistsChanged = true
+                updatedArtists.append(eval.artist)
+            case .notifyNewRelease:
+                let albumName = hit?.collectionName ?? "New Release"
+                let copy = ArtistReleaseProbe.notificationCopy(artistName: eval.artist.name, albumName: albumName)
                 if wantGotify {
-                    _ = await onGotifyNotify!(title, message)
+                    _ = await onGotifyNotify!(copy.title, copy.message)
                 }
                 if wantDevice {
-                    await onDeviceNotify!(title, message)
+                    await onDeviceNotify!(copy.title, copy.message)
                 }
+                artistsChanged = true
+                updatedArtists.append(eval.artist)
             }
-            artistsChanged = true
-            updatedArtists.append(
-                Artist(
-                    artistId: artist.artistId,
-                    name: artist.name,
-                    artwork: artist.artwork,
-                    latestReleaseId: releaseId
-                )
-            )
         }
 
         guard artistsChanged else { return nil }

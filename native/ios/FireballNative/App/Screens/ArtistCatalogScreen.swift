@@ -177,9 +177,9 @@ struct ArtistCatalogScreen: View {
                     )
                 ) {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("Notify on new releases")
+                        Text("Device release alerts (all artists)")
                             .font(.subheadline.weight(.semibold))
-                        Text("Posts a device alert when a followed artist ships a new album. Gotify is configured in Settings.")
+                        Text("Applies to every artist you follow. Gotify is configured in Settings.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
