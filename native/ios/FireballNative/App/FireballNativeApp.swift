@@ -108,10 +108,17 @@ private struct RootShellView: View {
 
     private var tabletShell: some View {
         NavigationSplitView(columnVisibility: $splitVisibility) {
-            List(selection: $selectedTab) {
+            List {
                 ForEach(RootTab.allCases) { tab in
-                    Label(tab.rawValue.capitalized, systemImage: icon(for: tab))
-                        .tag(tab)
+                    Button {
+                        selectedTab = tab
+                    } label: {
+                        Label(tab.rawValue.capitalized, systemImage: icon(for: tab))
+                    }
+                    .buttonStyle(.plain)
+                    .listRowBackground(
+                        selectedTab == tab ? Color.accentColor.opacity(0.18) : Color.clear
+                    )
                 }
             }
             .safeAreaInset(edge: .bottom) {

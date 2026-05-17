@@ -61,7 +61,10 @@ scan_swift() {
     err "$label: use Int(bitPattern: UInt(value)) for UInt32 hex seeds"
   fi
   if rg -q 'List\([A-Za-z]+\.allCases, selection:' "$dir" --glob '*.swift' 2>/dev/null; then
-    err "$label: List(Data, selection:) unavailable on iOS — use List(selection:) { ForEach … .tag() }"
+    err "$label: List(Data, selection:) unavailable on iOS — use List { Button { … } }"
+  fi
+  if rg -q 'List\(selection:' "$dir" --glob '*.swift' 2>/dev/null; then
+    err "$label: List(selection:content:) unavailable on iOS — use List { Button { … } }"
   fi
 }
 

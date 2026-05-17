@@ -221,7 +221,7 @@ final class MainViewModel: ObservableObject {
             Track(id: a.artistId, videoId: nil, title: "Artist · \(a.name)", artist: a.name, artwork: a.artwork, url: nil, duration: nil, album: nil, year: nil)
         }
         let pooled = (library.favorites + library.history + artistStubs).uniqued(by: \.effectiveId)
-        var localMatches = pooled.filter {
+        let localMatches = pooled.filter {
             $0.title.lowercased().contains(needle) || $0.artist.lowercased().contains(needle)
         }
         let remote = await repository.searchTracks(query: q, settings: settings).prefix(8)
@@ -974,10 +974,6 @@ final class MainViewModel: ObservableObject {
                     togglePlayPause()
                 }
             }
-            let effectiveDuration = max(
-                durationSeconds,
-                audioEngine.lastReportedDurationSeconds
-            )
             await maybeScrobbleCurrent()
             await maybeAppendAIQueue()
             if isPlaying, currentIndex != nil {
