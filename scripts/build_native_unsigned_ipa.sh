@@ -6,6 +6,10 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 IOS="$ROOT/native/ios"
 OUT="${1:-$ROOT/dist/Fireball-${FIREBALL_VERSION:-6.0.0}-ios-unsigned.ipa}"
+# Codemagic passes repo-relative dist/…; normalize before any cd (zip runs inside ipa_payload).
+if [[ "$OUT" != /* ]]; then
+  OUT="$ROOT/$OUT"
+fi
 
 if [[ "$(uname -s)" != "Darwin" ]]; then
   echo "error: unsigned IPA requires macOS (use Codemagic workflow fireball-ios-unsigned-ipa)." >&2
@@ -72,6 +76,7 @@ cp -R "$APP_SRC" build/ipa_payload/Payload/FireballNative.app
 
 mkdir -p "$(dirname "$OUT")"
 rm -f "$OUT"
+echo "==> Packaging IPA → $OUT"
 (cd build/ipa_payload && zip -qr "$OUT" Payload)
 
 echo "OK: $OUT (unsigned — sign with AltStore, Xcode, or your CI certificate before device install)"
